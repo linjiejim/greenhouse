@@ -1,7 +1,7 @@
 /**
  * Mobile push — the wire contract between the server (`apps/api/src/notifications/push/`,
- * `/api/auth/me/push-devices`) and the phone app (`apps/mobile/src/push/`). The app vendors
- * this file verbatim (`apps/mobile/src/shared/push.ts`, guarded by a parity test), so it stays
+ * `/api/auth/me/push-devices`) and the phone app (`apps/client/src/push/`). The app vendors
+ * this file verbatim (`apps/client/src/shared/push.ts`, guarded by a parity test), so it stays
  * dependency-free.
  *
  * Every notification-center fact can become a push. What it is about decides its category

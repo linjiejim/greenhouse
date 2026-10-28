@@ -44,7 +44,7 @@ async function createSession(token: string, title: string): Promise<string> {
   const res = await fetch(`${BASE_URL}/api/sessions`, {
     method: 'POST',
     headers: h(token),
-    body: JSON.stringify({ profile_id: 'team', title }),
+    body: JSON.stringify({ profile_id: 'sprouty', title }),
   });
   const data = await res.json();
   sessionsToClean.push(data.id);

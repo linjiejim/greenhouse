@@ -3,7 +3,8 @@
  *
  *   pnpm cli stats          # row counts across core tables + health
  *   pnpm cli db reset       # TRUNCATE every table (type the db name to confirm)
- *   pnpm cli db migrate     # apply the 3.0 migration chain, then the enabled
+ *   pnpm cli db migrate     # apply the 4.0 migration chain (a 3.x database is
+ *                           # bridged in place first), then the enabled
  *                           # extensions' lane (pnpm db:migrate); refuses a
  *                           # 1.x or 2.x database
  *   pnpm cli db status      # core chain + every extension migration with its
@@ -20,11 +21,14 @@ import { sql } from 'drizzle-orm';
 import {
   applyAllMigrations,
   DatabaseGenerationError,
+  detectDatabaseGenerationAt,
   readCoreMigrations,
+  refusalFor,
   type ExtensionMigrationStatus,
 } from '@greenhouse/db';
-import { DRIZZLE_DIR } from '../../paths.js';
-import { extensionMigrationSources } from '../../extensions/boot.js';
+import { MIGRATIONS_DIR } from '../../paths.js';
+import { extensionMigrationSources } from '../../plugin-host/boot.js';
+import { fromExtensions } from '../../plugin-host/index.js';
 import {
   openDb,
   parseFlags,
@@ -41,17 +45,7 @@ import {
 } from './shared.js';
 
 /** Core tables surfaced in the overview (missing tables render as n/a). */
-const STAT_TABLES = [
-  'users',
-  'conversations',
-  'messages',
-  'projects',
-  'tasks',
-  'kb_documents',
-  'run_profiles',
-  'automations',
-  'feedback',
-];
+const STAT_TABLES = ['users', 'conversations', 'messages', 'run_profiles', 'automations'];
 
 export async function run(args: string[]): Promise<number> {
   const { sub, rest } = splitSub(args, 'stats');
@@ -65,22 +59,33 @@ export async function run(args: string[]): Promise<number> {
 }
 
 /**
- * Apply the 3.0 chain, then the enabled extensions' migration lane under the
- * same advisory lock (the boot runs the lane again; it is idempotent). Opens its
- * own connection (the shared provider would refuse an empty database) and
- * refuses a 1.x / 2.x database with the way out.
+ * Apply the 4.0 chain, then the enabled extensions' migration lane under the
+ * same advisory lock (the boot runs the lane again; it is idempotent). A 3.x
+ * database is bridged in place first. Opens its own connection (the shared
+ * provider would refuse an empty or 3.x database) and refuses a 1.x / 2.x
+ * database with the way out.
  */
 async function migrateAll(): Promise<number> {
   try {
-    const { generation: before, extensions } = await applyAllMigrations(DATABASE_URL, {
-      folder: DRIZZLE_DIR,
+    const {
+      generation: before,
+      bridged,
+      extensions,
+    } = await applyAllMigrations(DATABASE_URL, {
+      folder: MIGRATIONS_DIR,
       extensionSources: extensionMigrationSources(),
     });
     const label =
       before.kind === 'empty'
         ? 'empty database'
-        : `3.0 database (${before.kind === 'v3' ? before.applied.length : 0} applied)`;
+        : before.kind === 'v3'
+          ? `3.x database (archived chain through ${before.applied.at(-1) ?? 'none'})`
+          : `4.0 database (${before.kind === 'v4' ? before.applied.length : 0} applied)`;
     console.log(chalk.green(`✓ migrations applied to ${redactDbUrl()} — was: ${label}`));
+    if (bridged) {
+      const finished = bridged.archived.length > 0 ? `finished ${bridged.archived.join(', ')}; ` : '';
+      console.log(dim(`  upgraded 3.x in place: ${finished}recorded the 4.0 baseline`));
+    }
     if (extensions && extensions.applied.length > 0) {
       console.log(dim(`  extension migrations applied: ${extensions.applied.join(', ')}`));
     }
@@ -129,9 +134,24 @@ async function baseline(args: string[]): Promise<number> {
   const { flags } = parseFlags(args);
   const dryRun = flagBool(flags, 'dry-run');
   const through = parseThrough(typeof flags.through === 'string' ? flags.through : undefined);
+  // A 3.x database is upgraded by `db migrate`; recording the 4.0 baseline here
+  // would skip the rest of its archived chain.
+  const generation = await detectDatabaseGenerationAt(DATABASE_URL);
+  if (generation.kind === 'v3') {
+    console.error(
+      chalk.red('Refusing:'),
+      'this is a 3.x database — run `pnpm db:migrate`, which upgrades it in place.',
+    );
+    return 2;
+  }
+  const refusal = generation.kind === 'unrecorded' ? null : refusalFor(generation);
+  if (refusal) {
+    console.error(chalk.red('Refusing:'), refusal);
+    return 2;
+  }
   const db = await openDb();
 
-  const allCore = readCoreMigrations(DRIZZLE_DIR);
+  const allCore = readCoreMigrations(MIGRATIONS_DIR);
   let core = allCore;
   if (through.core !== undefined) {
     const index = allCore.findIndex((file) => file.tag === through.core);
@@ -202,7 +222,7 @@ async function baseline(args: string[]): Promise<number> {
   // Net across the chain in order: a table created in one file and dropped in a
   // later one is not something the database should still have.
   const expected = new Set<string>();
-  // 1x extension files describe the 1.x core, which a 3.0 database never has.
+  // 1x extension files describe the 1.x core, which a 3.x / 4.0 database never has.
   for (const entry of [...corePending, ...extensionPending.filter((e) => e.generation !== '1x')]) {
     for (const t of entry.createsTables) expected.add(t);
     for (const t of entry.dropsTables) expected.delete(t);
@@ -247,7 +267,7 @@ async function baseline(args: string[]): Promise<number> {
       `\nRecorded ${coreResult.recorded.length} core and ${extensionResult.recorded.length} extension migration(s).`,
     ),
   );
-  console.log(dim('Verify with `pnpm drizzle-kit migrate` — it should now be a no-op.'));
+  console.log(dim('Verify with `pnpm cli db status` — every core migration should read applied.'));
   return 0;
 }
 
@@ -269,7 +289,7 @@ function stateLabel(entry: ExtensionMigrationStatus): string {
 /** Core chain + extension lane, read-only. Exit 1 when the lane would refuse. */
 async function status(): Promise<number> {
   const db = await openDb();
-  const core = await db.coreMigrationBaseline.status(readCoreMigrations(DRIZZLE_DIR));
+  const core = await db.coreMigrationBaseline.status(readCoreMigrations(MIGRATIONS_DIR));
   const lane = await db.extensionMigrations.status(extensionMigrationSources());
   console.log(heading('Migrations'));
   console.log(
@@ -297,7 +317,8 @@ async function stats(args: string[]): Promise<number> {
   const health = await db.healthCheck();
 
   const counts: Record<string, number | null> = {};
-  for (const t of STAT_TABLES) {
+  const tables = [...new Set([...STAT_TABLES, ...fromExtensions('resetTables')])];
+  for (const t of tables) {
     try {
       const rows = await db.executeRaw(sql.raw(`SELECT COUNT(*)::int AS c FROM ${t}`));
       counts[t] = Number((rows[0] as { c: number } | undefined)?.c ?? 0);
@@ -322,7 +343,7 @@ async function stats(args: string[]): Promise<number> {
   console.log(
     table(
       ['Table', 'Rows'],
-      STAT_TABLES.map((t) => [t, counts[t] === null ? dim('n/a') : String(counts[t])]),
+      tables.map((t) => [t, counts[t] === null ? dim('n/a') : String(counts[t])]),
     ),
   );
   return 0;

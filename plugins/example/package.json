@@ -1,0 +1,27 @@
+{
+  "name": "@greenhouse/plugin-example",
+  "version": "4.0.0-rc.1",
+  "private": true,
+  "type": "module",
+  "greenhouse": {
+    "id": "example",
+    "sdk": 2,
+    "api": "./api/index.ts"
+  },
+  "exports": {
+    "./api": "./api/index.ts",
+    "./manifest": "./manifest.ts"
+  },
+  "dependencies": {
+    "@greenhouse/api": "workspace:*",
+    "@greenhouse/types": "workspace:*",
+    "ai": "^6.0.176",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.18",
+    "zod": "^4.4.3",
+    "@greenhouse/ui-tokens": "workspace:*"
+  },
+  "devDependencies": {
+    "@greenhouse/db": "workspace:*"
+  }
+}

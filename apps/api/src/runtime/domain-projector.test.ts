@@ -87,20 +87,17 @@ describe('Runtime durable domain projector', () => {
   });
 
   it('projects an Automation outcome and enqueues one deep-linked durable notification', async () => {
-    // A snapshot written by 1.x: numeric id and flat notify_* fields.
     const task = {
-      id: 42,
+      id: '42',
       user_id: 'owner',
       name: 'Daily report',
-      profile_id: 'team',
+      profile_id: 'sprouty',
       task_prompt: 'Summarize today',
       schedule: '0 18 * * *',
       timezone: 'Asia/Hong_Kong',
       enabled: true,
       max_steps: 15,
-      notify_webhook: null,
-      notify_email: true,
-      notify_wecom: false,
+      notify: { webhook: null, email: true, wecom: false, feishu: false },
       last_run_at: null,
       last_status: null,
       next_run_at: null,
@@ -140,4 +137,30 @@ describe('Runtime durable domain projector', () => {
       { runId: current.id, eventId: 'event-1' },
     );
   });
+});
+
+it('publishes metadata-only run and conversation observations from a matching terminal outbox event', async () => {
+  const { registerExtensionHooks } = await import('../plugin-host/events.js');
+  const observed: unknown[] = [];
+  registerExtensionHooks('metadata-observer', (hooks) => {
+    hooks.on('run.completed', (payload) => {
+      observed.push(payload);
+    });
+    hooks.on('conversation.turn.completed', (payload) => {
+      observed.push(payload);
+    });
+  });
+  const current = run({
+    kind: 'chat',
+    status: 'succeeded',
+    session_id: 'conversation-1',
+    output: { text: 'PRIVATE CONTENT' },
+  });
+  const db = { runtime: { getRun: vi.fn().mockResolvedValue(current) } };
+  await createRuntimeDomainProjector(db as never)(event(current));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(observed).toEqual([
+    { runId: current.id, userId: 'owner', kind: 'chat', status: 'succeeded' },
+    { conversationId: 'conversation-1', userId: 'owner' },
+  ]);
 });

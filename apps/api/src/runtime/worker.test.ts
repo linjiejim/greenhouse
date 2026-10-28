@@ -49,7 +49,7 @@ function outbox(overrides: Partial<RuntimeOutboxRow> = {}): RuntimeOutboxRow {
     id: 'rto_1',
     event_id: 'rte_1',
     topic: 'runtime.events',
-    payload: JSON.stringify({
+    payload: {
       event_id: 'rte_1',
       run_id: 'rtm_car_1',
       step_id: null,
@@ -58,7 +58,7 @@ function outbox(overrides: Partial<RuntimeOutboxRow> = {}): RuntimeOutboxRow {
       payload: { exact: 'full' },
       actor_user_id: 'user-1',
       created_at: '2026-08-12T00:00:00.000Z',
-    }),
+    },
     status: 'claimed',
     attempts: 1,
     max_attempts: 10,

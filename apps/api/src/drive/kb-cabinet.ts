@@ -26,7 +26,14 @@ import {
 export type { CabinetFileView, CabinetFolderView };
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { canReadDrive, canWriteDrive, resolveDriveAccess, sameDriveCabinet, type DriveAccessNode } from './access.js';
+import {
+  canReadDrive,
+  canWriteDrive,
+  resolveDriveAccess,
+  sameDriveCabinet,
+  cabinetDriveScope,
+  type DriveAccessNode,
+} from './access.js';
 import { recordDriveChange } from './audit.js';
 import { DOWNLOAD_URL_TTL_SECONDS, MAX_AGENT_UPLOAD_BYTES } from './cabinet-limits.js';
 import { safeDriveContentType, validateDriveUpload } from './upload-policy.js';
@@ -74,7 +81,7 @@ function fileView(row: DriveFileRow): CabinetFileView {
 /** The root of one shelf as an access node (who may list or create at its top level). */
 function shelfRoot(userId: string, shelf: FilesShelf): DriveAccessNode {
   const visibility = visibilityOfShelf(shelf);
-  return { scope: 'kb', visibility, owner_user_id: visibility === 'private' ? userId : null };
+  return { scope: cabinetDriveScope(), visibility, owner_user_id: visibility === 'private' ? userId : null };
 }
 
 /** What a read needs: who is asking. Writes also name the actor for the audit row. */
@@ -87,7 +94,8 @@ const notFound = (what: 'folder' | 'file', id: string) =>
 
 async function readableFolder(caller: CabinetCaller, id: string): Promise<CabinetResult<DriveFolderRow>> {
   const folder = await caller.db.drive.getFolder(id);
-  if (!folder || folder.scope !== 'kb' || !canReadDrive(access(caller, folder))) return notFound('folder', id);
+  if (!folder || folder.scope !== cabinetDriveScope() || !canReadDrive(access(caller, folder)))
+    return notFound('folder', id);
   return folder;
 }
 
@@ -100,7 +108,7 @@ async function writableFolder(caller: CabinetCaller, id: string): Promise<Cabine
 
 async function readableFile(caller: CabinetReader, id: string): Promise<CabinetResult<DriveFileRow>> {
   const file = await caller.db.drive.getFile(id);
-  if (!file || file.scope !== 'kb' || file.status !== 'active' || !canReadDrive(access(caller, file))) {
+  if (!file || file.scope !== cabinetDriveScope() || file.status !== 'active' || !canReadDrive(access(caller, file))) {
     return notFound('file', id);
   }
   return file;
@@ -135,8 +143,8 @@ export async function listCabinetFolder(
   }
   const owner = { visibility: root.visibility ?? undefined, owner_user_id: root.owner_user_id ?? undefined };
   const [folders, files] = await Promise.all([
-    caller.db.drive.listFolders({ scope: 'kb', ...owner, parent_id: parent?.id ?? null }),
-    caller.db.drive.listFiles({ scope: 'kb', ...owner, folder_id: parent?.id ?? null }),
+    caller.db.drive.listFolders({ scope: cabinetDriveScope(), ...owner, parent_id: parent?.id ?? null }),
+    caller.db.drive.listFiles({ scope: cabinetDriveScope(), ...owner, folder_id: parent?.id ?? null }),
   ]);
   return {
     folder: parent ? folderView(parent) : null,
@@ -151,7 +159,12 @@ export async function searchCabinet(
 ): Promise<CabinetResult<{ folders: CabinetFolderView[]; files: CabinetFileView[] }>> {
   const query = input.query.trim();
   if (!query) return { error: 'query is required.' };
-  const found = await caller.db.drive.searchKb({ userId: caller.userId, query, limit: input.limit });
+  const found = await caller.db.drive.searchKb({
+    scope: cabinetDriveScope(),
+    userId: caller.userId,
+    query,
+    limit: input.limit,
+  });
   return {
     folders: found.folders.filter((row) => canReadDrive(access(caller, row))).map(folderView),
     files: found.files.filter((row) => canReadDrive(access(caller, row))).map(fileView),
@@ -272,7 +285,7 @@ export async function createCabinetFolder(
   if (parent && 'error' in parent) return parent;
   const root = shelfRoot(caller.userId, input.shelf);
   const folder = await caller.db.drive.createFolder({
-    scope: 'kb',
+    scope: cabinetDriveScope(),
     parent_id: parent?.id ?? null,
     name,
     visibility: root.visibility,
@@ -344,10 +357,10 @@ export async function uploadCabinetFile(
   if (folder && 'error' in folder) return folder;
 
   const root = shelfRoot(caller.userId, input.shelf);
-  const cosKey = driveKeyFor({ scope: 'kb', visibility: root.visibility, filename: name });
+  const cosKey = driveKeyFor({ scope: cabinetDriveScope(), visibility: root.visibility, filename: name });
   const contentType = safeDriveContentType(name);
   const pending = await caller.db.drive.initFile({
-    scope: 'kb',
+    scope: cabinetDriveScope(),
     folder_id: folder?.id ?? null,
     name,
     cos_key: cosKey,

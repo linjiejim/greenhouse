@@ -1,3 +1,4 @@
+import { emitExtensionEvent } from '../plugin-host/events.js';
 /**
  * Admin routes — /api/admin
  *
@@ -33,7 +34,7 @@ import {
 import { hashPassword } from '../auth/password.js';
 import { getAuthUser } from '../auth/middleware.js';
 import { getInAppToolIds } from '../tools/registry.js';
-import { FEATURE_OWNED_TOOL_IDS, buildUserAccessView } from '../platform/feature-points.js';
+import { FEATURE_OWNED_TOOL_IDS, buildUserAccessView } from '../plugin-host/feature-points.js';
 import type { AppEnv } from '../app-env.js';
 import { USAGE_RANGE_DAYS, type ModuleUsageReport, type UsageRangeDays } from '@greenhouse/types/usage';
 import { usageDayRange } from '../usage/counters.js';
@@ -174,6 +175,7 @@ const admin = new Hono<AppEnv>()
       created_by: currentUser.id,
     });
     await getDb().platform.syncLegacyRoleBinding(user.id, user.role, currentUser.id);
+    emitExtensionEvent('user.created', { userId: user.id });
 
     let linkResult: Awaited<ReturnType<typeof deliverIssuedLink>> | undefined;
     if (credentialMode === 'email_link') {
@@ -396,7 +398,10 @@ const admin = new Hono<AppEnv>()
     if (body.role !== undefined) {
       await getDb().platform.syncLegacyRoleBinding(updated.id, updated.role, currentUser.id);
     }
-    if (credentialsRevoked) await suspendUserRuntime(id);
+    if (credentialsRevoked) {
+      await suspendUserRuntime(id);
+      emitExtensionEvent('user.disabled', { userId: id });
+    }
     if (body.status === 'active' && user.status === 'disabled') await resumeUserRuntime(id);
 
     return c.json({

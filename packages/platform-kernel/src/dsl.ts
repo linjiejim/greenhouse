@@ -41,6 +41,8 @@ export interface FieldDefinition {
   indexed?: boolean;
   unique?: boolean;
   classification?: FieldClassification;
+  /** SDK 2 input contract. Scope fields require explicit true; system fields stay immutable. */
+  writable?: boolean;
   values?: readonly string[];
   target?: string;
 }
@@ -72,6 +74,8 @@ export interface ActionDefinition {
   capability: string;
   risk: ActionRisk;
   idempotent?: boolean;
+  /** Query audit policy; commands and denied/error attempts are always recorded. */
+  audit?: 'writes' | 'all';
   mcp?: boolean;
 }
 

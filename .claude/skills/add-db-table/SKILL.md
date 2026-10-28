@@ -1,109 +1,89 @@
 ---
 name: add-db-table
 description: >-
-  在 greenhouse 里新增一张数据库表的完整链路：schema 定义（_columns helper + ids 前缀）→ 域 service →
-  provider 注册 → drizzle-kit generate 迁移 → pnpm db:migrate → db-schema.md → *.db.test.ts。用户说新增表、加个表、建张表、
-  加字段要迁移、写个 service 时使用。核心红线：事实源是 migrate 不是 push；没有接口层/
-  Repository 类；类型全部推导。
+  Add or change a Greenhouse database table end to end: core tables in packages/db (schema with
+  _columns helpers + ids prefix, domain service, provider registration, drizzle-kit generate into
+  packages/db/migrations, pnpm db:migrate, db-schema.md, *.db.test.ts) or plugin tables in
+  plugins/<id> (own schema, service bag, NNNN_name.sql lane file). Use for: add a table / column /
+  migration / service, 新增表, 加个表, 建张表, 加字段要迁移, 写个 service. Red lines: migrate never
+  push, never edit an applied migration, no repository classes or interface mirrors, types are
+  inferred, core never gets plugin tables or plugin FKs.
 ---
 
-# 新增数据库表
+# Add a database table
 
-> 规范事实源是 [packages/db/src/AGENTS.md](../../../packages/db/src/AGENTS.md)，
-> 现有表结构与 ER 图在 [packages/db/src/db-schema.md](../../../packages/db/src/db-schema.md)。
-> 本技能只负责**顺序**和**联动点**，规则细节以那两份为准，冲突时以它们为准。
+Source of truth: packages/db/src/AGENTS.md (rules) and packages/db/src/db-schema.md (tables, FKs, logical links); plugin lanes: EXTENDING.md "Database ownership and migrations". On conflict those files win.
 
-## 前置判断
+## Decide first
+- Core or plugin: only governance-core data (identity, conversations, runs, Files, notifications, usage, OAuth, settings…) goes in packages/db; everything else lives in plugins/<id>/ and its lane.
+- Reuse first: check db-schema.md for an existing table to extend; a second table for the same job needs its reason in the relevant AGENTS.md.
+- Relationships: FK with onDelete for strong ownership inside one domain; audit, usage, notification and cross-domain references stay logical (no FK), recorded in db-schema.md.
+- Core never acquires an FK to a plugin table; plugin tables may reference core (users).
 
-1. **这张表属于 core 还是 extension？**
-   私有 / 可选 / 实验性模块的表不要进 core schema——走扩展缝
-   （`apps/api/src/extensions/<id>/` 的 `schema.ts` + `migrations/` + `services`，
-   见 [EXTENDING.md](../../../EXTENDING.md)）。core DDL 只住仓库根 `drizzle/`。
-   参考实现 `apps/api/src/extensions/example/`。
-2. **能不能不加表？** 根 AGENTS.md 的「Delete & reuse discipline」要求先确认现有表无法复用或扩展；
-   加"第二张做同一件事的表"必须在 AGENTS.md 里登记理由。
-3. 读 `db-schema.md` 确认与既有表的关系（FK 还是逻辑关联）。
+## Core table
+1. Schema: packages/db/src/schema/<domain>.ts (update the file's table list), exported from schema/index.ts; Row type `typeof table.$inferSelect` at the bottom.
+2. Columns only from schema/_columns.ts: id(), at(), day(), createdAt(), updatedAt(), json(name, fallback), jsonOrNull(), oneOf(), searchColumns().
+3. Enums: `text('col', { enum: VALUES })` plus `oneOf('chk_<table>_<col>', col, VALUES)`; floats doublePrecision(); counts and money `bigint({ mode: 'number' })`.
+4. Every table declares its indexes; names `idx_*`, `uq_*`, `chk_*`; never order by id (use created_at, seq, position, sort_order).
+5. Ids: register a three-letter prefix in ID_PREFIX (packages/db/src/ids.ts); services write `newId(kind)`, or `stableId(kind, seed)` when the id must be recomputable.
+6. Service: packages/db/src/services/<domain>.ts exporting `createXxxService(db: Db)` that returns an object literal (`const service = {...}; return service;`, no this).
+7. Register it in packages/db/src/provider.ts and export input types from the package root (packages/db/src/index.ts); DatabaseProvider is inferred.
+8. Generate at the repo root: `pnpm drizzle-kit generate` (drizzle.config.ts → packages/db/migrations/NNNN_*.sql plus meta snapshot).
+9. Review the SQL: casts missing USING, NOT NULL without DEFAULT on populated tables, renames generated as drop + add (hand-edit to RENAME), backfills.
+10. Apply: `DATABASE_URL=<your own local db> pnpm db:migrate`; never bare `drizzle-kit migrate` (the config falls back to the main DB) and never push to a persistent or shared DB.
+11. Fast-growing tables get a window in RETENTION_POLICY (packages/db/src/services/retention.ts) and the db-schema.md retention section.
+12. Update db-schema.md: purpose, key columns, FK table, logical links, diagram.
 
-## 步骤 1：Schema
+## Service rules
+- Business code (routes, tools, CLI) never writes SQL; it calls `getDb().<domain>.<method>()`.
+- Types are inferred: Row = $inferSelect, union aliases = `XxxRow['col']`, parameter types beside the service; no hand-written mirrors.
+- No interface layers, repository classes or multi-backend abstractions.
+- Query-builder jsonb reads are parsed, raw `db.execute(sql…)` reads are text: read both with safeJsonParse (@greenhouse/utils/json); raw writes use `${JSON.stringify(v)}::jsonb`.
+- Raw COUNT/SUM/bigint results are strings: wrap in Number().
+- Write timestamps with nowIso() (@greenhouse/utils/date); set updated_at explicitly on update.
+- Secrets live in `_enc` columns (PROVIDER_TOKEN_ENCRYPTION_KEY); anything hashable stores only SHA-256.
 
-在 `packages/db/src/schema/<域>.ts` 新建或编辑（每个领域一个文件），并在
-`packages/db/src/schema/index.ts` 导出。
+## Plugin table
+- Schema in plugins/<id>/api/schema.ts using the kit's column helpers (at, createdAt, id, json, oneOf, updatedAt, users from @greenhouse/api/extension-kit).
+- New plugins name tables `ext_<id>_*`; official plugins keep their existing names.
+- Services: a factory passed as `services:` in defineExtension and a typed accessor over getExtensionServices (plugins/memory/api/services.ts); plugin services are absent from DatabaseProvider.
+- Lane: `migrations: { dir: extensionPath(import.meta.url, '../migrations') }`; files are plugins/<id>/migrations/NNNN_name.sql separated by `--> statement-breakpoint`, checksummed in extension_migrations.
+- Draft SQL with the plugin's own config (`pnpm drizzle-kit generate --config plugins/<id>/drizzle.config.ts`), then keep only the reviewed delta as the next NNNN_name.sql; the lane runs every *.sql in the folder, so remove any other generated output.
+- Guard DDL with IF NOT EXISTS where a 3.x database may already hold the table (see plugins/*/migrations/0001_adopt.sql).
+- Never edit an applied lane file or create a core-owned table in a lane.
+- Register owned tables in resetTables; retention goes in the plugin's `retention: [{ table, column, days }]`.
+- Table-backed data-source creates need an id field with a database-generated key or default.
+- Document the table in plugins/<id>/db-schema.md and the plugin README.
 
-- `drizzle-orm/pg-core` 的 `pgTable()`，列用 `schema/_columns.ts` 的 helper，并更新文件头的表清单
-- 主键 `id()`（text）；在 `packages/db/src/ids.ts` 的 `ID_PREFIX` 登记三字母前缀，service 写入时 `newId(kind)`
-- 时间点 `at()`；`created_at` / `updated_at` 用 `createdAt()` / `updatedAt()`（`NOT NULL DEFAULT now()`）
-- 业务日期 `day()`（`date`）
-- JSON `json(name, fallback)`（`jsonb NOT NULL`），只有 null 有含义才 `jsonOrNull()`
-- 枚举 `text('col', { enum: VALUES })` + `oneOf('chk_<表>_<列>', col, VALUES)`（CHECK 约束）
-- 浮点 `doublePrecision()`；计数 / 金额 `bigint({ mode: 'number' })`
-- **所有表必须显式定义索引**；不按 `id` 排序（ULID 与搬来的旧 id 混排），用 `created_at` 等
-- 外键策略：域内强所有权用 `.references()` + `onDelete`；跨域松散关联（审计 / 日志 / 统计）
-  不设 FK，只在 `db-schema.md` 记录逻辑关联
+## Tests
+- DB tests are `*.db.test.ts` (tests/db/ for core, plugins/<id>/api/__tests__/ for plugins); each test runs in a rolled-back transaction.
+- Call initDatabase() in beforeEach, never in beforeAll or module scope; never resetSchema().
+- Create members with tests/helpers/internal-user.ts; narrow one with moveToRestrictedRole() (tests/helpers/restricted-role.ts).
+- Assert only rows this test created; take ids from create's return value.
+- `*.db-commit.test.ts` only for cross-connection visibility, DDL or locks, with `@db-commit-reason` in the header; DDL and lifecycle fixtures use tests/helpers/isolated-db.ts.
+- tests/db/schema-equivalence.db-commit.test.ts must keep passing (fresh 4.0 + all official plugins = bridged 3.x); record intended differences in INTENTIONAL_DIFFERENCES.
 
-## 步骤 2：域 service
-
-在 `packages/db/src/services/<域>.ts` 写 `createXxxService(db: Db)`（`Db` 来自 `client.ts`）。
-
-- 返回对象字面量；对象内自调用用 `const service = {...}; return service;`（不要 `this`）
-- **类型全部推导，禁止手写镜像**：行类型用 `$inferSelect`，union 别名 = `XxxRow['col']`
-- Input / UpdateInput / ListOpts 等参数类型与 service 同文件定义，从包根 `@greenhouse/db` 重导出
-- 复杂查询（FTS、聚合 + JOIN）用 Drizzle 的 `sql` 模板标签；`COUNT`/`SUM` 经 `execute()` 回来要 `Number()` 包
-- 时间戳写入用 `@greenhouse/utils/date` 的 `nowIso()`
-- jsonb：查询构建器读到的是对象；原生 `db.execute(sql…)` 读到的是文本——两种都用 `safeJsonParse` 读
-- **禁止新增接口镜像 / repo 类 / 多后端抽象**——旧的「接口层 + Repository 类」2026-06 已删除，没有第二实现
-
-## 步骤 3：注册到 provider
-
-`packages/db/src/provider.ts`：import 该工厂 + 在返回对象里加一行。这是唯一的装配点，
-`DatabaseProvider = ReturnType<typeof createDatabase>` 自动带上新 service。
-
-## 步骤 4：迁移（**事实源是 migrate，永不 push**）
-
-```bash
-# 必须在仓库根目录运行——drizzle.config.ts 用相对路径
-pnpm drizzle-kit generate   # 相对 0000_v3_baseline 的快照生成 0001_* …
-pnpm db:migrate             # 应用到本地库（拒绝 1.x / 2.x 库）
-```
-
-- **review 生成的 SQL 再提交**，重点盯：类型转换缺 `USING`、给有数据的表加 `NOT NULL` 却没 `DEFAULT`、
-  改列名被生成成 drop + add（会丢数据，需手改 `RENAME`）、需要数据回填的自己补 SQL
-- 迁移文件连代码一起提交；CI / 部署跑 `pnpm db:migrate` 自动应用；不改 `0000_v3_baseline.sql`，不动 `drizzle/archive-1x/`
-- `push` **只**用于本地一次性 scratch 库；任何持久或共享库（含 CI 测试库）一律 `pnpm db:migrate`
-- 1.x 有对应数据要搬的，同步改 `packages/db/src/carry/from-1x.ts`；高增长表在 `services/retention.ts` 定保留期
-
-## 步骤 5：文档
-
-更新 [packages/db/src/db-schema.md](../../../packages/db/src/db-schema.md)：表用途、字段简述、
-ER 图、表关系总览（明确标 FK 还是逻辑关联）。这是根 AGENTS.md 里对 schema 变更的硬要求。
-
-## 步骤 6：测试
-
-DB 集成测试放 `tests/db/<域>.db.test.ts`（命名决定跑在哪个 vitest project）：
-
-- 每条测试包在事务里自动回滚——**不要**自己 `resetSchema()` 或在 `beforeEach` 之外调 `initDatabase()`
-- 内部测试用户用 [tests/helpers/internal-user.ts](../../../tests/helpers/internal-user.ts) 创建
-- **断言只针对本测试造的行**：事务只藏自己的写入，全表 `count()` 仍看得见别的已提交数据
-- 不写死 id：从 `create` 的返回值取（新 id 是 ULID）
-- 只有多连接可见性 / DDL / 锁竞态才用 `*.db-commit.test.ts`，文件头必须写 `@db-commit-reason`
-
-## 步骤 7：门禁
-
+## Gate
 ```bash
 pnpm typecheck
 pnpm lint
-pnpm test:db      # 聚焦；落地前仍要跑完整 pnpm test
+TEST_DATABASE_URL=<loopback db named *test*> pnpm test:db   # focused
+TEST_DATABASE_URL=<loopback db named *test*> pnpm test      # before handoff
+./node_modules/.bin/drizzle-kit check                       # core journal and snapshots agree
 ```
+Plugin lanes also run `pnpm plugins:sync --check` and `pnpm test:core` (see quality-gate).
 
-## 检查清单
+## Red lines
+- Never edit 0000_v4_baseline.sql, migrations/archive-3x/ or any applied migration bytes.
+- Never push a schema to a persistent or shared database; migrations are the only source of truth.
+- Never run migrations from a worktree against the main database; always set DATABASE_URL explicitly.
+- No organizations table or org_id column; no columns "for later".
+- Deleted features do not come back as compatibility tables.
 
-- [ ] 判断过 core vs extension，且登记过"为什么不能复用现有表"
-- [ ] schema 文件写好，`schema/index.ts` 已导出
-- [ ] 列用 `_columns.ts` helper；索引与 CHECK 显式定义；`ids.ts` 登记了前缀
-- [ ] 外键策略正确（域内 FK / 跨域逻辑关联）
-- [ ] service 在 `services/`，工厂函数形态，类型全推导无手写镜像
-- [ ] `provider.ts` 已注册
-- [ ] `pnpm drizzle-kit generate` 在仓库根跑过，生成的 SQL 已 review 并提交；`pnpm db:migrate` 通过
-- [ ] 想过 migrate-from-1x 映射与保留期
-- [ ] `db-schema.md` 已更新
-- [ ] `tests/db/*.db.test.ts` 覆盖，用 internal-user helper，无 `resetSchema()`
-- [ ] typecheck + lint + test 通过
+## Checklist
+- [ ] Core vs plugin decided; reuse considered and recorded
+- [ ] Schema with helpers, indexes and CHECKs; prefix registered (core)
+- [ ] Service factory registered (provider.ts or plugin services)
+- [ ] Migration generated or written, reviewed, applied to your own DB
+- [ ] Retention decided; db-schema.md (core or plugin) updated
+- [ ] DB tests at the right layer; schema-equivalence green; gate green

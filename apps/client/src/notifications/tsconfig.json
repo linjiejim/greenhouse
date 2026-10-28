@@ -1,0 +1,16 @@
+{
+  // Stops Vite's nearest-tsconfig lookup for the files the ROOT vitest compiles from this folder
+  // (./activity.test.ts and ./activity.ts): ../../tsconfig.json extends expo/tsconfig.base, which cannot
+  // resolve in CI where apps/client's own install is absent (TSConfckParseError). Same reason and
+  // shape as ../api/tsconfig.json. The app's type check is unchanged — `tsc` in apps/client uses
+  // apps/client/tsconfig.json, which still includes these files.
+  "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "skipLibCheck": true
+  }
+}

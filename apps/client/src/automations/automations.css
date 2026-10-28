@@ -1,0 +1,334 @@
+/* Automations place: layout of the automation and agent editors (fixed-size dialogs,
+   src/ui/overlay.web.tsx) and the agent pages. Fields, buttons, switches, segments, callouts and
+   badges are the shared Controls in src/shell/client.css. */
+
+/* ── editor layout ─────────────────────────────────────── */
+.gh-form .gh-input[data-narrow] {
+  width: 128px;
+}
+.gh-auto-agent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gh-auto-agent .gh-link-button {
+  flex: none;
+}
+.gh-auto-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+}
+.gh-auto-inline .gh-field {
+  flex: none;
+}
+.gh-auto-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px 16px;
+}
+.gh-auto-checks[data-wide] {
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+/* weekday picker */
+.gh-auto-days {
+  display: flex;
+  gap: 4px;
+}
+.gh-auto-days button {
+  width: 36px;
+  height: 32px;
+  border: 1px solid var(--gh-line);
+  border-radius: 8px;
+  background: var(--gh-raised);
+  color: var(--gh-secondary);
+  font-size: 13px;
+}
+.gh-auto-days button[aria-pressed='true'] {
+  border-color: var(--gh-accent-edge);
+  background: var(--gh-accent-fill);
+  color: var(--gh-accent-text-strong);
+  font-weight: 700;
+}
+
+/* the schedule in words and its next runs */
+.gh-auto-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--gh-sunken);
+  border: 1px solid var(--gh-line);
+}
+.gh-auto-preview strong {
+  font-size: 14px;
+}
+.gh-auto-preview code {
+  margin-left: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--gh-secondary);
+}
+.gh-auto-preview ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--gh-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.gh-auto-preview[data-error] {
+  background: var(--gh-danger-fill);
+  border-color: transparent;
+}
+
+/* tool picker in the agent editor */
+.gh-auto-tools {
+  border: 1px solid var(--gh-line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.gh-auto-tools-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--gh-line);
+  background: var(--gh-sunken);
+}
+.gh-auto-tools-bar .gh-input {
+  flex: 1;
+}
+.gh-auto-tools-list {
+  max-height: 280px;
+  overflow: auto;
+}
+.gh-auto-tools-empty {
+  padding: 12px;
+}
+.gh-auto-tools-list h4 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--gh-line);
+  background: var(--gh-card);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gh-secondary);
+}
+.gh-auto-tool {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--gh-line);
+  cursor: pointer;
+}
+.gh-auto-tool:last-child {
+  border-bottom: 0;
+}
+.gh-auto-tool:hover {
+  background: var(--gh-hover);
+}
+.gh-auto-tool input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--gh-accent);
+}
+.gh-auto-tool > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.gh-auto-tool b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.gh-auto-tool small {
+  font-size: 12px;
+  color: var(--gh-secondary);
+}
+
+/* plant and tint pickers */
+.gh-auto-identity {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.gh-auto-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.gh-auto-swatches button {
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+}
+.gh-auto-swatches button:hover {
+  background: var(--gh-hover);
+}
+.gh-auto-swatches button[aria-checked='true'] {
+  border-color: var(--gh-accent-edge);
+}
+
+/* agent page */
+.gh-agent {
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px;
+}
+.gh-agent-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.gh-agent-head h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.3;
+}
+.gh-agent-head p {
+  margin: 4px 0 0;
+  color: var(--gh-secondary);
+}
+.gh-agent-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  margin: 0 0 24px;
+  border: 1px solid var(--gh-line);
+  border-radius: 16px;
+  background: var(--gh-card);
+  overflow: hidden;
+}
+.gh-agent-facts div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 16px;
+  border-right: 1px solid var(--gh-line);
+  border-bottom: 1px solid var(--gh-line);
+  margin: 0 -1px -1px 0;
+  min-width: 0;
+}
+.gh-agent-facts dt {
+  font-size: 12px;
+  color: var(--gh-secondary);
+}
+.gh-agent-facts dd {
+  margin: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-agent-prompt {
+  margin: 8px 0 24px;
+  padding: 16px 18px;
+  border: 1px solid var(--gh-line);
+  border-radius: 16px;
+  background: var(--gh-hover);
+  white-space: pre-wrap;
+  line-height: 1.7;
+  max-height: 360px;
+  overflow: auto;
+}
+.gh-agent-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+.gh-agent-uses {
+  border: 1px solid var(--gh-line);
+  border-radius: 16px;
+  padding: 4px;
+  margin: 8px 0 24px;
+}
+.gh-agent-share {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 24px;
+  padding: 12px 16px;
+  border: 1px solid var(--gh-line);
+  border-radius: 16px;
+}
+.gh-agent-share p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--gh-secondary);
+}
+
+/* secondary column: a section heading with its own create button */
+.gh-auto-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 20px 8px 4px;
+}
+.gh-auto-heading h3 {
+  margin: 0 !important;
+  font-size: 13px !important;
+  font-weight: 700;
+  color: var(--gh-text) !important;
+}
+.gh-auto-heading button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0 !important;
+  border-radius: 6px;
+  color: var(--gh-accent-text) !important;
+}
+.gh-place-sidebar .gh-auto-subheading {
+  margin: 8px 10px 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gh-tertiary);
+}
+
+.gh-auto-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* phone widths (below WIDE_MIN, src/shell/wide-model.ts): the editor is a full-screen sheet */
+@media (max-width: 759px) {
+  .gh-auto-identity {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .gh-auto-days button {
+    width: 40px;
+    height: 44px;
+  }
+}

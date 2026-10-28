@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "Only bundled client windows can use native services. Remote plugin frames have no native access.",
+  "windows": ["main", "quick-ask", "settings"],
+  "permissions": ["core:event:default", "core:window:allow-start-dragging", "desktop", "credentials:default"]
+}

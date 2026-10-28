@@ -21,7 +21,7 @@ import type { GatewayKeyCreateInput, GatewayKeyCreated, GatewayOverview } from '
 
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser } from '../auth/middleware.js';
-import { getMcpResourceUrl } from '../platform/oauth.js';
+import { getMcpResourceUrl } from '../agent-access/oauth.js';
 import { agentWriteView } from '../agent-access/governed-write.js';
 import { checkAgentConnections } from '../hub-context/connections.js';
 import type { AgentConnectionsCheck } from '@greenhouse/types/hub-context';

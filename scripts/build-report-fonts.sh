@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Rebuild the CJK font subsets the report renderer embeds in PDFs
-# (apps/api/assets/fonts/NotoSansSC-{Regular,Bold}.subset.ttf).
+# (plugins/reports/assets/fonts/NotoSansSC-{Regular,Bold}.subset.ttf).
 #
 # Source: Noto Sans SC (SIL Open Font License 1.1, redistribution allowed; the
 # licence text ships next to the subsets as OFL.txt). The static TTFs come from
@@ -18,7 +18,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="${ROOT}/apps/api/assets/fonts"
+OUT="${ROOT}/plugins/reports/assets/fonts"
 SRC="$(mktemp -d /tmp/notosc-src-XXXXXX)"
 WORK="$(mktemp -d /tmp/notosc-work-XXXXXX)"
 trap 'rm -rf "${SRC}" "${WORK}"' EXIT

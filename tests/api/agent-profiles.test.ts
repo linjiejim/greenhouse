@@ -99,7 +99,8 @@ describe('Profile identities', () => {
     expect(profile.access.level).toBe('internal');
     expect(profile.access.rich_output).toBe(true);
     expect(profile.hidden).toBeFalsy();
-    expect(profile.tools).toContain('knowledge_query');
+    // Built-ins use the member's active tool set; no static plugin ids to go stale.
+    expect(profile.tools).toEqual([]);
     // Sampling/reasoning belongs to the model catalog now, not the agent.
     expect(profile.model.id).toBe('flash');
     expect(profile.model.options).toBeUndefined();
@@ -130,17 +131,17 @@ describe('Profile module loading and legacy compatibility', () => {
     ).toEqual(['desktop', 'sprouty']);
   });
 
-  it('maps stored legacy profile IDs onto the presets that replaced them', async () => {
-    const { resolveProfile, clearProfileCache } = await import('../../apps/api/src/profiles/profile.js');
+  it('maps retired profile IDs a caller sends onto their successors at the edge only', async () => {
+    const { normalizeProfileId, resolveProfile, clearProfileCache } = await import(
+      '../../apps/api/src/profiles/profile.js'
+    );
     clearProfileCache();
-    // Sessions/scheduled tasks still store these; they must keep working.
+    // Request input may still carry these; core migration 0003 rewrote the stored ones.
     for (const legacy of [
       'team',
       'default',
       'researcher',
       'cc-analyzer',
-      // Retired 2026-08-01 — every conversation ever opened under these still
-      // has to resolve, or its history becomes unopenable.
       'sprouty-quick',
       'sprouty-deep',
       'sprouty-k3',
@@ -148,13 +149,15 @@ describe('Profile module loading and legacy compatibility', () => {
       'sprouty-mission',
       'workflow-planner',
       'sprouty-agents',
-      // Retired in v1.4 with the evaluation system.
       'eval-judge',
     ]) {
-      expect(resolveProfile(legacy).id, legacy).toBe('sprouty');
+      expect(normalizeProfileId(legacy), legacy).toBe('sprouty');
+      // Readers take a stored id as it is, so a retired one is simply not found.
+      expect(() => resolveProfile(legacy), legacy).toThrow(/Profile not found/);
     }
-    expect(resolveProfile('local-dev').id).toBe('desktop');
-    expect(resolveProfile('local-pi').id).toBe('desktop');
+    expect(normalizeProfileId('local-dev')).toBe('desktop');
+    expect(normalizeProfileId('local-pi')).toBe('desktop');
+    expect(normalizeProfileId('custom:7@2')).toBe('custom:7@2');
   });
 
   it("the catalog owns each model's options — the agent declares none", async () => {

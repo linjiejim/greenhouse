@@ -25,7 +25,7 @@ export const MAX_SUGGESTED_FOLLOWUPS = 4;
 export const MAX_STEPS_LIMIT = 50;
 
 /** Custom profiles inherit model + access ceiling from one of these system bases. */
-export const CUSTOM_BASE_PROFILE_IDS = ['default', 'team'] as const;
+export const CUSTOM_BASE_PROFILE_IDS = ['sprouty'] as const;
 export type CustomBaseProfileId = (typeof CUSTOM_BASE_PROFILE_IDS)[number];
 
 // ─── Leaf schemas ────────────────────────────────────────
@@ -87,8 +87,7 @@ export type SproutyFaceStyleId = (typeof SPROUTY_FACE_STYLE_IDS)[number];
  * accepted and readable — `color`, `accessories`, `leafStyle`, `faceStyle`,
  * the old editor's `eyeStyle` and the free `palette` hexes — and resolves to a
  * plant at render time (`legacyToPlant` / `legacyToMood`); nothing is
- * migrated. Writers store `plant` plus the nearest legacy `color`
- * (PLANT_LEGACY_COLOR). Plain strings: unknown ids are kept and render through
+ * migrated. Writers store `plant`. Plain strings: unknown ids are kept and render through
  * the resolver's fallbacks.
  */
 export const avatarConfigSchema = z.object({
@@ -180,7 +179,7 @@ export const profileManifestSchema = z.object({
     .regex(/^[a-z0-9一-鿿-]+$/)
     .max(50)
     .optional(),
-  base_profile_id: z.enum(CUSTOM_BASE_PROFILE_IDS).default('default'),
+  base_profile_id: z.enum(CUSTOM_BASE_PROFILE_IDS).default('sprouty'),
   model_options: modelOptionsSchema.optional(),
   model_choice_ids: z.array(z.string()).max(10).optional(),
 });

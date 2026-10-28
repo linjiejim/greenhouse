@@ -9,6 +9,7 @@
  * POST   /api/shares/read-all     — 标记当前用户所有分享已读
  */
 
+import { GREENHOUSE_CONFIG } from '../config/greenhouse-config.js';
 import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
 import { getAuthUser } from '../auth/middleware.js';
@@ -16,6 +17,12 @@ import { connectionManager } from '../ws/connection-manager.js';
 import type { AppEnv } from '../app-env.js';
 
 const shares = new Hono<AppEnv>()
+  .use('*', async (c, next) => {
+    if (GREENHOUSE_CONFIG.conversations.sharing) return next();
+    if (c.req.method === 'GET' && c.req.path === '/api/shares') return c.json({ shares: [] });
+    if (c.req.method === 'GET' && c.req.path === '/api/shares/count') return c.json({ count: 0 });
+    return c.notFound();
+  })
   /** GET /api/shares — list shares for current user */
   .get('/', async (c) => {
     const user = getAuthUser(c);

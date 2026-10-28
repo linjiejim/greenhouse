@@ -1,7 +1,8 @@
 /**
  * Daily retention cleanup (data model principle 5): run events 30 days,
  * delivered outbox 7 days, request log 30 days, Feishu receipts 7 days, budget
- * ledger 13 months, terminal notification deliveries 7 days, and expired
+ * ledger 13 months, terminal notification deliveries 7 days, client error
+ * reports 90 days (at most 10,000 rows), and expired
  * credentials. The rules live in `db.retention` (packages/db/src/services/retention.ts).
  *
  * Every API process schedules it, but a run is skipped when the audit log
@@ -14,7 +15,7 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseProvider, RetentionReport } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
-import { PLATFORM_ORG_ID } from '../platform/runtime.js';
+import { PLATFORM_ORG_ID } from '../plugin-host/runtime.js';
 
 export const RETENTION_ACTION = 'retentionCleanup';
 const MIN_INTERVAL_MS = 20 * 3_600_000;

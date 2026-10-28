@@ -49,10 +49,6 @@ export function setPriceOverridesForTests(rows: readonly UsagePriceOverrideRow[]
   overridesLoadedAt = rows.length > 0 ? Date.now() : 0;
 }
 
-export function currentPriceOverrides(): readonly UsagePriceOverrideRow[] {
-  return overrides;
-}
-
 function overrideFor(kind: UsagePriceOverrideRow['kind'], target: string, provider = '') {
   return overrides.find((row) => row.kind === kind && row.target === target && row.provider === provider);
 }
@@ -269,9 +265,4 @@ export function estimateImageCostMicros(input: {
     { input: dearer, output: dearer },
     { inputTokens: 0, outputTokens: input.estimatedTokens },
   );
-}
-
-/** USD per 1M tokens for a token-priced service (image understanding). */
-export function serviceTokenPrice(service: PricedService, provider: string): TokenPrice | undefined {
-  return effectiveServicePrice(service, provider)?.tokenPrice;
 }

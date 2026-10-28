@@ -38,7 +38,7 @@ function makeSession(id: string, userId = 'owner', updatedAt = '2026-07-31T00:00
     id,
     title: id,
     status: 'active',
-    profile_id: 'team',
+    profile_id: 'sprouty',
     user_id: userId,
     app_id: null,
     channel: 'web',
@@ -118,13 +118,13 @@ describe('GET /api/sessions list pagination metadata', () => {
     );
   });
 
-  it('does not silently clamp the legacy Web history limit', async () => {
+  it('bounds every page at 200, with or without page_meta', async () => {
     const response = await createApp().request('/api/sessions?limit=500');
 
     expect(response.status).toBe(200);
     expect(mocks.sessions.list).toHaveBeenCalledWith(
       expect.objectContaining({
-        limit: 500,
+        limit: 200,
       }),
     );
   });
@@ -298,9 +298,9 @@ describe('GET /api/sessions?scope=', () => {
     expect(mocks.users.getById).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves the unscoped list on the legacy rule: a super sees every owner', async () => {
+  it('pins the unscoped list to the caller even for a super', async () => {
     await createApp(superUser).request('/api/sessions');
 
-    expect(mocks.sessions.list).toHaveBeenCalledWith(expect.objectContaining({ userId: undefined }));
+    expect(mocks.sessions.list).toHaveBeenCalledWith(expect.objectContaining({ userId: 'boss' }));
   });
 });

@@ -2,12 +2,10 @@
  * Greenhouse design tokens — the single source for web and mobile.
  *
  * Nothing copies these values by hand. `pnpm tokens:build` (scripts/build-tokens.ts) renders:
- *   - packages/ui/src/tokens/tokens.css — the web's CSS variables (`--t-*`, `--primary-*`, `--gh-*`),
- *     imported by apps/web/src/app.css and mapped into Tailwind there;
- *   - apps/mobile/src/theme/tokens.generated.ts — the native palette (mobile sits outside the
- *     pnpm workspace, so it gets a generated copy, never an import).
- * tokens.test.ts fails when either file is stale; platform-parity.test.ts fails when web and
- * mobile resolve a shared role differently.
+ *   - apps/client/src/theme/tokens.generated.ts — the native palette (the client sits outside the
+ *     pnpm workspace, so it gets a generated copy, never an import);
+ *   - packages/ui-tokens/src/tokens.generated.ts — the `--gh-*` themes plugin frontends load.
+ * tokens.test.ts fails when either file is stale.
  *
  * Names are roles, not hues. The brand is Haven: forest green #235D4D (light accent), pale sage
  * #B1D2BF (dark accent) and the seed lime #B6CA68, which is an accent only and never a text colour.

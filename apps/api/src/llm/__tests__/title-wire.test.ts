@@ -98,6 +98,17 @@ describe('generateSessionTitle on the wire', () => {
     });
   });
 
+  it('names the language of an English message and refuses a Chinese title for it', async () => {
+    const message = 'Remind me to water the plants every Monday';
+    stubFetch('浇花提醒自动化');
+
+    const title = await generateSessionTitle(message, { userId: 'u1', sessionId: 's1' }, 'zh');
+
+    const turns = captured[0].body.messages as { role: string; content: string }[];
+    expect(turns.at(-1)?.content).toContain('Title language: English');
+    expect(title).toBe(message);
+  });
+
   it('falls back to the user words when the budget was spent on reasoning', async () => {
     stubFetch('', 'length');
 

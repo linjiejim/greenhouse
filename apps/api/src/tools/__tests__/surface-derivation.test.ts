@@ -39,28 +39,20 @@ describe('surface-derived exposure sets', () => {
         'external_search',
         'compute',
         'analyze_image',
-        'project_query',
         'session_query',
-        'knowledge_query',
-        'skill_query',
-        'tables_query',
         // 2026-08-03: Automations (scheduled tasks) — the model can inspect and
         // manage the user's own schedules; owner scoping is inside the tools.
         'automation_query',
         // 2026-08-05: mailbox reading returns after the 0.18.0 removal. Read is
         // safe to expose broadly; the write half is confirm-gated below.
-        'email_query',
         // v1.5: the team's file cabinet (Files), authorized per node by drive access.
         'files_query',
         // v1.5: a member's own feature requests and their answers (Issues & requests).
-        'feedback_query',
         // v1.6: the paid web services members' agents use (MCP group `services`).
         'web_search',
         'read_url',
         // v1.6: list / read files in the member's own cloud computer.
-        'computer_files',
         // v1.7: the team's report templates (list / get / validate — no side effects).
-        'report_templates',
         // v3: connectors. The read tier keeps the `connectors` group reachable for
         // read-only grants; mcp_call governs its own writes (policy, preview,
         // recording) and is filtered out of the /api/agent CLI proxy.
@@ -72,25 +64,14 @@ describe('surface-derived exposure sets', () => {
   it('MUTATING_PROXY_ALLOWLIST matches the pinned write surface (confirm-gated)', () => {
     expect(core(MUTATING_PROXY_ALLOWLIST)).toEqual(
       [
-        'project_mutation',
-        'knowledge_mutation',
-        'skill_mutation',
-        'tables_mutation',
         'automation_mutation',
-        'email_mutation',
         'files_mutation',
         // v1.5: members' agents file requests and report frictions as recorded writes.
-        'feature_request',
-        'log_friction',
         // v1.6: an external agent's image is a new file in the member's Files —
         // a recorded, additive write (Chat still renders it inline).
         'generate_image',
         // v1.6: the member's cloud computer — run, move files, stop (recorded writes).
-        'computer_exec',
-        'computer_transfer',
-        'computer_stop',
         // v1.7: a rendered report is a new file in the member's Files — recorded, additive.
-        'report_render',
       ].sort(),
     );
   });
@@ -98,18 +79,10 @@ describe('surface-derived exposure sets', () => {
   it('MCP_EXPOSED_TOOL_IDS matches the pinned MCP surface', () => {
     expect(core(MCP_EXPOSED_TOOL_IDS)).toEqual(
       [
-        'knowledge_query',
-        'knowledge_mutation',
-        'project_query',
-        'project_mutation',
         'session_query',
-        'skill_query',
-        'skill_mutation',
         // 2026-07-23: image generation opened to MCP so image-producing skills
         // call a tool instead of a REST relay.
         'generate_image',
-        'tables_query',
-        'tables_mutation',
         // 2026-08-16: automation_query stays (reading your own schedule is
         // harmless and useful); automation_mutation left — a machine client IS
         // unattended, and an automation that can create automations multiplies.
@@ -126,9 +99,6 @@ describe('surface-derived exposure sets', () => {
         'files_mutation',
         // v1.5: Issues & requests in their own `feedback` group — file a request,
         // log a friction (recorded writes), read back your own requests (plain read).
-        'feature_request',
-        'log_friction',
-        'feedback_query',
         // v1.6: the paid services in their own `services` group: web search,
         // page reads, image analysis and generation (generate_image moved here
         // from the retired `image` group; old grants keep it, see registry).
@@ -137,13 +107,7 @@ describe('surface-derived exposure sets', () => {
         'analyze_image',
         // v1.6: the member's cloud computer in its own `computer` group (off
         // until an admin turns it on; not even listed while off).
-        'computer_exec',
-        'computer_files',
-        'computer_transfer',
-        'computer_stop',
         // v1.7: report templates and rendering in their own `reports` group.
-        'report_templates',
-        'report_render',
         // v3: connectors in their own `connectors` group (existing grants do not gain it).
         'mcp_call',
       ].sort(),
@@ -198,37 +162,17 @@ describe('surface-derived exposure sets', () => {
       [
         'analyze_image',
         'generate_image',
-        'feature_request',
-        'project_query',
-        'project_mutation',
         'session_query',
-        'knowledge_query',
-        'knowledge_mutation',
         'call_llm',
-        'skill_mutation',
-        'tables_query',
-        'tables_mutation',
-        'tables_schema_plan',
         'task_capture',
         'read_attachment',
         'export_data',
         'automation_query',
         'automation_mutation',
-        'memory',
-        'log_friction',
-        'email_query',
-        'email_mutation',
         'files_query',
         'files_mutation',
-        'feedback_query',
         'web_search',
         'read_url',
-        'computer_exec',
-        'computer_files',
-        'computer_transfer',
-        'computer_stop',
-        'report_templates',
-        'report_render',
         'mcp_call',
       ].sort(),
     );

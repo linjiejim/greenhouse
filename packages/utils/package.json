@@ -1,6 +1,6 @@
 {
   "name": "@greenhouse/utils",
-  "version": "0.0.1",
+  "version": "4.0.0-rc.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -39,14 +39,6 @@
     "./semver": {
       "import": "./src/semver.ts",
       "types": "./src/semver.ts"
-    },
-    "./wecom": {
-      "import": "./src/wecom.ts",
-      "types": "./src/wecom.ts"
-    },
-    "./feishu": {
-      "import": "./src/feishu.ts",
-      "types": "./src/feishu.ts"
     },
     "./html": {
       "import": "./src/html.ts",

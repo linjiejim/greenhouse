@@ -1,3 +1,4 @@
+import { assertDiscriminator } from '@greenhouse/types/discriminators';
 /**
  * Platform control-plane service.
  *
@@ -16,8 +17,6 @@ import type {
   FieldPolicy,
   PlatformAuditEvent,
   RoleCapabilityGrant,
-  UserCapabilityOverride,
-  UserEntityPolicyOverride,
 } from '@greenhouse/platform-kernel';
 import { isCapabilityPattern, isStableId, validateEntityPolicy } from '@greenhouse/platform-kernel';
 import { nowIso } from '@greenhouse/utils/date';
@@ -68,12 +67,10 @@ export interface PlatformEntityPolicyInput {
 
 export interface PlatformAuthorizationSnapshot {
   roleGrants: RoleCapabilityGrant[];
-  userOverrides: UserCapabilityOverride[];
 }
 
 export interface PlatformEntityPolicySnapshot {
   rolePolicies: EntityPolicy[];
-  userOverride?: UserEntityPolicyOverride;
 }
 
 function parseStoredEntityPolicy(scopes: unknown, fields: unknown): EntityPolicy {
@@ -300,7 +297,7 @@ export function createPlatformService(db: Db) {
 
     async getAuthorizationSnapshot(userId: string, _orgId?: string): Promise<PlatformAuthorizationSnapshot> {
       const roleIds = await memberRoleIds(userId);
-      if (roleIds.length === 0) return { roleGrants: [], userOverrides: [] };
+      if (roleIds.length === 0) return { roleGrants: [] };
       const roleRows = await db
         .select({
           role_id: platformRoleCapabilities.role_id,
@@ -316,7 +313,6 @@ export function createPlatformService(db: Db) {
           roleId: row.role_id,
           capability: row.capability,
         })),
-        userOverrides: [],
       };
     },
 
@@ -401,6 +397,7 @@ export function createPlatformService(db: Db) {
     },
 
     async recordAudit(event: PlatformAuditEvent): Promise<PlatformAuditEventRow> {
+      assertDiscriminator('auditApps', event.resource.appId);
       const rows = await db
         .insert(platformAuditEvents)
         .values({

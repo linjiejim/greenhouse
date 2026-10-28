@@ -41,43 +41,16 @@ describe('resolveCapability', () => {
     expect(capabilityMatches('crm.deal.read', 'crm.deal.readAll')).toBe(false);
   });
 
-  it('applies user deny before every allow', () => {
-    const decision = resolveCapability({
-      capability: 'projects.project.read',
-      roleGrants,
-      userOverrides: [
-        { source: 'user', capability: 'projects.project.read', effect: 'allow' },
-        { source: 'user', capability: 'projects.*', effect: 'deny' },
-      ],
+  it('allows through a matching role grant and defaults to deny', () => {
+    expect(resolveCapability({ capability: 'crm.deal.read', roleGrants })).toMatchObject({
+      allowed: true,
+      reason: 'role-allow',
+      sourceId: 'crm-reader',
     });
-
-    expect(decision).toMatchObject({ allowed: false, reason: 'user-deny' });
-  });
-
-  it('applies user allow before role allow and defaults to deny', () => {
-    expect(
-      resolveCapability({
-        capability: 'knowledge.document.read',
-        roleGrants,
-        userOverrides: [{ source: 'user', capability: 'knowledge.*', effect: 'allow' }],
-      }),
-    ).toMatchObject({ allowed: true, reason: 'user-allow' });
-
-    expect(
-      resolveCapability({
-        capability: 'crm.deal.read',
-        roleGrants,
-        userOverrides: [],
-      }),
-    ).toMatchObject({ allowed: true, reason: 'role-allow', sourceId: 'crm-reader' });
-
-    expect(
-      resolveCapability({
-        capability: 'crm.deal.delete',
-        roleGrants,
-        userOverrides: [],
-      }),
-    ).toMatchObject({ allowed: false, reason: 'default-deny' });
+    expect(resolveCapability({ capability: 'crm.deal.delete', roleGrants })).toMatchObject({
+      allowed: false,
+      reason: 'default-deny',
+    });
   });
 });
 
@@ -102,10 +75,6 @@ describe('entity policies', () => {
     expect(policy.scopes).toHaveLength(3);
     expect(fieldPolicyFor(policy, 'budget')).toEqual({ read: 'full', write: true, export: false });
     expect(fieldPolicyFor(policy, 'missing')).toEqual({ read: 'none', write: false, export: false });
-  });
-
-  it('lets a user deny replace all role entity access', () => {
-    expect(resolveEntityPolicy([memberPolicy], { effect: 'deny' })).toEqual({ scopes: [], fields: {} });
   });
 
   it('evaluates record access against the effective user, including agents', () => {

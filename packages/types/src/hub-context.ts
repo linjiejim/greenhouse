@@ -4,7 +4,7 @@
  * monthly retro, the data catalog and the connect wizard's "seen" check.
  *
  * Wire shapes only — the server side lives in apps/api/src/hub-context and
- * apps/api/src/retro.
+ * plugins/retro/api.
  */
 
 import type { AgentAvatar } from './agent-avatar.js';
@@ -46,6 +46,8 @@ export interface TeamContextCandidate {
 }
 
 export interface TeamContextSettingsView {
+  markdown?: { overview: string; conventions: string; glossary: string };
+  document_source?: boolean;
   conventions: TeamContextDocRef[];
   glossary: TeamContextDocRef | null;
   /** The configured zone, or null for the default. */
@@ -59,8 +61,9 @@ export interface TeamContextSettingsView {
 }
 
 export interface TeamContextSettingsInput {
-  conventions: string[];
-  glossary: string | null;
+  markdown?: { overview: string; conventions: string; glossary: string };
+  conventions?: string[];
+  glossary?: string | null;
   /** Null clears it (back to the default). Omit to leave it unchanged. */
   timezone?: string | null;
 }
@@ -106,6 +109,7 @@ export interface DataCatalogBase {
 }
 
 export interface DataCatalogExtensionSource {
+  entities?: Array<{ id: string; name: string; row_count: number | null }>;
   kind: 'extension';
   /** Extension id. */
   id: string;

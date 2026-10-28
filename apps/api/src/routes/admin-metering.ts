@@ -19,8 +19,8 @@ import { getDb, MEMBER_DEFAULT_SCOPE_ID, type UsageBudgetLimitScopeType } from '
 import type { BudgetLimitInput, PriceOverrideInput } from '@greenhouse/types/metering';
 import { getAuthUser } from '../auth/middleware.js';
 import type { AppEnv } from '../app-env.js';
-import { humanActor } from '../platform/actor.js';
-import { PLATFORM_ORG_ID } from '../platform/runtime.js';
+import { humanActor } from '../plugin-host/actor.js';
+import { PLATFORM_ORG_ID } from '../plugin-host/runtime.js';
 import { getModelCatalog } from '../config/models.js';
 import { getServiceCatalog, SERVICE_PROVIDERS, type PricedService } from '../config/services.js';
 import { organizationScopeId } from '../usage/metering.js';
@@ -90,9 +90,12 @@ function resolvePriceTarget(kind: unknown, target: unknown, provider: unknown): 
     return { kind, target, provider: '', tokenPriced: true };
   }
   if (kind === 'service') {
-    if (typeof target !== 'string' || !(target in SERVICE_PROVIDERS)) return { error: 'Unknown service' };
+    if (typeof target !== 'string' || !(target in getServiceCatalog())) return { error: 'Unknown service' };
     const service = target as PricedService;
-    if (typeof provider !== 'string' || !SERVICE_PROVIDERS[service].includes(provider)) {
+    if (
+      typeof provider !== 'string' ||
+      !(SERVICE_PROVIDERS[service] ?? Object.keys(getServiceCatalog()[service]?.providers ?? {})).includes(provider)
+    ) {
       return { error: 'Unknown provider for this service' };
     }
     return { kind, target: service, provider, tokenPriced: serviceUnit(service) === 'token' };

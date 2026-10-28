@@ -2,7 +2,7 @@
 
 The source directory and single source of truth for the skill packs a Greenhouse deployment
 ships with. On boot the API syncs every pack under `skillhub/<group>/<name>/` into the Skill
-Center (`apps/api/src/skills/boot-seed.ts`; a missing directory is a no-op), where members
+Center (`plugins/skills/api/skills/boot-seed.ts`; a missing directory is a no-op), where members
 find, download and install them through the SkillHub page or the `skill_query` tool.
 
 This checkout ships no packs — the directory documents the format so a deployment can add its
@@ -42,15 +42,15 @@ skillhub/
   change and add a matching `CHANGELOG.md` entry — the sync refuses a content change without a
   version bump.
 - Bundles are limited to 64 files / 1 MiB total; text files are stored as UTF-8, everything
-  else base64 (`apps/api/src/skills/bundle.ts` is the validator).
+  else base64 (`plugins/skills/api/skills/bundle.ts` is the validator).
 - Every pack is scanned for prompt-injection and exfiltration patterns
-  (`apps/api/src/skills/scanner.ts`); the guard test asserts zero high findings across the
+  (`plugins/skills/api/skills/scanner.ts`); the guard test asserts zero high findings across the
   directory, so keep instructions plain and never embed credentials.
 
 ## Publishing
 
-- **Boot sync** — automatic on every API start (`SKILLHUB_DIR` overrides the location,
-  `SKILLHUB_SEED_OWNER_EMAIL` picks the publishing super admin; default is the earliest one).
-- **Manual sync** — `node scripts/skillhub-sync.mjs [--dry-run] [--only <name>]` publishes
-  through the MCP server using a machine client (`GREENHOUSE_MCP_URL`, `GREENHOUSE_CLIENT_ID`,
-  `GREENHOUSE_CLIENT_SECRET`), comparing content hashes so unchanged packs are skipped.
+- **Boot sync** — automatic on every API start while the Skills plugin is enabled
+  (`SKILLHUB_DIR` overrides the location, `SKILLHUB_SEED_OWNER_EMAIL` picks the publishing super
+  admin; default is the earliest one). It compares content hashes, so unchanged packs are skipped.
+- **Manual publish** — a member's agent or Sprouty publishes a bundle with `skill_mutation`, or
+  call `/api/skills` directly; there is no separate sync script.

@@ -10,7 +10,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createDatabase } from '@greenhouse/db';
 import type { DatabaseProvider } from '@greenhouse/db';
-import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
+import { isolatedDatabase } from '../helpers/isolated-db.js';
+let fixture: Awaited<ReturnType<typeof isolatedDatabase>>;
 
 const run = randomUUID();
 let instanceA: DatabaseProvider;
@@ -18,16 +19,18 @@ let instanceB: DatabaseProvider;
 const expiresAt = () => new Date(Date.now() + 60_000).toISOString();
 
 describe('security state shared between instances', () => {
-  beforeAll(() => {
-    instanceA = createDatabase(TEST_DATABASE_URL);
-    instanceB = createDatabase(TEST_DATABASE_URL);
-  });
+  beforeAll(async () => {
+    fixture = await isolatedDatabase('security_state');
+    instanceA = createDatabase(fixture.url);
+    instanceB = createDatabase(fixture.url);
+  }, 30_000);
 
   afterAll(async () => {
-    // No cleanup needed: the buckets expire within a minute and the sweep removes them.
+    // Close both replicas before dropping their owned database.
     await instanceA.close();
     await instanceB.close();
-  });
+    await fixture?.drop();
+  }, 30_000);
 
   it('counts concurrent hits from two instances exactly once each', async () => {
     const key = `commit:rate:${run}`;
@@ -40,7 +43,7 @@ describe('security state shared between instances', () => {
   it('keeps a counter across a restart (a brand-new pool sees it)', async () => {
     const key = `commit:restart:${run}`;
     await instanceA.rateLimits.hit(key, expiresAt());
-    const restarted = createDatabase(TEST_DATABASE_URL);
+    const restarted = createDatabase(fixture.url);
     try {
       expect(await restarted.rateLimits.hit(key, expiresAt())).toBe(2);
     } finally {

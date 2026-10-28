@@ -10,45 +10,24 @@
 import { describe, it, expect } from 'vitest';
 import { resolveDriveAccess, canReadDrive, canWriteDrive } from '../drive/access.js';
 
-describe('resolveDriveAccess — kb scope', () => {
+describe('resolveDriveAccess — core cabinet', () => {
   const ctx = {};
 
   it('gives the owner of a private node owner access', () => {
-    expect(resolveDriveAccess({ scope: 'kb', visibility: 'private', owner_user_id: 'alice' }, 'alice', ctx)).toBe(
+    expect(resolveDriveAccess({ scope: 'drive', visibility: 'private', owner_user_id: 'alice' }, 'alice', ctx)).toBe(
       'owner',
     );
   });
 
   it('treats team nodes as collaborative (any internal user is an editor)', () => {
-    expect(resolveDriveAccess({ scope: 'kb', visibility: 'team', owner_user_id: 'bob' }, 'alice', ctx)).toBe('editor');
+    expect(resolveDriveAccess({ scope: 'drive', visibility: 'team', owner_user_id: 'bob' }, 'alice', ctx)).toBe(
+      'editor',
+    );
   });
 
   it("denies another user's private node (folder sharing is deferred to a later phase)", () => {
-    expect(resolveDriveAccess({ scope: 'kb', visibility: 'private', owner_user_id: 'bob' }, 'alice', ctx)).toBeNull();
-  });
-});
-
-describe('resolveDriveAccess — tables scope', () => {
-  it('maps Base roles to Drive access and denies missing membership', () => {
     expect(
-      resolveDriveAccess({ scope: 'tables', base_id: '1' }, 'owner', {
-        tablesRole: 'owner',
-      }),
-    ).toBe('owner');
-    expect(
-      resolveDriveAccess({ scope: 'tables', base_id: '1' }, 'builder', {
-        tablesRole: 'builder',
-      }),
-    ).toBe('editor');
-    expect(
-      resolveDriveAccess({ scope: 'tables', base_id: '1' }, 'viewer', {
-        tablesRole: 'viewer',
-      }),
-    ).toBe('reader');
-    expect(
-      resolveDriveAccess({ scope: 'tables', base_id: '1' }, 'outsider', {
-        tablesRole: null,
-      }),
+      resolveDriveAccess({ scope: 'drive', visibility: 'private', owner_user_id: 'bob' }, 'alice', ctx),
     ).toBeNull();
   });
 });

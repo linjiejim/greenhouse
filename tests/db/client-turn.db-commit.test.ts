@@ -35,7 +35,7 @@ describe('client turn dedup across instances', () => {
   });
 
   it('saves exactly one message for concurrent writes of one turn', async () => {
-    const session = await a.sessions.create('t', 'team', userId);
+    const session = await a.sessions.create('t', 'sprouty', userId);
     try {
       const turn = { session_id: session.id, role: 'user' as const, content: 'x', client_turn_id: 'turn_race-0001' };
       const results = await Promise.all(

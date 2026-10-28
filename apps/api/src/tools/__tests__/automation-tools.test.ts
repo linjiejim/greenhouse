@@ -1,3 +1,4 @@
+import { setExtensionAutomationTools } from '@greenhouse/types/automation-tools';
 /**
  * Blast-radius tests for the Automation tools (automation_query /
  * automation_mutation) and the task-center rules they share with /api/tasks.
@@ -80,7 +81,7 @@ function row(overrides: Partial<Row> = {}): Row {
     id: 1,
     user_id: 'owner-1',
     name: 'Daily digest',
-    profile_id: 'team',
+    profile_id: 'sprouty',
     task_prompt: 'Summarize yesterday of the CRM follow-ups.',
     schedule: '0 9 * * *',
     timezone: 'Asia/Hong_Kong',
@@ -223,6 +224,9 @@ describe('automation_mutation — create', () => {
 
     expect(result).toMatchObject({ status: 'created' });
     expect(store.size).toBe(1);
+    // the link the client opens as this automation's sheet
+    const id = (result as { automation: { id: string } }).automation.id;
+    expect((result as { url: string }).url).toBe(`#/automations?id=${id}`);
   });
 
   it('enforces the per-user quota', async () => {
@@ -273,23 +277,27 @@ describe('automation_mutation — unattended_tools from chat', () => {
   };
 
   it('a person in the web/mobile chat can switch on writes, and sees the run tool list', async () => {
+    setExtensionAutomationTools([
+      { id: 'fixture_write', tier: 'write' },
+      { id: 'fixture_mutation', tier: 'write' },
+    ]);
     const { db, store } = fakeDb([]);
     const result = await asTool(createAutomationMutationTool(db, { ...OWNER, canGrantTools: true })).execute({
       ...CREATE,
-      unattended_tools: ['tables_mutation'],
+      unattended_tools: ['fixture_mutation'],
     });
 
     expect(result.status).toBe('created');
-    expect(result.unattended_tools).toEqual(['tables_mutation']);
-    expect(result.run_tools).toEqual(['knowledge_query', 'external_search', 'tables_mutation']);
-    expect([...store.values()][0]).toMatchObject({ unattended_tools: ['tables_mutation'] });
+    expect(result.unattended_tools).toEqual(['fixture_mutation']);
+    expect(result.run_tools).toEqual(['knowledge_query', 'external_search', 'fixture_mutation']);
+    expect([...store.values()][0]).toMatchObject({ unattended_tools: ['fixture_mutation'] });
   });
 
   it('refuses the grant from any other surface and points at where it can be done', async () => {
     const { db, store } = fakeDb([]);
     const result = await asTool(createAutomationMutationTool(db, OWNER)).execute({
       ...CREATE,
-      unattended_tools: ['tables_mutation'],
+      unattended_tools: ['fixture_mutation'],
     });
 
     expect(result.error).toMatch(/Settings → Automations/);
@@ -301,12 +309,12 @@ describe('automation_mutation — unattended_tools from chat', () => {
     const result = await asTool(createAutomationMutationTool(db, { ...OWNER, canGrantTools: true })).execute({
       action: 'update',
       id: 3,
-      unattended_tools: ['knowledge_mutation'],
+      unattended_tools: ['fixture_write'],
     });
 
     expect(result.status).toBe('updated');
-    expect(result.unattended_tools).toEqual(['knowledge_mutation']);
-    expect(result.run_tools).toContain('knowledge_mutation');
+    expect(result.unattended_tools).toEqual(['fixture_write']);
+    expect(result.run_tools).toContain('fixture_write');
     expect(result.run_tools).not.toContain('memory');
   });
 
@@ -344,7 +352,7 @@ describe('automation_mutation — update / delete / run_now', () => {
     });
 
     expect(result.error).toMatch(/not available/);
-    expect(store.get('3')!.profile_id).toBe('team');
+    expect(store.get('3')!.profile_id).toBe('sprouty');
   });
 
   it('cannot touch another user’s automation', async () => {

@@ -38,7 +38,7 @@ export type {
   ExtensionMigrationGeneration,
   ExtensionMigrationState,
 } from './extension-migrations.js';
-export { parseMigrationFile, readMigrationFiles } from './extension-migrations.js';
+export { parseMigrationFile, readMigrationFiles, extensionMigrationTables } from './extension-migrations.js';
 export { readCoreMigrations, coreTableNames } from './core-migrations.js';
 export { newId, isNewId, stableId, ulid, ID_PREFIX } from './ids.js';
 export {
@@ -46,18 +46,16 @@ export {
   applyAllMigrations,
   assertMigratableDatabase,
   detectDatabaseGeneration,
+  detectDatabaseGenerationAt,
   readCarryState,
   readCarryStateFromDb,
   refusalFor,
   DatabaseGenerationError,
   MIGRATIONS_FOLDER,
-  V1_ARCHIVE_FOLDER,
-  V1_LATEST_TAG,
+  V3_ARCHIVE_FOLDER,
 } from './migrate.js';
 export type { CarryState, AppliedMigrations } from './migrate.js';
 export type { DatabaseGeneration } from './migrate.js';
-export { carryFrom1x, CarryError, CarryFailedError, v1CoreTables } from './carry/from-1x.js';
-export type { CarryOptions, CarryReport, CarryLine } from './carry/from-1x.js';
 export type { IdKind } from './ids.js';
 export type { CoreMigrationFile } from './core-migrations.js';
 
@@ -78,42 +76,31 @@ export * from './services/users.js';
 export * from './services/user-tools.js';
 export * from './services/refresh-tokens.js';
 export * from './services/account-password-links.js';
-export * from './services/feature-requests.js';
-export * from './services/projects.js';
 export * from './services/api-audit.js';
 export * from './services/user-prompts.js';
 export * from './services/session-shares.js';
 export * from './services/scheduled-tasks.js';
 export * from './services/provider-tokens.js';
-export * from './services/feishu-bot.js';
 export * from './services/custom-profiles.js';
 // Shared full-text helpers: an extension that keeps its own searchable table
 // must segment writes and queries with the SAME function core uses, or the two
 // sides stop matching — so this is exported rather than copied.
 export { segmentForFts, buildSegmentedTsQuery } from './services/fts.js';
-export * from './services/knowledge-base.js';
-export * from './services/knowledge-shares.js';
 export * from './services/user-features.js';
-export * from './services/user-memories.js';
-export * from './services/tool-frictions.js';
 export * from './services/drive.js';
 export * from './services/activity.js';
-export * from './services/email.js';
-export * from './services/skills.js';
 export * from './services/platform.js';
 export * from './services/platform-oauth.js';
-export * from './services/tables.js';
 export * from './services/chat-files.js';
 export * from './services/chat-artifact-receipts.js';
 export * from './services/runtime.js';
 export * from './services/notifications.js';
 export * from './services/push-devices.js';
 export * from './services/gateway-keys.js';
-export * from './services/report-templates.js';
-export * from './services/member-computers.js';
 export * from './services/workspace-settings.js';
 export * from './services/retention.js';
 export * from './services/mcp-connectors.js';
+export * from './services/client-reports.js';
 
 // ─── Configuration ───────────────────────────────────────
 
@@ -170,3 +157,12 @@ export function isDbInitialized(): boolean {
 export function _resetProvider(): void {
   _provider = null;
 }
+
+export { registerExtensionRetention } from './extensions.js';
+export type { ExtensionRetentionRule } from './extensions.js';
+
+export { buildSnippet, jsonArrayToText } from './services/fts.js';
+
+export { registerDriveFolderContents } from './drive-content.js';
+
+export { createTableCrudService, type TableCrudOptions } from './table-crud.js';

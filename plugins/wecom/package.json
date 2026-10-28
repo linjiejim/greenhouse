@@ -1,0 +1,23 @@
+{
+  "name": "@greenhouse/plugin-wecom",
+  "version": "4.0.0-rc.1",
+  "private": true,
+  "type": "module",
+  "greenhouse": {
+    "id": "wecom",
+    "sdk": 2,
+    "api": "./api/index.ts"
+  },
+  "exports": {
+    "./api": "./api/index.ts",
+    "./manifest": "./manifest.ts"
+  },
+  "dependencies": {
+    "@greenhouse/api": "workspace:*",
+    "@greenhouse/types": "workspace:*",
+    "hono": "^4.12.18"
+  },
+  "devDependencies": {
+    "@greenhouse/db": "workspace:*"
+  }
+}

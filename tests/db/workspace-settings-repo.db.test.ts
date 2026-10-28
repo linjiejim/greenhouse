@@ -40,7 +40,7 @@ describe('Workspace settings service', () => {
   });
 
   it('stores structured json values', async () => {
-    const tokens = { brand: '#2e8b3d', light: { '--t-surface': '#ffffff' } };
+    const tokens = { brand: '#2e8b3d', light: { '--gh-background': '#ffffff' } };
     await db.workspaceSettings.set('branding.theme_tokens', { value: tokens });
     const row = await db.workspaceSettings.get('branding.theme_tokens');
     expect(row?.value).toEqual(tokens);

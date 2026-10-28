@@ -4,7 +4,6 @@ import {
   DEFAULT_PLANT,
   IMPLICIT_POOL,
   PLANT_IDS,
-  PLANT_LEGACY_COLOR,
   PLANT_STATES,
   STATE_ALIASES,
   TEMPLATE_PLANT,
@@ -55,11 +54,6 @@ describe('plant-avatar vocabulary', () => {
     expect(reachable).not.toContain('sprout');
     expect(new Set(reachable)).toEqual(new Set(IMPLICIT_POOL));
     for (const plant of Object.values(TEMPLATE_PLANT)) expect(PLANT_IDS).toContain(plant);
-  });
-
-  it('dual-writes a legacy colour whose family contains the plant', () => {
-    for (const plant of IMPLICIT_POOL) expect(COLOR_FAMILY[PLANT_LEGACY_COLOR[plant]]).toContain(plant);
-    expect(PLANT_LEGACY_COLOR.sprout).toBe('forest');
   });
 
   it('hashes like the Bot team tool (31× rolling over code points, uint32)', () => {

@@ -2,7 +2,7 @@
  * Session routes — /api/sessions
  *
  * POST   /api/sessions                                — 创建新会话
- * GET    /api/sessions                                — 获取会话列表（支持status/limit/offset/include_eval/page_meta/scope/channel/exclude_channel筛选）
+ * GET    /api/sessions                                — 获取会话列表（支持status/limit/offset/page_meta/scope/channel/exclude_channel筛选；每页最多 200）
  * GET    /api/sessions/:id                             — 获取会话详情（include_messages=0 可只取元数据）
  * GET    /api/sessions/:id/messages                    — 分页获取会话消息
  * POST   /api/sessions/:id/fork                        — 复制完整会话或复制到指定 Agent 回复
@@ -18,6 +18,7 @@
  * POST   /api/sessions/pins/reorder                    — 调整当前用户置顶会话的顺序
  */
 
+import { GREENHOUSE_CONFIG } from '../config/greenhouse-config.js';
 import { Hono } from 'hono';
 import { getDb, SessionActiveRuntimeError } from '@greenhouse/db';
 import { SESSION_SCOPES, type SessionScope } from '@greenhouse/types/api';
@@ -48,9 +49,9 @@ const SHARED_BACKFILL_LIMIT = 200;
 /**
  * `undefined` = no scope asked for, `null` = asked for something unknown.
  *
- * Omitting the scope keeps the historical behaviour (super sees everything, a
- * team user sees own + shared), so existing consumers are untouched; the
- * sidebar asks for `mine` explicitly. The vocabulary lives in
+ * Omitting the scope lists the caller's own sessions plus the ones shared with
+ * them, for every role; a super reads other members' conversations only through
+ * `team`. The client sidebar asks for `mine` explicitly. The vocabulary lives in
  * `@greenhouse/types/api` so the browser and the server can't drift.
  */
 /** `exclude_channel=task,feishu` → the channel names, or null when one is malformed. */
@@ -70,6 +71,14 @@ function parseSessionScope(raw: string | undefined): SessionScope | undefined | 
 }
 
 const sessions = new Hono<AppEnv>()
+  .use('*', async (c, next) => {
+    if (
+      !GREENHOUSE_CONFIG.conversations.sharing &&
+      (/\/shares(?:\/|$)/.test(c.req.path) || c.req.path.endsWith('/shareable-users'))
+    )
+      return c.notFound();
+    return next();
+  })
   /** GET /api/sessions/shareable-users — list active internal users for sharing */
   .get('/shareable-users', async (c) => {
     const authUser = getAuthUser(c);
@@ -137,10 +146,9 @@ const sessions = new Hono<AppEnv>()
       return c.json({ error: 'offset must be a non-negative integer' }, 400);
     }
     const includePageMeta = c.req.query('page_meta') === '1';
-    // New cursor consumers use bounded pages. Preserve the legacy endpoint's
-    // exact requested limit until Web has migrated to the page_meta contract.
-    const limit = includePageMeta ? Math.min(requestedLimit, 200) : requestedLimit;
-    const includeEval = c.req.query('include_eval') === '1';
+    const limit = Math.min(requestedLimit, 200);
+    // Sessions of the retired eval feature never list.
+    const includeEval = false;
     const channel = c.req.query('channel');
     // `exclude_channel=task` is the sidebar's "Mine" (my conversations without
     // automation runs); `channel=task` is its "Scheduled" tab.
@@ -176,15 +184,14 @@ const sessions = new Hono<AppEnv>()
     };
 
     let baseList;
+    if (scope === 'shared' && !GREENHOUSE_CONFIG.conversations.sharing) return c.json({ sessions: [] });
     if (scope === 'shared') {
       baseList = await getDb().sessions.listSharedWith(authUser.id, listOpts);
     } else if (scope === 'team') {
       baseList = await getDb().sessions.list({ ...listOpts, excludeUserId: authUser.id });
     } else {
-      // 'mine' pins the query to the caller for every role. Without a scope the
-      // historical rule stands: super sees everyone's sessions.
-      const ownerId = scope === 'mine' || authUser.role !== 'super' ? authUser.id : undefined;
-      baseList = await getDb().sessions.list({ ...listOpts, userId: ownerId });
+      // 'mine' and the unscoped list are the caller's own sessions, whatever the role.
+      baseList = await getDb().sessions.list({ ...listOpts, userId: authUser.id });
     }
     const hasMore = includePageMeta && baseList.length > limit;
     const list = includePageMeta ? baseList.slice(0, limit) : baseList;
@@ -192,12 +199,14 @@ const sessions = new Hono<AppEnv>()
 
     // Sessions shared with the current user (shared_with = me OR __team__).
     // Computed for every role so we can flag "shared with me" rows consistently.
-    const sharedSessionIds = await getDb().sessionShares.getSharedSessionIds(authUser.id);
+    const sharedSessionIds = GREENHOUSE_CONFIG.conversations.sharing
+      ? await getDb().sessionShares.getSharedSessionIds(authUser.id)
+      : [];
     const sharedIdSet = new Set(sharedSessionIds);
 
-    // Unscoped + non-super: fold in sessions shared with this user. `scope=mine`
-    // deliberately skips this — shared conversations live in their own tab.
-    if (scope === undefined && authUser.role !== 'super' && sharedSessionIds.length > 0) {
+    // Unscoped: fold in sessions shared with this user. `scope=mine` deliberately
+    // skips this — shared conversations live in their own tab.
+    if (scope === undefined && sharedSessionIds.length > 0) {
       const sharedRows = await getDb().sessions.listSharedWith(authUser.id, {
         status,
         includeEval,
@@ -517,7 +526,12 @@ const sessions = new Hono<AppEnv>()
     if (!firstUser) return c.json({ error: 'No user message found' }, 400);
 
     try {
-      const title = await generateSessionTitle(firstUser.content, { userId: authUser.id, sessionId: id });
+      const owner = session.user_id ? await getDb().users.getById(session.user_id) : null;
+      const title = await generateSessionTitle(
+        firstUser.content,
+        { userId: authUser.id, sessionId: id },
+        owner?.locale,
+      );
       await getDb().sessions.updateTitle(id, title);
       return c.json({ title });
     } catch {

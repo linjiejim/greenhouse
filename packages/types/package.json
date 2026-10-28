@@ -1,6 +1,6 @@
 {
   "name": "@greenhouse/types",
-  "version": "0.0.1",
+  "version": "4.0.0-rc.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -28,6 +28,10 @@
       "import": "./src/push.ts",
       "types": "./src/push.ts"
     },
+    "./client-reports": {
+      "import": "./src/client-reports.ts",
+      "types": "./src/client-reports.ts"
+    },
     "./api": {
       "import": "./src/api.ts",
       "types": "./src/api.ts"
@@ -52,6 +56,10 @@
       "import": "./src/connectors.ts",
       "types": "./src/connectors.ts"
     },
+    "./client-routes": {
+      "import": "./src/client-routes.ts",
+      "types": "./src/client-routes.ts"
+    },
     "./automation-tools": {
       "import": "./src/automation-tools.ts",
       "types": "./src/automation-tools.ts"
@@ -67,10 +75,6 @@
     "./session": {
       "import": "./src/session.ts",
       "types": "./src/session.ts"
-    },
-    "./agent-context": {
-      "import": "./src/agent-context.ts",
-      "types": "./src/agent-context.ts"
     },
     "./ws": {
       "import": "./src/ws.ts",
@@ -131,6 +135,18 @@
     "./activity": {
       "import": "./src/activity.ts",
       "types": "./src/activity.ts"
+    },
+    "./plugins": {
+      "import": "./src/plugins.ts",
+      "types": "./src/plugins.ts"
+    },
+    "./plugin-host": {
+      "import": "./src/plugin-host.ts",
+      "types": "./src/plugin-host.ts"
+    },
+    "./discriminators": {
+      "import": "./src/discriminators.ts",
+      "types": "./src/discriminators.ts"
     }
   },
   "scripts": {

@@ -84,7 +84,7 @@ describe('admin services & pricing', () => {
       'page_read',
       'image_generation',
       'vision',
-      'computer',
+      ...(db.extensions.computer ? ['computer'] : []),
     ]);
     expect(overview.budgets.services.map((budget) => budget.scope_id)).toContain('llm');
     expect((await call(admin, 'GET', '/api/admin/metering/overview?month=26-1')).status).toBe(400);

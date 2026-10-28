@@ -1,3 +1,8 @@
+type RiskRules = NonNullable<import('../plugin-host/define.js').ExtensionActivity['writeRisks']>;
+let writeRisks: RiskRules[] = [];
+export function registerWriteRisks(rules: RiskRules[]) {
+  writeRisks = rules;
+}
 /**
  * Risk tier of one external-agent write.
  *
@@ -50,9 +55,8 @@ export function classifyWrite(toolId: string, input: unknown, baseRisk: RuntimeA
 
   if (baseRisk === 'r3') return { risk: 'r3', action };
   if (action && isDeleteLikeAction(action)) return { risk: 'r3', action };
-  if (toolId === 'knowledge_mutation' && action === 'knowledge.create_doc' && args.scope === 'personal') {
-    return { risk: 'r1', action };
-  }
+  const contributed = writeRisks.map((entry) => entry[toolId]?.(input)).find(Boolean);
+  if (contributed) return { risk: contributed, action };
   return { risk: 'r2', action };
 }
 

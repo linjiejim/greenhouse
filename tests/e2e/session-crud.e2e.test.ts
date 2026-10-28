@@ -68,7 +68,7 @@ describe('E2E: Session CRUD', () => {
     const res = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'team' }),
+      body: JSON.stringify({ profile_id: 'sprouty' }),
     });
     expect(res.status).toBe(201);
     const data = await res.json();
@@ -83,7 +83,7 @@ describe('E2E: Session CRUD', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'team', title: `e2e-ownership-test-${UNIQUE}` }),
+      body: JSON.stringify({ profile_id: 'sprouty', title: `e2e-ownership-test-${UNIQUE}` }),
     });
     const session = await createRes.json();
     sessionsToClean.push({ id: session.id, token: memberTokenA });
@@ -102,7 +102,7 @@ describe('E2E: Session CRUD', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'team' }),
+      body: JSON.stringify({ profile_id: 'sprouty' }),
     });
     const session = await createRes.json();
     sessionsToClean.push({ id: session.id, token: memberTokenA });
@@ -121,7 +121,7 @@ describe('E2E: Session CRUD', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'team' }),
+      body: JSON.stringify({ profile_id: 'sprouty' }),
     });
     const session = await createRes.json();
     sessionsToClean.push({ id: session.id, token: memberTokenA });
@@ -140,7 +140,7 @@ describe('E2E: Session CRUD', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'team' }),
+      body: JSON.stringify({ profile_id: 'sprouty' }),
     });
     const session = await createRes.json();
 
@@ -164,7 +164,7 @@ describe('E2E: Session Cross-User Isolation', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'team' }),
+      body: JSON.stringify({ profile_id: 'sprouty' }),
     });
     const session = await createRes.json();
     sessionsToClean.push({ id: session.id, token: memberTokenA });
@@ -180,7 +180,7 @@ describe('E2E: Session Cross-User Isolation', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'team' }),
+      body: JSON.stringify({ profile_id: 'sprouty' }),
     });
     const session = await createRes.json();
     sessionsToClean.push({ id: session.id, token: memberTokenA });
@@ -203,7 +203,7 @@ describe('E2E: Session Cross-User Isolation', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'team' }),
+      body: JSON.stringify({ profile_id: 'sprouty' }),
     });
     const session = await createRes.json();
     sessionsToClean.push({ id: session.id, token: memberTokenA });
@@ -220,7 +220,7 @@ describe('E2E: Session Cross-User Isolation', () => {
     const createRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: h(memberTokenA),
-      body: JSON.stringify({ profile_id: 'team' }),
+      body: JSON.stringify({ profile_id: 'sprouty' }),
     });
     const session = await createRes.json();
     sessionsToClean.push({ id: session.id, token: superToken });
@@ -239,7 +239,7 @@ describe('E2E: Session Authentication Boundary', () => {
     const res = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile_id: 'team' }),
+      body: JSON.stringify({ profile_id: 'sprouty' }),
     });
     expect(res.status).toBe(401);
   });

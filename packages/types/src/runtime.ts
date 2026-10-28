@@ -49,7 +49,8 @@ export type RuntimeRunKind =
   | 'subagent'
   | 'eval'
   | 'agent_write'
-  | 'connector_write';
+  | 'connector_write'
+  | (string & {});
 
 export const RUNTIME_RUN_KINDS = [
   'chat',

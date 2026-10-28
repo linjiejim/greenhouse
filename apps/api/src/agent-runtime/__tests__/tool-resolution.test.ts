@@ -1,3 +1,4 @@
+import { LAZY_TOOL_IDS } from '../../tools/registry.js';
 /**
  * Tests for the profile↔user tool intersection boundary.
  *
@@ -10,10 +11,10 @@ import { describe, it, expect } from 'vitest';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { normalizeAutomationOptInTools } from '@greenhouse/types/automation-tools';
 import { resolveEffectiveTools, buildLazyServerTools } from '../tool-resolution.js';
-import { BUILTIN_AGENT_TOOL_IDS, RETIRED_TOOL_ALIASES, getAllToolIds } from '../../tools/registry.js';
+import { BUILTIN_AGENT_TOOL_IDS, getAllToolIds } from '../../tools/registry.js';
 import type { AgentProfile } from '../../profiles/profile.js';
 
-const DECLARED_TOOLS = ['knowledge_query', 'analyze_image'];
+const DECLARED_TOOLS = ['files_query', 'analyze_image'];
 
 function makeProfile(overrides: Partial<AgentProfile>): AgentProfile {
   return {
@@ -63,8 +64,8 @@ describe('resolveEffectiveTools — profile narrowing', () => {
     const result = await resolveEffectiveTools({
       userId: 'u-super',
       userRole: 'super',
-      profile: makeProfile({ id: 'team', access: { level: 'internal', rich_output: true } }),
-      profileId: 'team',
+      profile: makeProfile({ id: 'sprouty', access: { level: 'internal', rich_output: true } }),
+      profileId: 'sprouty',
     });
     expect([...result.effectiveTools].sort()).toEqual([...getAllToolIds()].sort());
   });
@@ -73,8 +74,8 @@ describe('resolveEffectiveTools — profile narrowing', () => {
     const result = await resolveEffectiveTools({
       userId: 'u-super',
       userRole: 'super',
-      profile: makeProfile({ id: 'team' }),
-      profileId: 'team',
+      profile: makeProfile({ id: 'sprouty' }),
+      profileId: 'sprouty',
     });
     expect(Object.keys(result)).toEqual(['effectiveTools']);
   });
@@ -89,7 +90,7 @@ describe('buildLazyServerTools — session-scoped orchestration tools', () => {
       userId: 'u1',
       userRole: 'team',
       sessionId: 's1',
-      profileId: 'sprouty-quick',
+      profileId: 'sprouty',
     });
     expect(Object.keys(tools)).toContain('task_capture');
   });
@@ -104,7 +105,7 @@ describe('buildLazyServerTools — session-scoped orchestration tools', () => {
       userId: 'u1',
       userRole: 'team',
       sessionId: 's1',
-      profileId: 'sprouty-quick',
+      profileId: 'sprouty',
     });
     expect(Object.keys(tools)).not.toContain('task_capture');
   });
@@ -122,10 +123,10 @@ describe('stored ids of removed tools', () => {
     const result = await resolveEffectiveTools({
       userId: 'u-super',
       userRole: 'super',
-      profile: makeProfile({ id: 'custom:old', tools: [...REMOVED, 'knowledge_query'] }),
+      profile: makeProfile({ id: 'custom:old', tools: [...REMOVED, 'files_query'] }),
       profileId: 'custom:old',
     });
-    expect(result.effectiveTools).toContain('knowledge_query');
+    expect(result.effectiveTools).toContain('files_query');
     for (const id of REMOVED) expect(result.effectiveTools).not.toContain(id);
   });
 
@@ -134,40 +135,44 @@ describe('stored ids of removed tools', () => {
       userId: 'u1',
       userRole: 'team',
     });
-    expect(Object.keys(tools)).toEqual(['memory']);
+    expect(Object.keys(tools)).toEqual(LAZY_TOOL_IDS.has('memory') ? ['memory'] : []);
   });
 
   it('an automation opt-in list naming them normalizes them away', () => {
-    expect(normalizeAutomationOptInTools([...REMOVED, 'memory'])).toEqual(['memory']);
+    expect(normalizeAutomationOptInTools([...REMOVED, 'memory'])).toEqual(
+      LAZY_TOOL_IDS.has('memory') ? ['memory'] : [],
+    );
   });
 });
 
 /**
- * Retired tool ids must stay meaningful, because custom profiles persist their
- * `tools` array in the DB: a retirement that forgets the alias silently narrows
- * every Agent whose author had ticked the old name.
+ * Stored tool ids are live ids: core migrations 0001 and 0004 rewrote the
+ * retired ones in custom Agents, so the resolver no longer aliases anything.
+ * A stored id whose plugin is off stays dormant.
  */
-describe('RETIRED_TOOL_ALIASES expansion', () => {
-  it('expands a retired id to its successor when filtering a custom profile', async () => {
-    const result = await resolveEffectiveTools({
+describe('stored custom-Agent tool ids', () => {
+  const custom = (tools: string[]) =>
+    resolveEffectiveTools({
       userId: 'u-super',
       userRole: 'super',
-      profile: makeProfile({ id: 'custom:retired', tools: ['team_knowledge', 'personal_knowledge'] }),
-      profileId: 'custom:retired',
+      profile: makeProfile({ id: 'custom:stored', tools }),
+      profileId: 'custom:stored',
     });
 
-    // An Agent whose author ticked the old names still reaches the successor…
-    expect(result.effectiveTools).toContain('knowledge_query');
-    // …and the retired ids themselves never reach the model.
-    expect(result.effectiveTools).not.toContain('team_knowledge');
-    expect(result.effectiveTools).not.toContain('personal_knowledge');
+  it('does not expand a retired id to a successor', async () => {
+    const result = await custom(['team_knowledge', 'project_manager', 'example_notes_legacy']);
+    for (const id of ['team_knowledge', 'project_manager', 'example_notes_legacy']) {
+      expect(getAllToolIds()).not.toContain(id);
+      expect(result.effectiveTools).not.toContain(id);
+    }
+    for (const id of ['knowledge_query', 'project_query', 'project_mutation', 'example_notes_query']) {
+      expect(result.effectiveTools).not.toContain(id);
+    }
   });
 
-  it('every alias target is a live tool id', () => {
-    const live = new Set(getAllToolIds());
-    for (const [retired, successors] of Object.entries(RETIRED_TOOL_ALIASES)) {
-      expect(live.has(retired), `${retired} should be retired, not registered`).toBe(false);
-      for (const s of successors) expect(live.has(s), `${retired} → ${s} must exist`).toBe(true);
-    }
+  it('keeps an unregistered (plugin off) tool id dormant', async () => {
+    const result = await custom(['files_query', 'off_plugin_query']);
+    expect(result.effectiveTools).toContain('files_query');
+    expect(result.effectiveTools).not.toContain('off_plugin_query');
   });
 });

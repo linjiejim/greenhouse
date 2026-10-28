@@ -24,9 +24,6 @@ import {
   LAZY_TOOL_IDS,
   resolveEffectiveTools,
 } from '../agent-runtime/tool-resolution.js';
-import { createClientActionBridge } from '../tools/client-action-bridge.js';
-import type { ClientActionBridge } from '../tools/client-action-bridge.js';
-import { createClientActionTools } from '../tools/client-actions.js';
 import {
   CLIENT_TURN_ID_PATTERN,
   type ChatRequestBody,
@@ -36,11 +33,11 @@ import {
 import { admitRichBlocks } from '@greenhouse/types/rich-output';
 import { readSessionDigest } from '@greenhouse/db';
 import { BROWSER_SESSION_CHANNEL, type SessionChannel } from '@greenhouse/types/session';
-import { resolveProfileAsync } from '../profiles/profile.js';
+import { DEFAULT_PROFILE_ID, resolveProfileAsync } from '../profiles/profile.js';
 import { isChatModelAllowed } from '../config/models.js';
 import { sanitizeForPrompt } from '../security/security.js';
 import { sanitizeChatMessagesForPrompt } from '../chat/user-message.js';
-import { resolveMemoryContext } from '../llm/memory.js';
+import { resolveExtensionPromptContext } from '../plugin-host/prompt-context.js';
 import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 import type { AuthUser } from '../auth/token.js';
 import type { AgentProfile } from '../profiles/profile.js';
@@ -57,7 +54,6 @@ import type { EngineMessage } from '@greenhouse/agent-core';
 import { inlineImagesForVision } from '../chat/vision.js';
 import { generateSessionTitle } from '../llm/title.js';
 import { canWriteSession } from '../sessions/access.js';
-import { admitTurnEnvironment } from '../chat/turn-environment.js';
 import { appendImageIdHints, appendTurnContext, buildTurnContextBlock } from '../chat/turn-context.js';
 import { buildConnectorsContext } from '../tools/mcp-call.js';
 import { formatDigestSection, scheduleDigestFold } from '../chat/digest.js';
@@ -105,6 +101,11 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         if (regenerationTargetId && !sessionId) {
           return c.json({ error: 'Regeneration requires session_id' }, 400);
         }
+        // A session turn either appends a user message or regenerates the
+        // latest reply; resuming a live reply is GET /api/chat/runs/:id/stream.
+        if (sessionId && !regenerationTargetId && !body.messages?.length) {
+          return c.json({ error: 'A session turn needs messages or regenerate_assistant_message_id' }, 400);
+        }
         // The client's id for this user turn: a resend of a turn the session
         // already has is refused (409 duplicate_turn) instead of saved and run twice.
         const rawClientTurnId = body.messages?.at(-1)?.client_turn_id;
@@ -125,7 +126,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             409,
           );
         let chatMessages: ChatRequestMessage[];
-        let profileId = body.profile_id || 'team';
+        let profileId = body.profile_id || DEFAULT_PROFILE_ID;
 
         // Get authenticated user
         const authUser = (c.get as (key: string) => AuthUser | undefined)('user');
@@ -188,7 +189,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         let pendingTitleMessage: string | null = null;
         let sessionChannel: SessionChannel | undefined;
         let triggeringUserMessageId: string | undefined;
-        let sourceMode: 'message' | 'regeneration' | 'continuation' = 'continuation';
+        let sourceMode: 'message' | 'regeneration' | 'stateless' = 'stateless';
         let expectedAssistantTail: { id: string; content: string } | undefined;
         // The session's rolling digest as read at the start of this turn: it
         // replaces every message with seq <= uptoSeq in the prompt.
@@ -303,21 +304,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                 releaseClaim();
                 return c.json({ error: 'The last session message must have role "user"' }, 400);
               }
-            } else if (!regenerationTargetId) {
-              // Legacy continuation requests do not append a new user message.
-              // Capture the exact revision used for generation so a concurrent
-              // edit makes terminal persistence fail closed.
-              const latestMessage = await getDb().sessions.getLatestMessage(sessionId);
-              if (latestMessage) {
-                expectedAssistantTail = {
-                  id: latestMessage.id,
-                  content: latestMessage.content,
-                };
-                if (latestMessage.role === 'user') {
-                  sourceMode = 'message';
-                  triggeringUserMessageId = latestMessage.id;
-                }
-              }
             }
 
             // Only what the digest has not folded yet; the digest itself closes
@@ -426,26 +412,25 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           // or the main model can perform provider I/O. Disabling the adapter
           // is an emergency rollback for the derived trace only; domain Chat
           // keeps running under its own ChatRun id and persistence contract.
-          // A newly appended/legacy user-message id closes the transcript→trace
-          // crash window; regeneration and assistant-tail continuations add the
-          // transport UUID because the same target may be explicitly retried.
+          // The newly appended user-message id closes the transcript→trace
+          // crash window; regeneration adds the transport UUID because the same
+          // target may be explicitly retried.
           if (!run) {
             run = chatRunRegistry.createDetached(userId);
           }
           if (runtimeAdapterEnabled('chat')) {
-            const sourceId = !sessionId
-              ? `stateless:${run.runId}`
-              : sourceMode === 'message' && triggeringUserMessageId
+            const sourceId =
+              sourceMode === 'message'
                 ? `message:${triggeringUserMessageId}`
-                : sourceMode === 'regeneration' && regenerationTargetId
+                : sourceMode === 'regeneration'
                   ? `regeneration:${regenerationTargetId}:${run.runId}`
-                  : `continuation:${expectedAssistantTail?.id ?? 'empty'}:${run.runId}`;
+                  : `stateless:${run.runId}`;
             runtimeTrace = await startChatRuntimeTrace(getDb(), {
               ownerUserId: userId,
               sessionId: sessionId ?? null,
               sourceId,
               input: {
-                source_mode: sessionId ? sourceMode : 'stateless',
+                source_mode: sourceMode,
                 triggering_user_message_id: triggeringUserMessageId ?? null,
                 regeneration_target_id: regenerationTargetId ?? null,
                 profile_id: profile.id,
@@ -454,12 +439,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                 transcript: exactChatMessages,
                 digest: sessionDigest ? { upto_seq: sessionDigest.uptoSeq, text: sessionDigest.text } : null,
                 provider_message_projection: engineMessages,
-                request_context: {
-                  workspace_id: body.workspace_id ?? null,
-                  ambient_context: body.ambient_context ?? null,
-                  client_actions: body.client_actions ?? [],
-                  client_action_scope_id: body.client_action_scope_id ?? null,
-                },
+                request_context: { workspace_id: body.workspace_id ?? null },
               },
             });
           }
@@ -479,9 +459,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
 
           // Catalog tools (static + per-request lazy: feature_request,
           // knowledge_query, session_query, …) count one `tool_call` per
-          // execution under the client that ran the turn. Client actions are
-          // added after this and stay uncounted — their names come from the
-          // browser, so they must never become counter keys.
+          // execution under the client that ran the turn.
           // Metering: every paid call this turn makes (the model itself, web
           // search, images, …) is charged to this member and labelled with the
           // client the turn came from. Shared tools learn the member from this scope.
@@ -514,24 +492,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           );
           const tools = bindMeteringScope(countedTools, meteringScope);
 
-          // Snapshot before the page's Client Actions join: the system prompt is
-          // decided on these alone so it does not change with the page.
-          const serverTools: ToolRegistry = { ...tools };
-
-          // ── Client actions: wire a bridge so execution round-trips to the client ──
-          // Browser-declared actions (navigate/prefill/...) ride the legacy
-          // `local-tool-request` event: the bridge emits the request and awaits the
-          // result posted to /api/client-actions/tool-result before the agent resumes.
-          let clientActionBridge: ClientActionBridge | null = null;
-          const { ambientContext, clientActions, clientActionScopeId, usesClientActions } = admitTurnEnvironment(
-            body,
-            sessionId,
-          );
-          if (usesClientActions && sessionId) {
-            clientActionBridge = createClientActionBridge(userId, sessionId, clientActionScopeId);
-            Object.assign(tools, createClientActionTools(clientActions, clientActionBridge));
-          }
-
           // Runtime evidence belongs at the actual AI SDK execute boundary.
           // The wrapper awaits a durable `running` ToolCall before invoking the
           // tool, and settles exact output/error before releasing it to the
@@ -550,28 +510,23 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           // Cache-first prompt (chat/turn-context.ts): the system prompt holds
           // only what is stable for this session, so DeepSeek/OpenAI-style
           // automatic prefix caching keeps hitting turn after turn. Per-turn
-          // content — time, page context, the attached-images and UI-actions
-          // notes — closes the newest user message instead, for the model only.
+          // content — time, the attached-images note, reachable connectors —
+          // closes the newest user message instead, for the model only.
           //
           // Prompt-side tool guidance never lists tool names — the LLM already gets
           // full definitions via `tools[]`, and a prompt-side list can diverge from
           // the profile-narrowed set actually registered (leaking internal tool names
-          // into profile-narrowed sessions). We only nudge proactive use. Decided
-          // on the server tools alone: Client Actions vary with the page.
-          const systemPrompt = await buildSystemPromptWithUserNotes(
-            profile,
-            Object.keys(serverTools).length > 0,
-            userId,
-            {
-              digest: sessionDigest?.text,
-              canSearchConversation: Boolean(sessionId) && 'session_query' in serverTools,
-              // The blocks this screen draws (absent → the default set); the guide teaches only these.
-              richBlocks: admitRichBlocks(body.rich_blocks),
-            },
-          );
+          // into profile-narrowed sessions). We only nudge proactive use.
+          const systemPrompt = await buildSystemPromptWithUserNotes(profile, Object.keys(tools).length > 0, userId, {
+            digest: sessionDigest?.text,
+            toolIds: Object.keys(tools),
+            canSearchConversation: Boolean(sessionId) && 'session_query' in tools,
+            // The blocks this screen draws (absent → the default set); the guide teaches only these.
+            richBlocks: admitRichBlocks(body.rich_blocks),
+          });
           // Connectors change with the member's connections, so they ride the turn context.
           const connectorsBlock =
-            'mcp_call' in serverTools
+            'mcp_call' in tools
               ? await buildConnectorsContext({
                   db: getDb(),
                   userId,
@@ -582,10 +537,8 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           const providerMessages = appendTurnContext(
             engineMessages,
             buildTurnContextBlock({
-              ambientContext,
               visionInlinedImages,
               ...(connectorsBlock ? { connectorsBlock } : {}),
-              ...(usesClientActions ? { clientActionNames: clientActions.map((a) => a.name) } : {}),
             }),
           );
 
@@ -609,11 +562,11 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           if (pendingTitleMessage && sessionId) {
             const firstUserMessage = pendingTitleMessage;
             titlePromise = runWithMeteringScope(meteringScope, () =>
-              generateSessionTitle(firstUserMessage, {
-                userId,
-                sessionId,
-                ...(runtimeTrace ? { runId: runtimeTrace.runId } : {}),
-              }),
+              generateSessionTitle(
+                firstUserMessage,
+                { userId, sessionId, ...(runtimeTrace ? { runId: runtimeTrace.runId } : {}) },
+                user.locale,
+              ),
             )
               .then(async (title) => {
                 await getDb().sessions.updateTitle(sessionId, title);
@@ -682,7 +635,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             userId,
             userLocale: user?.locale ?? undefined,
             titlePromise,
-            clientActionBridge,
             replaceAssistantMessageId: regenerationTargetId,
             expectedTail: expectedAssistantTail,
             providerAttemptHook,
@@ -840,15 +792,17 @@ async function buildSystemPromptWithUserNotes(
   profile: AgentProfile,
   hasTools: boolean,
   userId: string | null,
-  conversation: { digest?: string; canSearchConversation: boolean; richBlocks?: readonly string[] },
+  conversation: { digest?: string; canSearchConversation: boolean; toolIds: string[]; richBlocks?: readonly string[] },
 ): Promise<string> {
   let userInfo: string | undefined;
   let userLocale: string | undefined;
+  let userRole: string | undefined;
 
   if (userId) {
     try {
       const user = await getDb().users.getById(userId);
       userLocale = user?.locale ?? undefined;
+      userRole = user?.role;
       if (user?.notes) {
         const sanitizedNotes = sanitizeForPrompt(user.notes);
         const notesHint = `User "${user.nickname}" has set the following preferences — adhere to them:\n${sanitizedNotes}`;
@@ -858,9 +812,9 @@ async function buildSystemPromptWithUserNotes(
       /* ignore */
     }
 
-    // Memory index (feature-gated inside resolveMemoryContext, which also
+    // Memory index (feature-gated inside resolveExtensionPromptContext, which also
     // sanitises — memory text is model-written and user-editable).
-    const memoryBlock = await resolveMemoryContext(userId);
+    const memoryBlock = await resolveExtensionPromptContext(userId, userRole, conversation.toolIds);
     if (memoryBlock) userInfo = userInfo ? `${userInfo}\n${memoryBlock}` : memoryBlock;
   }
 

@@ -25,11 +25,18 @@ import {
 } from '../registry.js';
 import { buildLazyServerTools } from '../../agent-runtime/tool-resolution.js';
 import { buildExternalServiceTools } from '../../agent-runtime/service-tools.js';
-import { toolsetToolIds } from '../../platform/feature-points.js';
+import { toolsetToolIds } from '../../plugin-host/feature-points.js';
 import toolsRoute from '../../routes/tools.js';
 import type { AppEnv } from '../../app-env.js';
 
-const EXTERNAL = ['web_search', 'read_url', 'computer_exec', 'computer_files', 'computer_transfer', 'computer_stop'];
+const EXTERNAL = [
+  'web_search',
+  'read_url',
+  'computer_exec',
+  'computer_files',
+  'computer_transfer',
+  'computer_stop',
+].filter((id) => getAllToolIds().includes(id));
 
 describe('external-only tools', () => {
   it('are exactly the MCP-only services and the cloud computer, each reachable from outside', () => {

@@ -5,8 +5,8 @@
  * registry pattern as FEATURE_FLAGS). Consumed by:
  *   • apps/api — resolution (DB row → env fallback), env overlay, admin
  *                routes, /api/bootstrap (apps/api/src/settings/)
- *   • apps/web — Branding Studio persistence + the Runtime Config admin page
- *                render straight from this registry
+ *   • apps/client — Branding + the Runtime config admin page render this
+ *                registry as served by /api/admin/settings
  *
  * Adding a setting = one entry here (+ wiring its runtime effect if it is not
  * env-overlaid). No page changes, no migration — values live as one row per
@@ -28,7 +28,7 @@
 // ─── Registry ────────────────────────────────────────────
 
 /** Core groups render as fixed sections of Runtime Config; an extension uses its own id as the group. */
-export type WorkspaceSettingGroup = 'branding' | 'llm' | 'media' | 'search' | 'gateway' | 'computer' | 'team_context';
+export type WorkspaceSettingGroup = 'branding' | 'llm' | 'media' | 'search' | 'gateway' | 'team_context';
 
 /**
  * Value shape stored in the `value` jsonb column:
@@ -233,72 +233,32 @@ const WORKSPACE_SETTINGS_LITERAL = [
     type: 'boolean',
     env: 'GATEWAY_ENABLED',
   },
-  // ── Cloud computer (members' hosted sandboxes, v1.6) — off by default ──
-  {
-    key: 'computer.enabled',
-    group: 'computer',
-    label: 'Cloud computer',
-    description:
-      "Lets members' agents start their own cloud computer (E2B), billed per minute; off stops running ones. Also switched on Services & pricing. Off by default.",
-    type: 'boolean',
-    env: 'COMPUTER_ENABLED',
-    defaultValue: false,
-  },
-  {
-    key: 'computer.api_key',
-    group: 'computer',
-    label: 'E2B API key',
-    description: 'Key of the E2B account that hosts the cloud computers',
-    type: 'string',
-    secret: true,
-    env: 'E2B_API_KEY',
-  },
-  {
-    key: 'computer.template',
-    group: 'computer',
-    label: 'E2B template',
-    description: 'Template each computer starts from (default `base`, E2B’s stock Linux image)',
-    type: 'string',
-    env: 'E2B_TEMPLATE',
-    placeholder: 'base',
-  },
-  {
-    key: 'computer.domain',
-    group: 'computer',
-    label: 'E2B domain',
-    description: 'The provider’s domain; another E2B-protocol host (e.g. PPIO) has its own',
-    type: 'string',
-    env: 'E2B_DOMAIN',
-    placeholder: 'e2b.app',
-  },
-  {
-    key: 'computer.max_running',
-    group: 'computer',
-    label: 'Computers at once',
-    description: 'How many cloud computers may run at the same time across the workspace (default 5)',
-    type: 'string',
-    env: 'COMPUTER_MAX_RUNNING',
-    placeholder: '5',
-  },
   // ── Team context for members' agents + the monthly retro (v1.7) ──
   // Edited on Administration › Team context (team visibility is checked there
   // and again on every read); not rendered by Runtime Config.
   {
-    key: 'team_context.conventions',
+    key: 'team_context.overview_markdown',
     group: 'team_context',
-    label: 'Team conventions',
-    description:
-      "Team-visible knowledge documents (ids) members' agents receive as the team's conventions over MCP (`greenhouse://context/conventions`, `team_context`)",
-    type: 'json',
-    maxLength: 2000,
+    label: 'Overview',
+    description: 'Markdown shared with members’ agents',
+    type: 'text',
+    maxLength: 20000,
   },
   {
-    key: 'team_context.glossary',
+    key: 'team_context.conventions_markdown',
+    group: 'team_context',
+    label: 'Conventions',
+    description: 'Markdown shared with members’ agents',
+    type: 'text',
+    maxLength: 20000,
+  },
+  {
+    key: 'team_context.glossary_markdown',
     group: 'team_context',
     label: 'Glossary',
-    description: "One team-visible knowledge document (id) members' agents receive as the team glossary over MCP",
-    type: 'string',
-    maxLength: 200,
+    description: 'Markdown shared with members’ agents',
+    type: 'text',
+    maxLength: 20000,
   },
   {
     key: 'team_context.timezone',
@@ -419,7 +379,7 @@ export interface ThemeTokens {
   fontScale?: number;
   /** Multiplier applied to the Tailwind --radius-* sizes (0–2). */
   radiusScale?: number;
-  /** Per-mode --t-* / semantic variable overrides (hex values). */
+  /** Per-mode CSS variable overrides (hex values). */
   light?: Record<string, string>;
   dark?: Record<string, string>;
 }

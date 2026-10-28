@@ -11,9 +11,8 @@
  * - Personal connectors belong to one member and only they use them; their
  *   handle is `me/<slug>`, so they never collide with a team slug.
  *
- * Shared by the API (validation, views), the web pages (forms) and the mobile
- * app (vendored copy of the view types), so they cannot disagree about what a
- * valid entry is.
+ * Shared by the API (validation, views) and the client (vendored copy of the
+ * view types), so they cannot disagree about what a valid entry is.
  */
 
 export const CONNECTOR_SCOPES = ['team', 'personal'] as const;
@@ -392,9 +391,6 @@ export interface ConnectorConnectMessage {
   connector_id: string;
   ok: boolean;
 }
-
-/** The SPA route the public OAuth callback redirects to; it finishes the sign-in as the logged-in member. */
-export const CONNECTOR_OAUTH_FINISH_HASH = '#/connectors/oauth-finish';
 
 // ─── The official connector catalog (`connectors/*.json`) ───
 

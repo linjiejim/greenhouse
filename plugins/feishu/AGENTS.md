@@ -1,0 +1,23 @@
+# Feishu plugin
+
+- Shared plugin rules: [root AGENTS.md](../../AGENTS.md) (Plugins) and [EXTENDING.md](../../EXTENDING.md); this file lists only Feishu-specific rules.
+- Default off; enablement plus restart is required independently of FEISHU credentials and the separate bot switch.
+- Own feishu_conversations/feishu_receipts and services, routes, identity/transport/channel contributions.
+- Preserve env names, URLs, ids/preferences and greenhouse://auth/feishu; disablement retains data; applied SQL is immutable.
+- Identity bindings and hashed single-use login state/codes remain core; Feishu user tokens are discarded after identity lookup.
+- Bind by open_id to an existing active internal account, never email inference or automatic account creation.
+- Binding/login share the callback and distinguish intent in state; bind/start require Bearer, callback/login exchange use their declared public paths.
+- State lasts ten minutes and exchange codes sixty seconds; consume atomically, recheck account state and issue sessions through the core facade.
+- App redirects exactly match APP_LOGIN_REDIRECT and are rejected before creating state; never put long-lived credentials in URLs.
+- Web returns use universal client routes (@greenhouse/types/client-routes): bindings `/bindings?feishu=`, sign-in `/login#feishu_code=` (code in the fragment); the client glue is apps/client/src/plugins/feishu.
+- Provider discovery/UI appears only when configured; unconfigured operations fail explicitly.
+- Direct-message recipients derive from binding; group webhooks and corporate-app direct messages remain separate.
+- Bot uses outbound WSClient with both events/card callbacks configured as long connections; connection errors warn without stopping API startup.
+- Derive conversation keys from thread_id ?? root_id ?? message_id, never parent_id; reply with replyCardMarkdown to retain the chain.
+- Claim feishu_receipts before running an Agent turn and retain receipts seven days through the retention registry.
+- Each message rechecks the bound account and uses its effective tools through the core metered runner; usage caller is feishu-bot.
+- FEISHU_DENIED_TOOL_IDS handles unsupported IM confirmation/orchestration separately from the unattended denylist.
+- Group replies show the acting member/visibility footer; replay prior history/digest only for the session owner.
+- Extract ask_user questions from toolEvidence and preserve them even when truncating the normal reply text.
+- Bot connections and provider token caches are process-local; do not claim replica-safe operation without a shared design.
+- Register reset tables/migrations and keep [schema](db-schema.md) current.

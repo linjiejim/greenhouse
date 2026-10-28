@@ -60,9 +60,7 @@ export interface RuntimeWorker {
   stop(): void;
 }
 
-function eventEnvelope(raw: unknown): RuntimeEventEnvelope {
-  // Outbox payloads are jsonb; a carried 1.x text payload is still accepted.
-  const value: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw;
+function eventEnvelope(value: unknown): RuntimeEventEnvelope {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Runtime outbox payload is malformed');
   }

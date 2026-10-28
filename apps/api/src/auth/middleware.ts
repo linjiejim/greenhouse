@@ -8,7 +8,7 @@
  */
 
 import type { Context, Next } from 'hono';
-import { validateAccessToken } from './token.js';
+import { validateAccessToken, validateExtUiToken, extUiPathAllowed } from './token.js';
 import type { AuthUser, UserRole } from './token.js';
 import { userHasFeature } from './features.js';
 import { isExtensionPublicPath } from './public-paths.js';
@@ -22,6 +22,7 @@ export type { AuthUser, UserRole };
 
 const PUBLIC_PATHS = new Set([
   '/api/auth/login',
+  '/api/auth/providers',
   '/api/auth/refresh',
   '/api/auth/password-link/inspect',
   '/api/auth/password-link/complete',
@@ -29,29 +30,8 @@ const PUBLIC_PATHS = new Set([
   // Pre-login workspace personalization (name / logo / theme tokens); never
   // exposes secrets, user data or feature configuration.
   '/api/bootstrap',
-  // WeCom redirects the BROWSER here, so the hop carries no Bearer. The
-  // credential is `state`: server-generated, single-use, 10-minute expiry,
-  // bound to a userId; the route re-reads the account (still an active internal
-  // user) before writing and never calls getAuthUser(). `/api/wecom/oauth/start`
-  // and `/api/wecom/binding` still require a Bearer (guarded in the route file).
-  '/api/wecom/oauth/callback',
-  // Feishu redirects the BROWSER here (bind and login share one callback, split
-  // by the state's intent), again without a Bearer; the credential is a
-  // single-use, 10-minute `state`. `/start-login` and `/exchange` serve the
-  // NOT-yet-logged-in QR login (the login page has no token to send): the
-  // former only issues a login state, the latter swaps a 60s single-use code
-  // for a normal session, rate-limited per IP. `/api/feishu/oauth/start` and
-  // `/api/feishu/binding` still require a Bearer (guarded in the route file).
-  '/api/feishu/oauth/callback',
-  '/api/feishu/oauth/start-login',
-  '/api/feishu/oauth/exchange',
-  // Read-only "does this deployment offer Feishu login?" probe the login page
-  // asks on every mount. Deliberately separate from start-login: using that as
-  // the probe would seed a pending state nobody consumes on every password
-  // login — a probe must have no side effects.
-  '/api/feishu/login-available',
   // A connector's OAuth provider redirects the BROWSER here, without a Bearer.
-  // It writes nothing: it only sends the person back to the app (web hash route
+  // It writes nothing: it only sends the person back to the app (the client route
   // or the mobile scheme), whose logged-in session then calls
   // POST /api/me/connectors/oauth/finish — which refuses a state started by
   // someone else. Rate-limited in security.ts.
@@ -62,11 +42,11 @@ const PUBLIC_PATHS = new Set([
 export function isPublicPath(path: string): boolean {
   if (PUBLIC_PATHS.has(path)) return true;
   if (isExtensionPublicPath(path)) return true;
-  // Frontend static assets — Vite emits the hashed bundle under /assets/* (base './').
+  // Frontend static assets (hosting.ts serves the exported client before this middleware runs).
   if (path === '/' || path === '/favicon.ico' || path.startsWith('/public/') || path.startsWith('/assets/'))
     return true;
   // The icon set + web manifest referenced from index.html by absolute path
-  // (served by the explicit ROOT_STATIC_FILES allowlist in index.ts).
+  // (served from the exported client by hosting.ts).
   if (
     path === '/favicon.svg' ||
     path === '/apple-touch-icon.png' ||
@@ -106,17 +86,27 @@ export function isPublicPath(path: string): boolean {
 
 // ─── Auth Middleware ─────────────────────────────────────
 
+/** Runs before public SPA hosting as well as authenticated routes. */
+export async function extUiScopeMiddleware(c: Context, next: Next) {
+  const header = c.req.header('Authorization');
+  const embed = header?.startsWith('Bearer ') ? validateExtUiToken(header.slice(7)) : null;
+  if (embed && !extUiPathAllowed(embed.plugin, c.req.method, c.req.path))
+    return c.json({ error: 'Forbidden: embed token scope' }, 403);
+  return next();
+}
+
 /**
  * Main auth middleware. Validates token and sets user context.
  * Must be applied globally before any route handlers.
  */
 export async function authMiddleware(c: Context, next: Next) {
-  // Skip public paths
-  if (isPublicPath(c.req.path)) return next();
-
   // Extract token
   const authHeader = c.req.header('Authorization');
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const embed = token ? validateExtUiToken(token) : null;
+  if (embed && !extUiPathAllowed(embed.plugin, c.req.method, c.req.path))
+    return c.json({ error: 'Forbidden: embed token scope' }, 403);
+  if (!embed && isPublicPath(c.req.path)) return next();
 
   if (!token) {
     return c.json({ error: 'Unauthorized', needsAuth: true }, 401);
@@ -125,7 +115,7 @@ export async function authMiddleware(c: Context, next: Next) {
   // Validate the signed token, then resolve the current database user. Tokens
   // from deleted, disabled, or former external accounts must not remain usable
   // until their four-hour signature expiry.
-  const payload = validateAccessToken(token);
+  const payload = embed ?? validateAccessToken(token);
   if (payload) {
     if (payload.role !== 'super' && payload.role !== 'team') {
       return c.json({ error: 'Forbidden: internal account required' }, 403);
@@ -146,6 +136,11 @@ export async function authMiddleware(c: Context, next: Next) {
     }
     if (user.role !== 'super' && user.role !== 'team') {
       return c.json({ error: 'Forbidden: internal account required' }, 403);
+    }
+    if (embed) {
+      const { memberCanUsePlugin } = await import('../plugin-host/ui-access.js');
+      if (!(await memberCanUsePlugin(getDb(), { id: user.id, role: user.role }, embed.plugin)))
+        return c.json({ error: 'Forbidden: plugin unavailable' }, 403);
     }
     c.set('user', {
       id: user.id,

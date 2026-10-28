@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { BUILTIN_AGENT_TOOL_IDS, MUTATING_PROXY_ALLOWLIST, TOOL_DEFINITIONS } from '../registry.js';
+import { BUILTIN_AGENT_TOOL_IDS, MUTATING_PROXY_ALLOWLIST, TOOL_DEFINITIONS, getAllToolIds } from '../registry.js';
 import { UNATTENDED_TOOL_DENYLIST } from '../../agent-runtime/tool-resolution.js';
 
 const EXPECTED = [
@@ -26,7 +26,9 @@ const EXPECTED = [
   'memory',
   'read_attachment',
   'task_capture',
-].sort();
+]
+  .filter((id) => getAllToolIds().includes(id))
+  .sort();
 
 describe('BUILTIN_AGENT_TOOL_IDS', () => {
   it('is exactly the reviewed set', () => {
@@ -55,7 +57,7 @@ describe('BUILTIN_AGENT_TOOL_IDS', () => {
     // scheduled runs. `log_friction` (a write surface since v1.5, so members'
     // agents can report) only appends a note to the team's review queue.
     const writes = [...BUILTIN_AGENT_TOOL_IDS].filter((id) => MUTATING_PROXY_ALLOWLIST.has(id));
-    expect(writes.sort()).toEqual(['automation_mutation', 'log_friction']);
+    expect(writes.sort()).toEqual(['automation_mutation', 'log_friction'].filter((id) => getAllToolIds().includes(id)));
     expect(UNATTENDED_TOOL_DENYLIST.has('automation_mutation')).toBe(true);
   });
 

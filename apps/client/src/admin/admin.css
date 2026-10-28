@@ -1,0 +1,511 @@
+/* The Admin place (src/admin): its own layout only — dense sections with 52px bars, 32px rows and
+   8-pt spacing. Buttons, fields, switches, tabs, badges, cards, callouts and settings rows are the
+   shared Controls in src/shell/client.css. */
+
+.gh-admin-body {
+  padding: 0 20px 32px;
+}
+.gh-admin-body > .gh-data-grid,
+.gh-admin-body .gh-card,
+.gh-admin-body > .gh-callout {
+  margin-bottom: 16px;
+}
+.gh-admin-body > .gh-hint,
+.gh-admin-settings > .gh-hint {
+  margin-bottom: 12px;
+}
+.gh-place > .gh-tabs {
+  margin-bottom: 12px;
+}
+
+/* tables */
+.gh-admin-grid td,
+.gh-admin-grid th {
+  height: 32px;
+  padding: 3px 12px;
+}
+.gh-admin-grid td {
+  color: var(--gh-text);
+}
+.gh-admin-grid tbody tr:hover {
+  cursor: default;
+}
+.gh-admin-grid tbody tr[data-open]:hover {
+  cursor: pointer;
+}
+.gh-admin-grid tr[data-muted] td {
+  color: var(--gh-tertiary);
+}
+/* a row's detail under it (Client errors: the latest report) */
+.gh-admin-grid tr[data-detail] td {
+  height: auto;
+  padding: 8px 12px 14px 32px;
+  white-space: normal;
+  background: var(--gh-sunken);
+}
+.gh-admin-latest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--gh-secondary);
+}
+.gh-admin-latest strong {
+  color: var(--gh-text);
+  font-weight: 500;
+}
+.gh-admin-latest-title {
+  width: 100%;
+  color: var(--gh-text);
+  font-weight: 600;
+}
+.gh-admin-grid .gh-admin-actions {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+  padding-block: 0;
+}
+.gh-admin-grid .gh-admin-actions > * {
+  vertical-align: middle;
+}
+.gh-admin-grid .gh-icon-button {
+  width: 28px;
+  height: 28px;
+}
+.gh-admin-grid .gh-secondary-button {
+  min-height: 28px;
+}
+.gh-admin-sub {
+  color: var(--gh-secondary);
+  margin-left: 8px;
+  font-size: 12px;
+}
+.gh-admin-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  vertical-align: middle;
+}
+.gh-admin-wrap {
+  white-space: normal !important;
+}
+.gh-admin-empty-line {
+  color: var(--gh-secondary);
+  font-size: 13px;
+  padding: 12px 16px;
+}
+.gh-admin-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 0 16px;
+}
+
+/* workspace switches */
+.gh-admin-flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.gh-admin-flag > div {
+  flex: 1;
+  min-width: 0;
+}
+.gh-admin-flag strong {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 20px;
+}
+.gh-admin-flag strong small {
+  font-weight: 400;
+  color: var(--gh-secondary);
+}
+.gh-admin-flag .gh-hint {
+  margin-top: 2px;
+}
+
+/* KPI row */
+.gh-admin-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.gh-admin-kpi {
+  border: 1px solid var(--gh-line);
+  border-radius: 16px;
+  background: var(--gh-card);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.gh-admin-kpi small {
+  color: var(--gh-secondary);
+  font-size: 12px;
+}
+.gh-admin-kpi strong {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.gh-admin-kpi strong[data-tone='warning'] {
+  color: var(--gh-warning);
+}
+
+/* meters */
+.gh-admin-meter {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+  min-width: 80px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--gh-fill);
+  overflow: hidden;
+  vertical-align: middle;
+}
+.gh-admin-meter > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+}
+.gh-admin-meter-held {
+  background: var(--gh-accent-fill);
+}
+.gh-admin-meter-used {
+  background: var(--gh-accent);
+}
+.gh-admin-meter[data-level='warn'] .gh-admin-meter-used {
+  background: var(--gh-warning);
+}
+.gh-admin-meter[data-level='over'] .gh-admin-meter-used {
+  background: var(--gh-danger);
+}
+
+/* tabs at the top of a dialog body stay put while it scrolls */
+.gh-admin-dialog-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-top: 4px;
+  background: var(--gh-card);
+}
+
+/* permission cards (the user permissions dialog) */
+.gh-admin-points {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 20px 20px;
+}
+.gh-admin-point {
+  border: 1px solid var(--gh-line);
+  border-radius: 12px;
+  background: var(--gh-raised);
+}
+.gh-admin-point > header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 14px;
+}
+.gh-admin-point-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--gh-accent-wash);
+  color: var(--gh-accent-text);
+  flex-shrink: 0;
+}
+.gh-admin-point-text {
+  flex: 1;
+  min-width: 0;
+}
+.gh-admin-point-text strong {
+  display: block;
+  font-size: 14px;
+}
+.gh-admin-point-text span {
+  display: block;
+  font-size: 12px;
+  color: var(--gh-secondary);
+}
+.gh-admin-point-detail {
+  border-top: 1px solid var(--gh-line);
+  background: var(--gh-sunken);
+  padding: 8px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.gh-admin-tool {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+}
+.gh-admin-tool > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-admin-tool small {
+  color: var(--gh-tertiary);
+  margin-left: 8px;
+}
+
+/* settings forms (Runtime config, team context, plugin settings) */
+.gh-admin-settings {
+  max-width: 880px;
+}
+
+/* Branding: controls left, a sticky preview right */
+.gh-admin-branding {
+  display: grid;
+  grid-template-columns: minmax(360px, 440px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.gh-admin-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.gh-admin-presets [role='radio'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--gh-line);
+  border-radius: 999px;
+  background: var(--gh-raised);
+  color: var(--gh-secondary);
+  font-size: 12px;
+}
+.gh-admin-presets [role='radio'][aria-checked='true'] {
+  border-color: var(--gh-accent-edge);
+  background: var(--gh-accent-fill);
+  color: var(--gh-accent-text);
+  font-weight: 700;
+}
+.gh-admin-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--gh-line-strong);
+}
+.gh-admin-color {
+  width: 44px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--gh-line-strong);
+  border-radius: 8px;
+  background: var(--gh-raised);
+  cursor: pointer;
+}
+.gh-admin-logo {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--gh-line-strong);
+  border-radius: 8px;
+  color: var(--gh-tertiary);
+  overflow: hidden;
+}
+.gh-admin-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.gh-admin-scale {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--gh-secondary);
+}
+.gh-admin-scale input {
+  accent-color: var(--gh-accent);
+}
+.gh-admin-scale span:last-child {
+  text-align: right;
+}
+.gh-admin-preview-wrap {
+  position: sticky;
+  top: 0;
+}
+.gh-admin-preview-wrap > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+}
+/* the specimen: every color comes from --pv-* set on it, sizes scale with the chosen text size */
+.gh-admin-preview {
+  border: 1px solid var(--pv-line);
+  border-radius: calc(14px * var(--pv-radius));
+  background: var(--pv-canvas);
+  color: var(--pv-text);
+  overflow: hidden;
+  font-size: calc(14px * var(--pv-scale));
+}
+.gh-pv-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--pv-line);
+  background: var(--pv-card);
+}
+.gh-pv-bar img,
+.gh-pv-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: calc(6px * var(--pv-radius));
+  object-fit: contain;
+}
+.gh-pv-mark {
+  background: var(--pv-brand);
+}
+.gh-pv-pill {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--pv-fill);
+  color: var(--pv-secondary);
+  font-size: 0.85em;
+}
+.gh-pv-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+}
+.gh-pv-body h3 {
+  margin: 0;
+  font-size: 1.45em;
+}
+.gh-pv-body p {
+  margin: 0;
+  color: var(--pv-secondary);
+  line-height: 1.6;
+}
+.gh-pv-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gh-pv-button {
+  display: inline-flex;
+  align-items: center;
+  height: 2.3em;
+  padding: 0 1.1em;
+  border-radius: calc(8px * var(--pv-radius));
+  background: var(--pv-brand);
+  color: var(--pv-on-brand);
+  font-weight: 700;
+}
+.gh-pv-ghost {
+  background: transparent;
+  color: var(--pv-text);
+  box-shadow: inset 0 0 0 1px var(--pv-line);
+  font-weight: 600;
+}
+.gh-pv-link {
+  color: var(--pv-brand);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.gh-pv-input {
+  height: 2.6em;
+  display: flex;
+  align-items: center;
+  padding: 0 0.9em;
+  border-radius: calc(10px * var(--pv-radius));
+  box-shadow: inset 0 0 0 2px var(--pv-brand);
+  background: var(--pv-card);
+  color: var(--pv-secondary);
+}
+.gh-pv-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gh-pv-mine {
+  align-self: flex-end;
+  max-width: 80%;
+  padding: 0.6em 0.9em;
+  border-radius: calc(14px * var(--pv-radius));
+  background: var(--pv-fill);
+}
+.gh-pv-reply {
+  max-width: 90%;
+  line-height: 1.6;
+}
+.gh-pv-reply code {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: calc(4px * var(--pv-radius));
+  background: var(--pv-fill);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+/* key/value facts */
+.gh-admin-facts {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 8px 16px;
+  font-size: 13px;
+}
+.gh-admin-facts dt {
+  color: var(--gh-secondary);
+}
+.gh-admin-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* code blocks (copyable configuration) and a secret shown once */
+.gh-admin-code {
+  position: relative;
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--gh-sunken);
+  border: 1px solid var(--gh-line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.gh-admin-secret {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--gh-accent-wash);
+  border: 1px solid var(--gh-accent-edge);
+}
+.gh-admin-secret code {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}

@@ -62,4 +62,4 @@ export interface GlobalSearchResponse {
 }
 
 /** Kinds the palette can search, in the order groups are displayed. */
-export const SEARCHABLE_KINDS: readonly SearchKind[] = ['session', 'automation', 'project', 'kb_doc'];
+export const SEARCHABLE_KINDS: readonly SearchKind[] = ['session', 'automation', 'kb_doc'];

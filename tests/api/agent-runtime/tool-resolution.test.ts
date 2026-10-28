@@ -31,14 +31,14 @@ describe('resolveEffectiveTools', () => {
   it('super user on an internal profile gets the full tool set (no profile narrowing)', async () => {
     const profile = makeProfile({
       access: { level: 'internal', rich_output: false },
-      tools: ['knowledge_query'], // narrow declared list is ignored for internal profiles
+      tools: ['files_query'], // narrow declared list is ignored for internal profiles
     });
 
     const { effectiveTools } = await resolveEffectiveTools({
       userId: 'super-1',
       userRole: 'super',
       profile,
-      profileId: 'team',
+      profileId: 'sprouty',
     });
 
     // Internal non-custom profile → all the user's allowed tools.
@@ -48,7 +48,7 @@ describe('resolveEffectiveTools', () => {
   it('custom profile narrows a super user down to the declared intersection', async () => {
     const profile = makeProfile({
       access: { level: 'internal', rich_output: false },
-      tools: ['knowledge_query', 'analyze_image'],
+      tools: ['files_query', 'analyze_image'],
     });
 
     const { effectiveTools } = await resolveEffectiveTools({
@@ -61,37 +61,23 @@ describe('resolveEffectiveTools', () => {
     // Declared tools plus the built-ins every Agent carries: the profile still
     // narrows a super's full catalog, it just cannot narrow below the basics.
     expect(effectiveTools.sort()).toEqual(
-      [...new Set(['analyze_image', 'knowledge_query', ...BUILTIN_AGENT_TOOL_IDS])].sort(),
+      [...new Set(['analyze_image', 'files_query', ...BUILTIN_AGENT_TOOL_IDS])].sort(),
     );
     expect(effectiveTools).not.toContain('tables_query');
   });
 
-  it('expands retired tool ids saved in custom profiles to their successors', async () => {
-    // Custom profiles persist tool id arrays in the DB. A saved agent listing the
-    // retired project_manager / session_history / team_knowledge must keep working
-    // through the successor pairs instead of silently losing the domain.
-    const profile = makeProfile({
-      access: { level: 'internal', rich_output: false },
-      tools: ['project_manager', 'session_history', 'team_knowledge'],
-    });
-
+  it('does not alias a retired tool id saved in a custom profile', async () => {
+    // Core migration 0004 rewrote project_manager to project_query + project_mutation;
+    // a stored retired id reaching the resolver grants nothing.
     const { effectiveTools } = await resolveEffectiveTools({
       userId: 'super-1',
       userRole: 'super',
-      profile,
+      profile: makeProfile({ access: { level: 'internal', rich_output: false }, tools: ['project_manager'] }),
       profileId: 'custom:legacy',
     });
 
     expect(effectiveTools.sort()).toEqual(
-      [
-        ...new Set([
-          'project_query',
-          'project_mutation',
-          'session_query',
-          'knowledge_query',
-          ...BUILTIN_AGENT_TOOL_IDS,
-        ]),
-      ].sort(),
+      [...BUILTIN_AGENT_TOOL_IDS].filter((id) => getAllToolIds().includes(id)).sort(),
     );
   });
 
@@ -118,8 +104,8 @@ describe('buildLazyServerTools', () => {
 
   it('injects all lazy server tools for an internal user', () => {
     const internal = buildLazyServerTools(db, allLazy, { userId: 'u1', userRole: 'team' });
-    expect(internal).toHaveProperty('feature_request');
-    expect(internal).toHaveProperty('knowledge_query');
+    expect(Object.keys(internal).includes('feature_request')).toBe(allLazy.includes('feature_request'));
+    expect(internal).toHaveProperty('files_query');
     expect(internal).toHaveProperty('session_query');
   });
 });

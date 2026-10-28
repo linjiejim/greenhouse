@@ -1,3 +1,4 @@
+import { notificationTransports } from '../notifications/transports.js';
 /**
  * Scheduled Task Center — ONE implementation of Automation CRUD, shared by the
  * HTTP routes (routes/tasks.ts) and the agent tools (tools/automation-*.ts).
@@ -27,7 +28,7 @@ import {
   type ScheduledTaskRow,
   type ScheduledTaskUpdateInput,
 } from '@greenhouse/db';
-import { resolveProfileAsync } from '../profiles/profile.js';
+import { DEFAULT_PROFILE_ID, resolveProfileAsync } from '../profiles/profile.js';
 import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 import { sanitizeForPrompt } from '../security/security.js';
 import { getScheduler } from './index.js';
@@ -70,6 +71,9 @@ export interface TaskActor {
 
 export type TaskErrorCode = 'invalid' | 'not_found' | 'forbidden' | 'conflict' | 'unavailable' | 'internal';
 export type TaskError = { ok: false; code: TaskErrorCode; error: string };
+function isTaskError(value: Partial<AutomationNotify> | TaskError | undefined): value is TaskError {
+  return value?.ok === false && typeof value.code === 'string' && typeof value.error === 'string';
+}
 const err = (code: TaskErrorCode, error: string): TaskError => ({ ok: false, code, error });
 
 /** A task row plus the derived human-readable schedule description. */
@@ -104,14 +108,6 @@ export interface CreateTaskInput {
    * On update only the keys given change.
    */
   notify?: Partial<AutomationNotify> | null;
-  /** Legacy flat form of `notify.webhook` (1.x clients); `notify` wins when both are sent. */
-  notify_webhook?: string | null;
-  /** Legacy flat form of `notify.email`. */
-  notify_email?: boolean;
-  /** Legacy flat form of `notify.wecom`. */
-  notify_wecom?: boolean;
-  /** Legacy flat form of `notify.feishu`. */
-  notify_feishu?: boolean;
   /**
    * Stay quiet when a run has nothing new: the run prompt asks for exactly
    * `NO_UPDATE` in that case, and such a run is recorded as "no update" with no
@@ -206,31 +202,18 @@ export function validateNotifyWebhook(raw: string | null | undefined): TaskError
   if (url.protocol !== 'https:') {
     return err('invalid', 'Webhook must be an https:// URL');
   }
-  // Two trusted hosts, nothing else: the whitelist is what keeps this field
-  // from being a "POST anywhere" channel. Feishu bot webhooks additionally live
-  // under a fixed path, so pin that too.
-  const isWeCom = url.hostname === 'qyapi.weixin.qq.com';
-  const isFeishu = url.hostname === 'open.feishu.cn' && url.pathname.startsWith('/open-apis/bot/');
-  if (!isWeCom && !isFeishu) {
-    return err(
-      'invalid',
-      'Webhook must be a WeCom (https://qyapi.weixin.qq.com/...) or Feishu (https://open.feishu.cn/open-apis/bot/...) group-bot URL',
-    );
+  if (!notificationTransports().some((t) => t.acceptsWebhook?.(url))) {
+    return err('invalid', 'Webhook must match an enabled notification transport');
   }
   return null;
 }
 
 /**
- * The notify keys a request supplied, from `notify` and/or the legacy flat
- * fields (`notify` wins), or `undefined` when it supplied none. Values are type
- * checked; the webhook URL is validated by `validateNotifyWebhook`.
+ * The notify keys a request supplied in `notify`, or `undefined` when it supplied
+ * none. Values are type checked; the webhook URL is validated by `validateNotifyWebhook`.
  */
 export function notifyFromInput(input: CreateTaskInput): Partial<AutomationNotify> | TaskError | undefined {
   const out: Partial<AutomationNotify> = {};
-  if (input.notify_webhook !== undefined) out.webhook = input.notify_webhook || null;
-  if (input.notify_email !== undefined) out.email = input.notify_email;
-  if (input.notify_wecom !== undefined) out.wecom = input.notify_wecom;
-  if (input.notify_feishu !== undefined) out.feishu = input.notify_feishu;
   if (input.notify !== undefined && input.notify !== null) {
     if (typeof input.notify !== 'object' || Array.isArray(input.notify)) {
       return err(
@@ -239,6 +222,12 @@ export function notifyFromInput(input: CreateTaskInput): Partial<AutomationNotif
       );
     }
     const notify = input.notify;
+    for (const [key, value] of Object.entries(notify)) {
+      if (key !== 'webhook') {
+        if (typeof value !== 'boolean') return err('invalid', `notify.${key} must be true or false`);
+        out[key] = value;
+      }
+    }
     if (notify.webhook !== undefined) out.webhook = notify.webhook || null;
     if (notify.email !== undefined) out.email = notify.email;
     if (notify.wecom !== undefined) out.wecom = notify.wecom;
@@ -331,7 +320,7 @@ async function resolveTaskProfile(
     if (error instanceof ProfileAccessError && error.status === 403) {
       return err('forbidden', `The automation's owner cannot use this run profile: ${error.message}`);
     }
-    return err('invalid', `Profile "${rawProfileId ?? 'team'}" not found`);
+    return err('invalid', `Profile "${rawProfileId ?? DEFAULT_PROFILE_ID}" not found`);
   }
 }
 
@@ -463,7 +452,7 @@ export async function createTask(
   }
 
   const notify = notifyFromInput(input);
-  if (notify && 'ok' in notify) return notify;
+  if (isTaskError(notify)) return notify;
   const webhookCheck = validateNotifyWebhook(notify?.webhook);
   if (webhookCheck) return webhookCheck;
 
@@ -570,7 +559,7 @@ export async function updateTask(
   }
 
   const notify = notifyFromInput(input);
-  if (notify && 'ok' in notify) return notify;
+  if (isTaskError(notify)) return notify;
   if (notify) {
     if (notify.webhook !== undefined) {
       const webhookCheck = validateNotifyWebhook(notify.webhook);

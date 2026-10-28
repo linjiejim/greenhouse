@@ -15,7 +15,6 @@ import { Hono } from 'hono';
 import { getDb } from '@greenhouse/db';
 import {
   DEFAULT_WORKSPACE_TIMEZONE,
-  type RetroResult,
   type TeamContextSettingsInput,
   type TeamContextSettingsView,
 } from '@greenhouse/types/hub-context';
@@ -27,37 +26,55 @@ import {
   resolveTeamContextDocs,
   validateTeamContextSelection,
 } from '../hub-context/settings.js';
-import { monthlyRetroNextRun, startMonthlyRetroJob } from '../scheduler/upkeep-jobs.js';
-import { generateMonthlyRetro, RetroInputError } from '../retro/generate.js';
-
-const CANDIDATE_LIMIT = 500;
+import { fromExtensions } from '../plugin-host/index.js';
+import { teamContextDocumentSources } from '../hub-context/settings.js';
 
 async function settingsView(): Promise<TeamContextSettingsView> {
   const db = getDb();
   const config = await readTeamContextConfig();
   const [resolved, candidates] = await Promise.all([
     resolveTeamContextDocs(db, config),
-    db.knowledgeBase.list({ scope: 'shared', status: 'published', visibility: 'team', limit: CANDIDATE_LIMIT }),
+    Promise.all(teamContextDocumentSources().map((source) => source.candidates(db))).then((rows) => rows.flat()),
   ]);
   return {
+    markdown: { overview: config.overview, conventions: config.conventionsMarkdown, glossary: config.glossaryMarkdown },
+    document_source: teamContextDocumentSources().length > 0,
     conventions: resolved.refs.conventions,
     glossary: resolved.refs.glossary,
     timezone: config.timezone,
     effective_timezone: config.timezone ?? DEFAULT_WORKSPACE_TIMEZONE,
-    candidates: candidates.filter((doc) => !doc.is_template).map((doc) => ({ doc_id: doc.doc_id, title: doc.title })),
-    retro_next_run_at: monthlyRetroNextRun()?.toISOString() ?? null,
+    candidates: candidates,
+    retro_next_run_at:
+      fromExtensions('schedules')
+        .map((schedule) => schedule.nextRun())
+        .find(Boolean)
+        ?.toISOString() ?? null,
   };
 }
 
 function parseInput(body: unknown): TeamContextSettingsInput | null {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
   const record = body as Record<string, unknown>;
-  if (!Array.isArray(record.conventions) || record.conventions.some((id) => typeof id !== 'string')) return null;
-  if (record.glossary !== null && typeof record.glossary !== 'string') return null;
+  if (
+    record.markdown !== undefined &&
+    (!record.markdown || typeof record.markdown !== 'object' || Array.isArray(record.markdown))
+  )
+    return null;
+  const hasSelection = record.conventions !== undefined || record.glossary !== undefined;
+  if (hasSelection && (!Array.isArray(record.conventions) || record.conventions.some((id) => typeof id !== 'string')))
+    return null;
+  if (hasSelection && record.glossary !== null && typeof record.glossary !== 'string') return null;
   if (record.timezone !== undefined && record.timezone !== null && typeof record.timezone !== 'string') return null;
   return {
-    conventions: [...new Set((record.conventions as string[]).map((id) => id.trim()).filter(Boolean))],
-    glossary: typeof record.glossary === 'string' && record.glossary.trim() ? record.glossary.trim() : null,
+    ...(record.markdown && typeof record.markdown === 'object'
+      ? { markdown: record.markdown as TeamContextSettingsInput['markdown'] }
+      : {}),
+    ...(hasSelection
+      ? {
+          conventions: [...new Set((record.conventions as string[]).map((id) => id.trim()).filter(Boolean))],
+          glossary: typeof record.glossary === 'string' && record.glossary.trim() ? record.glossary.trim() : null,
+        }
+      : {}),
     ...(record.timezone !== undefined ? { timezone: (record.timezone as string | null)?.trim() || null } : {}),
   };
 }
@@ -73,38 +90,35 @@ export const adminTeamContextRoutes = new Hono<AppEnv>()
         400,
       );
     }
-    const checked = await validateTeamContextSelection(getDb(), input);
+    const checked = input.conventions
+      ? await validateTeamContextSelection(getDb(), {
+          conventions: input.conventions,
+          glossary: input.glossary ?? null,
+        })
+      : { ok: true as const };
     if (!checked.ok) return c.json({ error: checked.error }, 400);
 
     const before = await readTeamContextConfig();
     const values: Record<string, unknown> = {
-      'team_context.conventions': input.conventions.length > 0 ? input.conventions : null,
-      'team_context.glossary': input.glossary,
+      ...(teamContextDocumentSources().length && input.conventions
+        ? {
+            'team_context.conventions': input.conventions.length > 0 ? input.conventions : null,
+            'team_context.glossary': input.glossary ?? null,
+          }
+        : {}),
     };
+    if (input.markdown)
+      for (const key of ['overview', 'conventions', 'glossary'] as const) {
+        if (typeof input.markdown[key] !== 'string')
+          return c.json({ error: 'Markdown context must contain text' }, 400);
+        values[`team_context.${key}_markdown`] = input.markdown[key] || null;
+      }
     if (input.timezone !== undefined) values['team_context.timezone'] = input.timezone;
     const applied = await applyWorkspaceSettingValues(user, c, values);
     if (!applied.ok) return c.json({ error: applied.error }, applied.status);
 
     // The retro runs at 09:00 workspace time: follow a zone change at once.
-    if (input.timezone !== undefined && input.timezone !== before.timezone) await startMonthlyRetroJob();
+    if (input.timezone !== undefined && input.timezone !== before.timezone)
+      await Promise.all(fromExtensions('workspaceTimeZoneChanged').map((change) => change()));
     return c.json(await settingsView());
   });
-
-export const adminRetroRoutes = new Hono<AppEnv>().post('/', async (c) => {
-  const user = getAuthUser(c);
-  const body = (await c.req.json().catch(() => ({}))) as { month?: unknown };
-  if (body.month !== undefined && typeof body.month !== 'string') {
-    return c.json({ error: 'month must be YYYY-MM' }, 400);
-  }
-  try {
-    const result: RetroResult = await generateMonthlyRetro({
-      db: getDb(),
-      ...(typeof body.month === 'string' ? { month: body.month } : {}),
-      actorId: user.id,
-    });
-    return c.json(result);
-  } catch (err) {
-    if (err instanceof RetroInputError) return c.json({ error: err.message }, 400);
-    throw err;
-  }
-});

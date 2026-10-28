@@ -15,7 +15,7 @@
  * config file at boot lives in `./config-schema` (server side only).
  */
 
-/** One Greenhouse server as seen by a client (the mobile app). */
+/** One Greenhouse server as seen by a client (the universal client). */
 export interface StationConfig {
   /** Stable id, lowercase letters / digits / dashes. */
   id: string;
@@ -42,8 +42,8 @@ export interface ClientStationsConfig {
 /** Which compiled extensions are active in this deployment. */
 export interface ExtensionsConfig {
   /**
-   * `'all'` enables every extension listed in `apps/api/src/extensions/index.ts` and
-   * `apps/web/src/extensions/index.ts`; an id list enables only those. The
+   * `'all'` enables every plugin compiled into this build (`plugins` above); an id list
+   * enables only those. The
    * `GREENHOUSE_EXTENSIONS` env var (comma list or `all`) overrides this at boot so
    * one image can be trimmed per deployment.
    */
@@ -64,6 +64,9 @@ export interface PacksConfig {
 }
 
 export interface GreenhouseConfig {
+  /** Plugin package names or paths relative to the repository root, in registration order. */
+  plugins: string[];
+  conversations: { sharing: boolean };
   extensions: ExtensionsConfig;
   packs: PacksConfig;
   clients: { stations: ClientStationsConfig };
@@ -71,12 +74,16 @@ export interface GreenhouseConfig {
 
 /** What a `greenhouse.config.ts` file may export — every section optional. */
 export interface GreenhouseConfigInput {
+  plugins?: string[];
+  conversations?: { sharing?: boolean };
   extensions?: Partial<ExtensionsConfig>;
   packs?: Partial<PacksConfig>;
   clients?: { stations?: Partial<ClientStationsConfig> };
 }
 
 export const DEFAULT_GREENHOUSE_CONFIG: GreenhouseConfig = {
+  plugins: [],
+  conversations: { sharing: true },
   extensions: { enabled: 'all' },
   packs: { skills: [], profiles: [] },
   clients: { stations: { mode: 'multi', defaults: [] } },
@@ -84,12 +91,20 @@ export const DEFAULT_GREENHOUSE_CONFIG: GreenhouseConfig = {
 
 /** Identity helper that gives `greenhouse.config.ts` its types without a runtime dependency. */
 export function defineConfig(config: GreenhouseConfigInput): GreenhouseConfigInput {
+  if (
+    config.plugins !== undefined &&
+    (!Array.isArray(config.plugins) || config.plugins.some((entry) => typeof entry !== 'string' || !entry.trim()))
+  ) {
+    throw new Error('plugins must be an array of non-empty package names or relative paths');
+  }
   return config;
 }
 
 /** Shallow-merge a config file's input over the defaults (no validation — see `./config-schema`). */
 export function mergeGreenhouseConfig(input: GreenhouseConfigInput | undefined): GreenhouseConfig {
   return {
+    plugins: input?.plugins ?? [],
+    conversations: { ...DEFAULT_GREENHOUSE_CONFIG.conversations, ...input?.conversations },
     extensions: { ...DEFAULT_GREENHOUSE_CONFIG.extensions, ...(input?.extensions ?? {}) },
     packs: { ...DEFAULT_GREENHOUSE_CONFIG.packs, ...(input?.packs ?? {}) },
     clients: {
@@ -116,4 +131,14 @@ export function parseExtensionsEnv(value: string | undefined): ExtensionsConfig[
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+/** Assembly-time override; an explicitly empty value compiles a core without packages. */
+export function parsePluginsEnv(value: string | undefined): string[] | undefined {
+  return value === undefined
+    ? undefined
+    : value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean);
 }

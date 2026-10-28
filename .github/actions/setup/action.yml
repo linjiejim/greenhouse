@@ -14,3 +14,5 @@ runs:
         cache: pnpm
     - run: pnpm install --frozen-lockfile
       shell: bash
+    - run: pnpm plugins:sync --check
+      shell: bash

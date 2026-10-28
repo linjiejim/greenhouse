@@ -25,6 +25,8 @@ const ClientStationsSchema = z
   });
 
 export const GreenhouseConfigInputSchema = z.object({
+  conversations: z.object({ sharing: z.boolean().optional() }).optional(),
+  plugins: z.array(z.string().trim().min(1)).optional(),
   extensions: z
     .object({
       enabled: z.union([z.literal('all'), z.array(z.string().min(1))]).optional(),
@@ -37,7 +39,13 @@ export const GreenhouseConfigInputSchema = z.object({
       seeds: z.string().min(1).optional(),
     })
     .optional(),
-  clients: z.object({ stations: ClientStationsSchema.optional() }).optional(),
+  clients: z
+    .object({
+      // 4.0 serves one web client; say so instead of silently ignoring an old setting
+      web: z.never({ error: 'clients.web was removed in 4.0: the universal client is the only web client' }).optional(),
+      stations: ClientStationsSchema.optional(),
+    })
+    .optional(),
 });
 
 /** Validate a config file's export and fill in defaults. Throws a readable error on bad input. */

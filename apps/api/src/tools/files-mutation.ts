@@ -24,7 +24,7 @@ import {
   updateCabinetFolder,
   uploadCabinetFile,
 } from '../drive/kb-cabinet.js';
-import { delegatedAgentActor } from '../platform/actor.js';
+import { delegatedAgentActor } from '../plugin-host/actor.js';
 import type { FilesToolContext } from './files-query.js';
 
 const MAX_MB = MAX_AGENT_UPLOAD_BYTES / 1024 / 1024;

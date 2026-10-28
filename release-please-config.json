@@ -5,25 +5,201 @@
   "bump-minor-pre-major": false,
   "bump-patch-for-minor-pre-major": false,
   "changelog-sections": [
-    { "type": "feat", "section": "Added" },
-    { "type": "fix", "section": "Fixed" },
-    { "type": "perf", "section": "Changed" },
-    { "type": "refactor", "section": "Changed" },
-    { "type": "revert", "section": "Fixed" },
-    { "type": "docs", "section": "Changed", "hidden": true },
-    { "type": "chore", "section": "Changed", "hidden": true },
-    { "type": "test", "section": "Changed", "hidden": true },
-    { "type": "ci", "section": "Changed", "hidden": true },
-    { "type": "build", "section": "Changed", "hidden": true }
+    {
+      "type": "feat",
+      "section": "Added"
+    },
+    {
+      "type": "fix",
+      "section": "Fixed"
+    },
+    {
+      "type": "perf",
+      "section": "Changed"
+    },
+    {
+      "type": "refactor",
+      "section": "Changed"
+    },
+    {
+      "type": "revert",
+      "section": "Fixed"
+    },
+    {
+      "type": "docs",
+      "section": "Changed",
+      "hidden": true
+    },
+    {
+      "type": "chore",
+      "section": "Changed",
+      "hidden": true
+    },
+    {
+      "type": "test",
+      "section": "Changed",
+      "hidden": true
+    },
+    {
+      "type": "ci",
+      "section": "Changed",
+      "hidden": true
+    },
+    {
+      "type": "build",
+      "section": "Changed",
+      "hidden": true
+    }
   ],
   "packages": {
     ".": {
       "package-name": "greenhouse",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "apps/mobile/package.json", "jsonpath": "$.version" },
-        { "type": "json", "path": "apps/mobile/app.json", "jsonpath": "$.expo.version" }
-      ]
+        {
+          "type": "json",
+          "path": "apps/api/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "apps/client/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/agent-core/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/crud/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/db/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/knowledge-editor/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/platform-kernel/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/types/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/ui/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/ui-tokens/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/utils/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/computer/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/email/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/example/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/feedback/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/feishu/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/knowledge/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/memory/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/projects/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/reports/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/retro/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/skills/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/tables/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "plugins/wecom/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "apps/client/app.json",
+          "jsonpath": "$.expo.version"
+        },
+        {
+          "type": "json",
+          "path": "apps/desktop/src-tauri/tauri.conf.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "toml",
+          "path": "apps/desktop/src-tauri/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "apps/desktop/src-tauri/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value == 'greenhouse-desktop')].version"
+        }
+      ],
+      "prerelease-type": "rc"
     }
-  }
+  },
+  "versioning": "prerelease",
+  "prerelease": true
 }

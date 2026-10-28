@@ -5,9 +5,9 @@
  * Each catalog file is an official MCP Registry `server.json` whose `_meta`
  * carries Greenhouse's fields under `CONNECTOR_CATALOG_META_KEY`: the
  * suggested slug, how members authenticate, read-only tools the catalog
- * vouches for, and how far the entry was verified. The files keep the 1.x
- * auth vocabulary (`none` / `per_user` / `oauth`, each member's own account);
- * it maps to `none` / `per_member + key` / `per_member + oauth` here.
+ * vouches for, and how far the entry was verified. Their auth `mode` (`none` /
+ * `key` / `oauth`, each member's own account) maps to `none` /
+ * `per_member + key` / `per_member + oauth` here.
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
@@ -50,7 +50,7 @@ const remoteSchema = z
 
 const authSchema = z
   .object({
-    mode: z.enum(['none', 'per_user', 'oauth']),
+    mode: z.enum(['none', 'key', 'oauth']),
     header: z.string().regex(CONNECTOR_AUTH_HEADER_PATTERN).optional(),
     query_param: z.string().regex(CONNECTOR_AUTH_QUERY_PARAM_PATTERN).optional(),
     prefix: z.string().max(32).optional(),
@@ -63,12 +63,12 @@ const authSchema = z
   .strict()
   .refine((auth) => !(auth.header && auth.query_param), 'auth: a header or a query parameter, not both')
   .refine(
-    (auth) => auth.mode !== 'per_user' || Boolean(auth.header || auth.query_param),
-    'auth: a per_user entry says where the key goes (header or query_param)',
+    (auth) => auth.mode !== 'key' || Boolean(auth.header || auth.query_param),
+    'auth: a key entry says where the key goes (header or query_param)',
   )
   .refine(
-    (auth) => auth.mode !== 'per_user' || Boolean(auth.help && auth.help_zh),
-    'auth: per_user needs help + help_zh',
+    (auth) => auth.mode !== 'key' || Boolean(auth.help && auth.help_zh),
+    'auth: a key entry needs help + help_zh',
   );
 
 const metaSchema = z

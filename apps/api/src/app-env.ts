@@ -3,15 +3,17 @@
  *
  * Route files instantiate `new Hono<AppEnv>()` so `c.get('user')` is typed
  * and the chained route definitions compose into the exported `AppType`
- * consumed by hc clients (packages/contract).
+ * (the typed route schema).
  */
 
 import type { AuthUser } from './auth/token.js';
 import type { AgentIdentity } from './agent-runtime/api-auth.js';
-import type { OAuthScope } from './platform/oauth.js';
+import type { OAuthScope } from './agent-access/oauth.js';
 
 export type AppEnv = {
   Variables: {
+    /** Set only by the host static-plugin mount; permits same-origin embedding. */
+    extensionUi?: boolean;
     /** Set by authMiddleware for authenticated requests. */
     user: AuthUser;
     /** Set by Agent/MCP credential middleware. */

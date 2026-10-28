@@ -1,0 +1,30 @@
+{
+  "name": "@greenhouse/plugin-skills",
+  "version": "4.0.0-rc.1",
+  "private": true,
+  "type": "module",
+  "greenhouse": {
+    "id": "skills",
+    "sdk": 2,
+    "api": "./api/index.ts"
+  },
+  "exports": {
+    "./api": "./api/index.ts",
+    "./manifest": "./manifest.ts"
+  },
+  "dependencies": {
+    "@greenhouse/api": "workspace:*",
+    "@greenhouse/types": "workspace:*",
+    "ai": "^6.0.176",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.18",
+    "zod": "^4.4.3",
+    "fflate": "^0.8.2",
+    "yaml": "^2.7.1"
+  },
+  "devDependencies": {
+    "@greenhouse/db": "workspace:*",
+    "drizzle-kit": "^0.31.10",
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  }
+}

@@ -1,3 +1,4 @@
+import { cabinetDriveScope } from '../../drive/access.js';
 /**
  * /api/drive file rename / move and the knowledge-cabinet name search, through
  * the real route: both ends of a move are authorized, a move never crosses
@@ -30,7 +31,7 @@ function app(user: UserRow) {
 
 async function activeFile(owner: UserRow, visibility: 'team' | 'private', folderId: string | null = null) {
   const row = await db.drive.initFile({
-    scope: 'kb',
+    scope: cabinetDriveScope(),
     folder_id: folderId,
     name: `${unique('doc')}.txt`,
     cos_key: `drive/test/${unique('k')}.txt`,
@@ -75,12 +76,16 @@ describe('drive file rename and move', () => {
     const personal = await activeFile(alice, 'private');
     expect((await put(bob, personal.id, { name: 'mine.txt' })).status).toBe(403);
 
-    const teamFolder = await db.drive.createFolder({ scope: 'kb', name: unique('Team'), visibility: 'team' });
+    const teamFolder = await db.drive.createFolder({
+      scope: cabinetDriveScope(),
+      name: unique('Team'),
+      visibility: 'team',
+    });
     const crossed = await put(alice, personal.id, { folder_id: teamFolder.id });
     expect(crossed.status).toBe(400);
 
     const ownFolder = await db.drive.createFolder({
-      scope: 'kb',
+      scope: cabinetDriveScope(),
       name: unique('Mine'),
       visibility: 'private',
       owner_user_id: alice.id,
@@ -92,7 +97,7 @@ describe('drive file rename and move', () => {
 
   it('refuses to start an upload into a folder of another cabinet', async () => {
     const privateFolder = await db.drive.createFolder({
-      scope: 'kb',
+      scope: cabinetDriveScope(),
       name: unique('Private'),
       visibility: 'private',
       owner_user_id: alice.id,
@@ -100,7 +105,13 @@ describe('drive file rename and move', () => {
     const res = await app(bob).request('/api/drive/files/init', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ scope: 'kb', visibility: 'team', folder_id: privateFolder.id, name: 'a.txt', size: 1 }),
+      body: JSON.stringify({
+        scope: cabinetDriveScope(),
+        visibility: 'team',
+        folder_id: privateFolder.id,
+        name: 'a.txt',
+        size: 1,
+      }),
     });
     expect(res.status).toBe(404);
   });
@@ -110,7 +121,7 @@ describe('drive search', () => {
   it('finds team files and my own, never another member’s personal files', async () => {
     const marker = unique('needle');
     const team = await db.drive.initFile({
-      scope: 'kb',
+      scope: cabinetDriveScope(),
       name: `${marker}-team.txt`,
       cos_key: `drive/test/${unique('k')}`,
       visibility: 'team',
@@ -118,7 +129,7 @@ describe('drive search', () => {
     });
     await db.drive.completeFile(team.id, { size: 1 });
     const hidden = await db.drive.initFile({
-      scope: 'kb',
+      scope: cabinetDriveScope(),
       name: `${marker}-alice.txt`,
       cos_key: `drive/test/${unique('k')}`,
       visibility: 'private',

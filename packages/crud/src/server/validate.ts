@@ -73,12 +73,22 @@ export function validateListParams(raw: unknown, contract: ListContract): Valida
     if (f.method !== 'in' && f.method !== 'nin' && f.method !== 'between' && f.value.length < 1) {
       return { ok: false, error: `filter "${f.key}" requires a value` };
     }
+    if (f.method === 'exists') {
+      f.value = f.value.map((v) => coerceFilterValue(v, 'boolean'));
+      if (f.value.length !== 1 || typeof f.value[0] !== 'boolean')
+        return { ok: false, error: `filter "${f.key}" exists requires one boolean` };
+      continue;
+    }
     // Coerce values to the declared column type so a stringy filter (the client
     // <select> emits strings; a proxy/raw caller may too) matches a numeric or
     // boolean column instead of erroring with "operator does not exist: int = text".
     if (spec.type === 'number' || spec.type === 'boolean') {
       f.value = f.value.map((v) => coerceFilterValue(v, spec.type as 'number' | 'boolean'));
+      if (f.value.some((v) => v !== null && (typeof v !== spec.type || (typeof v === 'number' && !Number.isFinite(v)))))
+        return { ok: false, error: `filter "${f.key}" requires ${spec.type} values` };
     }
+    if (f.value.some((v) => v !== null && !['string', 'number', 'boolean'].includes(typeof v)))
+      return { ok: false, error: `filter "${f.key}" requires scalar values` };
   }
 
   for (const s of params.sort ?? []) {

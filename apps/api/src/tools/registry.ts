@@ -1,3 +1,4 @@
+import { registerInteractiveTools } from '../agent-runtime/tool-policy.js';
 /**
  * Tool Registry — the catalog that assembles all agent-tool metadata.
  *
@@ -13,44 +14,26 @@
  * Frontend fetches metadata via GET /api/tools.
  */
 
-import { fromExtensions } from '../extensions/index.js';
+import { fromExtensions } from '../plugin-host/index.js';
 import type { ToolMeta, ToolModule } from './define.js';
 export type { ToolCategory, ToolMeta } from './define.js';
 
 import { analyzeImageTool } from './analyze-image.js';
 import { askUserTool } from './ask-user.js';
 import { externalSearchTool } from './external-search/index.js';
-import { featureRequestTool } from './feature-request.js';
 import { generateImageTool } from './generate-image.js';
-import { projectQueryTool } from './project-query.js';
-import { projectMutationTool } from './project-mutation.js';
 import { computeTool } from './compute/tool.js';
 import { sessionQueryTool } from './session-query.js';
 import { taskCaptureTool } from './task-capture.js';
 import { readAttachmentTool } from './read-attachment.js';
 import { callLlmTool } from './call-llm.js';
-import { knowledgeQueryTool } from './knowledge-query.js';
-import { knowledgeMutationTool } from './knowledge-mutation.js';
-import { skillQueryTool } from './skills/skill-query.js';
-import { skillMutationTool } from './skills/skill-mutation.js';
-import { tablesQueryTool } from './tables-query.js';
-import { tablesMutationTool } from './tables-mutation.js';
-import { tablesSchemaPlanTool } from './tables-schema-plan.js';
 import { exportDataTool } from './export-data.js';
 import { automationQueryTool } from './automation-query.js';
 import { automationMutationTool } from './automation-mutation.js';
-import { emailQueryTool } from './email-query.js';
-import { emailMutationTool } from './email-mutation.js';
-import { memoryTool } from './memory.js';
 import { mcpCallTool } from './mcp-call.js';
-import { logFrictionTool } from './log-friction.js';
 import { filesQueryTool } from './files-query.js';
 import { filesMutationTool } from './files-mutation.js';
-import { feedbackQueryTool } from './feedback-query.js';
 import { readUrlTool, webSearchTool } from './web-search.js';
-import { computerExecTool, computerFilesTool, computerStopTool, computerTransferTool } from './computer.js';
-import { reportTemplatesTool } from './report-templates.js';
-import { reportRenderTool } from './report-render.js';
 
 // ─── Catalog ─────────────────────────────────────────────
 
@@ -59,48 +42,27 @@ const CORE_TOOL_MODULES: ToolModule[] = [
   analyzeImageTool,
   askUserTool,
   externalSearchTool,
-  featureRequestTool,
   generateImageTool,
-  projectQueryTool,
-  projectMutationTool,
   computeTool,
   sessionQueryTool,
   taskCaptureTool,
   readAttachmentTool,
   callLlmTool,
-  knowledgeQueryTool,
-  knowledgeMutationTool,
-  skillQueryTool,
-  skillMutationTool,
-  tablesQueryTool,
-  tablesMutationTool,
-  tablesSchemaPlanTool,
   exportDataTool,
   automationQueryTool,
   automationMutationTool,
-  emailQueryTool,
-  emailMutationTool,
-  memoryTool,
   mcpCallTool,
-  logFrictionTool,
   filesQueryTool,
   filesMutationTool,
-  feedbackQueryTool,
   webSearchTool,
   readUrlTool,
-  computerExecTool,
-  computerFilesTool,
-  computerTransferTool,
-  computerStopTool,
-  reportTemplatesTool,
-  reportRenderTool,
 ];
 
 /** Static tools (constructed once from the shared db) — drives createToolRegistry. */
 /** Ids of the tools this repository ships, without any extension's — what the surface guard pins. */
 export const CORE_TOOL_IDS: ReadonlySet<string> = new Set(CORE_TOOL_MODULES.map((m) => m.meta.id));
 
-/** Core tools followed by the tools of every active extension (see extensions/index.ts). */
+/** Core tools followed by the tools of every active extension (see plugin-host/index.ts). */
 const TOOL_MODULES: ToolModule[] = withExtensionTools(CORE_TOOL_MODULES, fromExtensions('tools'));
 
 function withExtensionTools(core: ToolModule[], extension: ToolModule[]): ToolModule[] {
@@ -119,25 +81,6 @@ const SPECIAL_METAS: ToolMeta[] = [];
 
 /** Single source of truth for all tool metadata. */
 export const TOOL_DEFINITIONS: ToolMeta[] = [...TOOL_MODULES.map((m) => m.meta), ...SPECIAL_METAS];
-
-/**
- * Retired tool ids → their successors. Custom profiles persist tool id arrays in
- * the DB, so a retirement must keep old rows meaningful: resolveEffectiveTools
- * expands these before intersecting. (Proxy-side call aliases for once-exposed
- * ids live in tool-proxy's normalizeLegacyToolCall — input shapes differ there.)
- *
- * 2026-08-07: project_manager (a chat monolith = exactly its query ∪ mutation
- * pair) and session_history (⊂ session_query) retired.
- *
- * 2026-08-14: team_knowledge / personal_knowledge retired — the same table
- * behind a narrower scope, now `knowledge_query` with scope='team'|'personal'.
- */
-export const RETIRED_TOOL_ALIASES: Readonly<Record<string, readonly string[]>> = {
-  project_manager: ['project_query', 'project_mutation'],
-  session_history: ['session_query'],
-  team_knowledge: ['knowledge_query'],
-  personal_knowledge: ['knowledge_query'],
-};
 
 // ─── Derived exposure sets (single source: each tool's `meta.surface`) ──────
 //
@@ -227,13 +170,6 @@ export const LAZY_TOOL_IDS = new Set<string>([
 
 const toolMetaMap = new Map(TOOL_DEFINITIONS.map((t) => [t.id, t]));
 
-/** Get tool description for use in AI SDK tool({ description }). Single source of truth. */
-export function getToolDescription(id: string): string {
-  const meta = toolMetaMap.get(id);
-  if (!meta) throw new Error(`Unknown tool ID: ${id}`);
-  return meta.description;
-}
-
 /** Get metadata for a single tool by ID. */
 export function getToolMeta(id: string): ToolMeta | undefined {
   return toolMetaMap.get(id);
@@ -273,3 +209,5 @@ export function getInAppToolMetas(): ToolMeta[] {
 export function getInAppToolIds(): string[] {
   return getAllToolIds().filter(isInAppTool);
 }
+
+registerInteractiveTools(TOOL_DEFINITIONS.filter((meta) => meta.interactiveOnly).map((meta) => meta.id));

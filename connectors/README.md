@@ -1,9 +1,9 @@
 # Connector catalog
 
 The official, vetted list of remote MCP servers a Greenhouse administrator can install with one click
-(Administration → Connectors → **Add from catalog**). Members' agents then use them through the
+(Admin › Team connectors → **From catalog** in the client). Members' agents then use them through the
 `mcp_call` tool — public ones right away, the ones that work with each member's own account after the
-member connects (Settings → Connections on the web, Me → Connections on iOS).
+member connects (Me › Connections in the client, on the web and on phones).
 
 Each file here is one connector. Adding a file is how you contribute one.
 
@@ -42,12 +42,12 @@ plus Greenhouse's fields under its own `_meta` key, the way a downstream registr
 |---|---|---|
 | `none` | A public server: nothing is sent. | — |
 | `oauth` | Each member signs in with their own account (MCP authorization spec: OAuth 2.1 + PKCE). | `scope` (optional) |
-| `per_user` | Each member pastes their own key or token. | `header` **or** `query_param`, optional `prefix` (e.g. `"Bearer "`), `help` + `help_zh` (what to paste), `help_url` |
+| `key` | Each member pastes their own key or token. | `header` **or** `query_param`, optional `prefix` (e.g. `"Bearer "`), `help` + `help_zh` (what to paste), `help_url` |
 
 `zero_config` is `true` when members can connect without the administrator registering anything at
-the provider: always for `none` and `per_user`; for `oauth` only when the provider supports dynamic
+the provider: always for `none` and `key`; for `oauth` only when the provider supports dynamic
 client registration or client-id metadata documents. GitHub, for example, supports neither — its entry
-uses `per_user` with a personal access token instead.
+uses `key` with a personal access token instead.
 
 ### `read_only_tools`
 

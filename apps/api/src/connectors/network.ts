@@ -193,19 +193,12 @@ function deadline(signal: AbortSignal | null | undefined, timeoutMs: number): Ab
   return signal ? AbortSignal.any([signal, timer]) : timer;
 }
 
-/** Test seam: replace the wire (never used outside tests). */
-let wireOverride: ((url: string, init: Record<string, unknown>) => Promise<Response>) | null = null;
-export function _setConnectorWire(fn: typeof wireOverride): void {
-  wireOverride = fn;
-}
-
 async function send(target: URL, init: RequestInit, policy: NetworkPolicy): Promise<Response> {
   const host = hostOf(target);
   const exempt = (policy.privateHost !== null && host === policy.privateHost) || isAllowedLoopback(host);
   const proxy = proxyFor(target);
   if (proxy && !exempt) await assertResolvesPublic(host);
   const dispatcher: Dispatcher = proxy ?? directAgent(!exempt);
-  if (wireOverride) return wireOverride(target.href, { ...init, dispatcher });
   const res = await undiciFetch(target.href, { ...(init as Parameters<typeof undiciFetch>[1]), dispatcher });
   return asGlobalResponse(res as unknown as Parameters<typeof asGlobalResponse>[0]);
 }

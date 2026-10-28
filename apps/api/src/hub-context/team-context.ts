@@ -1,26 +1,30 @@
+import { listAgentResources, readAgentResource } from '../plugin-host/agent-context.js';
 /**
  * Team context for a member's agent — the three MCP resources
  * (`greenhouse://context/overview|conventions|glossary`) and the compact
  * `team_context` tool bundle for clients that only speak tools.
  *
- * Everything is cut to the caller's reach: `reachable` is the token's MCP tool
- * set (scopes ∩ the member's own permissions), so a grant without
- * `mcp:knowledge` gets no conventions or glossary, one without `mcp:skills` no
- * skills or prompts, one without `mcp:tables` no bases. Conventions and
- * glossary are team-visible documents an admin picked (hub-context/settings.ts);
- * each is still read through `resolveKbAccess` for this member.
+ * Markdown context comes from workspace settings. Optional document sources are
+ * cut to the caller's reachable tools (scopes ∩ member permissions), and each
+ * source revalidates document visibility. Other plugin context and data sources
+ * use the same grant intersection. Saved prompts remain reachable independently
+ * through core chat access.
  */
 
-import type { DatabaseProvider, KnowledgeDoc } from '@greenhouse/db';
+import type { DatabaseProvider } from '@greenhouse/db';
 import type { ActorContext } from '@greenhouse/platform-kernel';
 import { allMcpResourceGroups, isRetiredMcpResourceGroup } from '@greenhouse/types/mcp';
 import { DATA_CATALOG_TOOL, TEAM_CONTEXT_TOOL, TEAM_CONTEXT_URIS } from '@greenhouse/types/hub-context';
 import { getToolMeta } from '../tools/registry.js';
-import { canRead, resolveKbAccess } from '../knowledge/access.js';
 import { getWorkspaceValue } from '../settings/workspace-config.js';
-import { EXTENSIONS } from '../extensions/index.js';
-import { resolveTeamContextDocs } from './settings.js';
-import { listTeamPrompts, promptsReachable } from './prompts.js';
+import { EXTENSIONS, fromExtensions } from '../plugin-host/index.js';
+import {
+  resolveTeamContextDocs,
+  readTeamContextConfig,
+  teamContextDocumentSources,
+  type TeamContextDocument,
+} from './settings.js';
+import { listTeamPrompts } from './prompts.js';
 import { buildDataCatalog } from './catalog.js';
 
 export interface TeamContextCaller {
@@ -53,21 +57,15 @@ const BUNDLE_PROMPTS = 40;
 
 /** What each core resource group is, for the overview (extension groups use the extension's own words). */
 const GROUP_PURPOSE: Record<string, string> = {
-  knowledge: 'Knowledge base: team and personal documents',
   files: 'Files: the team cabinet and your own files',
-  projects: 'Projects and their tasks',
-  tables: 'Tables: structured team data (bases, tables, records)',
-  skills: 'SkillHub: team skills and saved prompts (also offered as MCP prompts)',
   chat: 'Your Greenhouse chat history (read-only)',
   automation: 'Your scheduled automations (read-only)',
-  feedback: 'Issues & requests: report frictions and feature requests to the team',
   services: 'Paid services: web search, page reads, image analysis and generation (metered to you)',
-  computer: 'Your cloud computer (runs commands; billed per minute)',
-  reports:
-    "Report templates: the team's required report / deck formats (report_templates), rendered to PDF / DOCX / PPTX into Files (report_render)",
 };
 
 function groupPurpose(group: string): string {
+  const contributed = fromExtensions('hubContext').find((entry) => entry.group === group);
+  if (contributed) return contributed.description;
   if (GROUP_PURPOSE[group]) return GROUP_PURPOSE[group]!;
   const ext = EXTENSIONS.find((entry) => entry.mcpGroups?.includes(group));
   return ext ? `${ext.name}${ext.description ? `: ${ext.description}` : ''}` : group;
@@ -97,39 +95,45 @@ export function grantedGroups(reachable: ReadonlySet<string>): GrantedGroup[] {
     .sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group));
 }
 
-/** The reports group (v1.7 report templates): templates to follow before writing a report. */
-function reportsReachable(reachable: ReadonlySet<string>): boolean {
-  return reachable.has('report_templates');
+function contributedHints(reachable: ReadonlySet<string>, field: 'overviewHint' | 'bundleHint'): string[] {
+  return fromExtensions('hubContext')
+    .filter((entry) => entry.toolIds.some((id) => reachable.has(id)))
+    .flatMap((entry) => (entry[field] ? [entry[field]!] : []));
 }
 
-function knowledgeReachable(reachable: ReadonlySet<string>): boolean {
-  return reachable.has('knowledge_query');
+function documentContextReachable(reachable: ReadonlySet<string>): boolean {
+  return teamContextDocumentSources().some((source) => source.toolIds.some((id) => reachable.has(id)));
 }
-
-async function readableDocs(caller: TeamContextCaller, docs: KnowledgeDoc[]): Promise<KnowledgeDoc[]> {
-  const allowed = await Promise.all(
-    docs.map(async (doc) => canRead(await resolveKbAccess(caller.db, doc, caller.userId))),
-  );
-  return docs.filter((_, index) => allowed[index]);
-}
-
-/** The conventions and glossary this caller may read (empty when the grant has no knowledge). */
 async function contextDocs(caller: TeamContextCaller) {
-  if (!knowledgeReachable(caller.reachable)) return { conventions: [], glossary: null };
-  const resolved = await resolveTeamContextDocs(caller.db);
-  const [conventions, glossary] = await Promise.all([
-    readableDocs(caller, resolved.conventions),
-    resolved.glossary ? readableDocs(caller, [resolved.glossary]) : Promise.resolve([]),
-  ]);
-  return { conventions, glossary: glossary[0] ?? null };
+  const config = await readTeamContextConfig();
+  const picked = documentContextReachable(caller.reachable)
+    ? await resolveTeamContextDocs(caller.db, config)
+    : { conventions: [], glossary: null };
+  const markdownDoc = (name: string, title: string, content: string): TeamContextDocument => ({
+    doc_id: name,
+    title,
+    content,
+    updated_at: null,
+  });
+  return {
+    conventions: picked.conventions.length
+      ? picked.conventions
+      : config.conventionsMarkdown
+        ? [markdownDoc('workspace-conventions', 'Team conventions', config.conventionsMarkdown)]
+        : [],
+    glossary:
+      picked.glossary ??
+      (config.glossaryMarkdown ? markdownDoc('workspace-glossary', 'Glossary', config.glossaryMarkdown) : null),
+  };
 }
 
-function docSource(doc: KnowledgeDoc): string {
+function docSource(doc: TeamContextDocument): string {
+  if (doc.doc_id.startsWith('workspace-')) return 'Source: workspace settings';
   const updated = doc.updated_at ? new Date(doc.updated_at).toISOString().slice(0, 10) : 'unknown';
-  return `Source: greenhouse://knowledge/doc/${encodeURIComponent(doc.doc_id)} · updated ${updated}`;
+  return `Source: ${doc.source ?? 'workspace settings'} · updated ${updated}`;
 }
 
-function conventionsMarkdown(docs: KnowledgeDoc[]): string {
+function conventionsMarkdown(docs: TeamContextDocument[]): string {
   return [
     '# Team conventions',
     '',
@@ -139,7 +143,7 @@ function conventionsMarkdown(docs: KnowledgeDoc[]): string {
   ].join('\n');
 }
 
-function glossaryMarkdown(doc: KnowledgeDoc): string {
+function glossaryMarkdown(doc: TeamContextDocument): string {
   return ['# Glossary', '', `## ${doc.title}`, '', docSource(doc), '', doc.content.trim(), ''].join('\n');
 }
 
@@ -178,8 +182,8 @@ async function overviewMarkdown(caller: TeamContextCaller): Promise<string> {
     listTeamPrompts(caller.db, { userId: caller.userId, role: caller.role }, caller.reachable),
     dataSummary(caller),
   ]);
-  const skills = prompts.filter((prompt) => prompt.name.startsWith('skill-')).length;
-  const saved = prompts.length - skills;
+
+  const configured = await readTeamContextConfig();
   const lines = [
     `# ${product} — what this team's Greenhouse offers your agent`,
     '',
@@ -198,22 +202,14 @@ async function overviewMarkdown(caller: TeamContextCaller): Promise<string> {
     '',
     docs.conventions.length > 0
       ? `- Conventions: ${docs.conventions.map((doc) => `"${doc.title}"`).join(', ')} — read ${TEAM_CONTEXT_URIS.conventions}`
-      : knowledgeReachable(caller.reachable)
-        ? '- Conventions: none set up by an administrator yet.'
-        : '- Conventions and glossary: this connection has no knowledge access.',
-    ...(knowledgeReachable(caller.reachable)
-      ? [
-          docs.glossary
-            ? `- Glossary: "${docs.glossary.title}" — read ${TEAM_CONTEXT_URIS.glossary}`
-            : '- Glossary: none set up by an administrator yet.',
-        ]
-      : []),
+      : '- Conventions: none set up by an administrator yet.',
+    docs.glossary
+      ? `- Glossary: ${docs.glossary.title} — read ${TEAM_CONTEXT_URIS.glossary}`
+      : '- Glossary: none set up by an administrator yet.',
     '',
-    '## Skills and prompts',
+    '## Prompts',
     '',
-    promptsReachable(caller.reachable)
-      ? `- ${skills} SkillHub skill(s) and ${saved} saved prompt(s), offered as MCP prompts (\`skill-<name>\`, \`prompt-<id>\`); skill_query finds and downloads skills.`
-      : '- This connection has no SkillHub access.',
+    `- ${prompts.length} reusable prompt(s) available through MCP prompts.`,
     '',
     '## Data sources',
     '',
@@ -224,17 +220,13 @@ async function overviewMarkdown(caller: TeamContextCaller): Promise<string> {
           : '')
       : `- None this connection can read. Call ${DATA_CATALOG_TOOL} to check.`,
     '',
+    ...(configured.overview ? ['## Workspace overview', '', configured.overview, ''] : []),
     '## Working agreements',
     '',
     `- Call ${TEAM_CONTEXT_TOOL} (or read this resource) at the start of a new task.`,
     '- Before changing data other people rely on, make sure your user wants the change.',
     '- A delete first returns a preview; send it again with confirm:true only after your user agrees.',
-    ...(reportsReachable(caller.reachable)
-      ? [
-          '- Writing a report or deck? Call report_templates list first and follow the team template (report_templates validate checks it; report_render saves it into Files).',
-        ]
-      : []),
-    '- Ran into something confusing or broken? Report it with log_friction; ideas go to feature_request.',
+    ...contributedHints(caller.reachable, 'overviewHint'),
     '',
   ];
   return lines.join('\n');
@@ -270,11 +262,11 @@ export async function listContextResources(caller: TeamContextCaller): Promise<C
       mimeType: 'text/markdown',
     });
   }
-  return out;
+  return [...out, ...listAgentResources(caller)];
 }
 
 export function isContextResourceUri(uri: string): boolean {
-  return uri.startsWith('greenhouse://context/');
+  return uri.startsWith('greenhouse://context/') || uri.startsWith('greenhouse://ext/');
 }
 
 /** Read one context resource, or undefined when this caller has no such resource. */
@@ -295,10 +287,10 @@ export async function readContextResource(
     const { glossary } = await contextDocs(caller);
     return glossary ? { uri, mimeType: 'text/markdown', text: glossaryMarkdown(glossary) } : undefined;
   }
-  return undefined;
+  return readAgentResource(caller, uri);
 }
 
-function bundleDoc(doc: KnowledgeDoc, fullUri: string) {
+function bundleDoc(doc: TeamContextDocument, fullUri: string) {
   const content = doc.content.trim();
   const truncated = content.length > BUNDLE_DOC_CHARS;
   return {
@@ -306,9 +298,7 @@ function bundleDoc(doc: KnowledgeDoc, fullUri: string) {
     doc_id: doc.doc_id,
     updated_at: doc.updated_at ? new Date(doc.updated_at).toISOString() : null,
     content: truncated ? `${content.slice(0, BUNDLE_DOC_CHARS)}…` : content,
-    ...(truncated
-      ? { truncated: true, full_text: `${fullUri} or knowledge_query action get doc_id=${doc.doc_id}` }
-      : {}),
+    ...(truncated ? { truncated: true, full_text: fullUri } : {}),
   };
 }
 
@@ -322,25 +312,36 @@ export async function buildTeamContextBundle(caller: TeamContextCaller) {
     dataSummary(caller),
   ]);
   return {
+    overview: (await readTeamContextConfig()).overview || null,
     workspace: product,
     you: { name: member, role: caller.role === 'super' ? 'administrator' : 'member' },
     access: grantedGroups(caller.reachable),
-    conventions: knowledgeReachable(caller.reachable)
-      ? docs.conventions.map((doc) => bundleDoc(doc, TEAM_CONTEXT_URIS.conventions))
-      : null,
+    conventions: docs.conventions.map((doc) => bundleDoc(doc, TEAM_CONTEXT_URIS.conventions)),
     glossary: docs.glossary ? bundleDoc(docs.glossary, TEAM_CONTEXT_URIS.glossary) : null,
-    prompts: promptsReachable(caller.reachable)
-      ? {
-          total: prompts.length,
-          items: prompts.slice(0, BUNDLE_PROMPTS).map((prompt) => ({
-            name: prompt.name,
-            title: prompt.title,
-            description: prompt.description,
-            arguments: prompt.arguments.map((arg) => arg.name),
-          })),
-          how: 'Use them as MCP prompts if your client supports prompts; otherwise skill_query skills.download fetches a skill.',
-        }
-      : null,
+    prompts:
+      prompts.length > 0
+        ? {
+            total: prompts.length,
+            items: prompts.slice(0, BUNDLE_PROMPTS).map((prompt) => ({
+              name: prompt.name,
+              title: prompt.title,
+              description: prompt.description,
+              arguments: prompt.arguments.map((arg) => arg.name),
+            })),
+            how: 'Use them as MCP prompts if your client supports prompts.',
+          }
+        : null,
+    resources: await Promise.all(
+      listAgentResources(caller).map(async (resource) => {
+        const content = await readAgentResource(caller, resource.uri);
+        const text = content?.text ?? '';
+        return {
+          ...resource,
+          content: text.slice(0, BUNDLE_DOC_CHARS),
+          ...(text.length > BUNDLE_DOC_CHARS ? { truncated: true } : {}),
+        };
+      }),
+    ),
     data_sources: {
       tables_bases: data.bases,
       tables: data.tables,
@@ -354,15 +355,11 @@ export async function buildTeamContextBundle(caller: TeamContextCaller) {
       how: `Call ${DATA_CATALOG_TOOL} for every source and the tool to query it.`,
     },
     notes: [
-      knowledgeReachable(caller.reachable)
-        ? docs.conventions.length === 0
-          ? 'No team conventions are set up yet.'
-          : 'Follow the conventions unless your user says otherwise.'
-        : 'This connection has no knowledge access, so conventions and glossary are not included.',
+      docs.conventions.length
+        ? 'Follow the conventions unless your user says otherwise.'
+        : 'No team conventions are set up yet.',
       'Before changing data other people rely on, make sure your user wants the change; deletes preview first.',
-      ...(reportsReachable(caller.reachable)
-        ? ['For a report or deck, call report_templates list first and follow the team template.']
-        : []),
+      ...contributedHints(caller.reachable, 'bundleHint'),
     ],
   };
 }

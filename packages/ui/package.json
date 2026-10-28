@@ -1,6 +1,6 @@
 {
   "name": "@greenhouse/ui",
-  "version": "0.0.1",
+  "version": "4.0.0-rc.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -16,13 +16,10 @@
       "import": "./src/tokens/tokens.ts",
       "types": "./src/tokens/tokens.ts"
     },
-    "./tokens/tokens.css": "./src/tokens/tokens.css",
     "./components/brand": {
       "import": "./src/components/brand/greenhouse-mark.tsx",
       "types": "./src/components/brand/greenhouse-mark.tsx"
-    },
-    "./styles/brand.css": "./src/styles/brand.css",
-    "./styles/fonts.css": "./src/styles/fonts.css"
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

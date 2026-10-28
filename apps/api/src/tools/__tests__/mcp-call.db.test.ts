@@ -9,7 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { randomBytes } from 'node:crypto';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
-import { PLATFORM_ORG_ID } from '../../platform/runtime.js';
+import { PLATFORM_ORG_ID } from '../../plugin-host/runtime.js';
 import { createInternalTestUser } from '../../../../../tests/helpers/internal-user.js';
 import { _setConnectorDirectory } from '../../connectors/directory.js';
 import { createConnector, updateConnector } from '../../connectors/manage.js';

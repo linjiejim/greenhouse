@@ -1,14 +1,14 @@
 /**
  * Global-search sources contributed by extensions.
  *
- * Core searches three domains (conversations, projects, knowledge) with a lane
+ * Core searches conversations and knowledge with a lane
  * each in `routes/search.ts`. An extension that owns records registers a lane
  * here instead of editing that route; the palette renders whatever groups come
  * back, so nothing else in core has to know the kind exists.
  *
  * A lane is read-only and must apply its own permission check — the route runs
  * every lane for the calling user and swallows failures per lane, exactly as it
- * does for the core three.
+ * does for the core lanes.
  */
 import type { DatabaseProvider } from '@greenhouse/db';
 import type { SearchHit } from '@greenhouse/types/search';
@@ -40,9 +40,4 @@ export function registerSearchSources(defs: readonly SearchSource[]): void {
 
 export function extensionSearchSources(): readonly SearchSource[] {
   return sources;
-}
-
-/** Test hook — forget sources registered by a suite. */
-export function _resetExtensionSearchSources(): void {
-  sources.length = 0;
 }

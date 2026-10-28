@@ -1,4 +1,4 @@
-# Greenhouse — single self-contained image: the Hono API serves the built SPA,
+# Greenhouse — single self-contained image: the Hono API serves the built client,
 # run via tsx (no separate compile step). Debian base (not Alpine): the `compute`
 # tool's isolated-vm native addon builds reliably on glibc.
 
@@ -11,21 +11,29 @@ ENV npm_config_registry=${NPM_REGISTRY}
 # Pin pnpm to match packageManager in package.json.
 RUN npm install -g pnpm@11.9.0
 
-# ── Build: install the full workspace (compiles native addons) + build the SPA ──
-# NODE_ENV is left unset here so devDependencies (vite, tsx, drizzle-kit) install.
+# The isolated Expo workspace keeps its lockfile and dependencies out of runtime.
+FROM base AS universal
+COPY apps/client ./apps/client
+COPY scripts/build-app.mjs ./scripts/build-app.mjs
+RUN pnpm --dir apps/client install --ignore-workspace --frozen-lockfile
+RUN node scripts/build-app.mjs
+
+# ── Build: install the full workspace (compiles native addons) ──
+# NODE_ENV is left unset here so devDependencies (tsx, drizzle-kit) install.
 FROM base AS build
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 make g++ ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 COPY . .
 RUN pnpm install --frozen-lockfile
-# Vite builds the web bundle into repo-root public/, which the API serves at `/`.
-RUN pnpm web:build
+RUN pnpm plugins:sync --check && pnpm plugins:ui:build
+COPY --from=universal /app/public/app ./public/app
 
 # ── Runtime: same filesystem, production env ──
 FROM build AS runtime
 # Build stamp: CI passes the git tag + commit sha so the running image knows
-# exactly which code it is (surfaced at /health, see apps/api/src/routes/health.ts).
+# exactly which code it is (APP_VERSION/APP_REVISION env and OCI labels; /health
+# does not report them).
 # Defaults are dev sentinels for a plain `docker build` with no --build-arg.
 ARG APP_VERSION=0.0.0-dev
 ARG APP_REVISION=unknown

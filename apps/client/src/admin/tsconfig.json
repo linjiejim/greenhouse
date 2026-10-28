@@ -1,0 +1,13 @@
+{
+  // Stops Vite's nearest-tsconfig lookup for the files the ROOT vitest compiles from this folder
+  // (see src/api/tsconfig.json). The app's type check uses apps/client/tsconfig.json.
+  "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "skipLibCheck": true
+  }
+}

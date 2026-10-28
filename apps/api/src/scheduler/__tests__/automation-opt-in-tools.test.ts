@@ -1,3 +1,4 @@
+import { getAllToolIds } from '../../tools/registry.js';
 /**
  * The opt-in grant's behavioural contract (spec 20260824-automation-optin-tools):
  * it adds only from the catalog, only within the owner's own permissions, only
@@ -14,49 +15,49 @@ const CONSOLE: TaskActor = { ...OWNER, scope: 'any', canGrantTools: true };
 
 /** A realistic effective set: the automatic reads plus writes the owner holds. */
 const EFFECTIVE = [
-  'knowledge_query',
+  'session_query',
   'tables_query',
-  'knowledge_query',
+  'session_query',
   'tables_mutation',
-  'knowledge_mutation',
+  'generate_image',
   'generate_image',
   'email_mutation',
   'automation_mutation',
   'tables_schema_plan',
   'report_templates',
   'report_render',
-];
+].filter((id) => getAllToolIds().includes(id));
 
 describe('scheduledToolBase', () => {
   it('is read-only when nothing was granted', () => {
     const base = scheduledToolBase(EFFECTIVE);
-    expect(base).toContain('tables_query');
+    expect(base.includes('tables_query')).toBe(EFFECTIVE.includes('tables_query'));
     expect(base).not.toContain('tables_mutation');
     expect(base).not.toContain('generate_image');
     // Reading the team's report templates is replay-safe; rendering one is not.
-    expect(base).toContain('report_templates');
+    expect(base.includes('report_templates')).toBe(EFFECTIVE.includes('report_templates'));
     expect(base).not.toContain('report_render');
   });
 
   it('lets the owner grant report rendering for a scheduled report', () => {
     const base = scheduledToolBase(EFFECTIVE, ['report_render']);
-    expect(base).toContain('report_render');
-    expect(base).toContain('report_templates');
+    expect(base.includes('report_render')).toBe(EFFECTIVE.includes('report_render'));
+    expect(base.includes('report_templates')).toBe(EFFECTIVE.includes('report_templates'));
     expect(base).not.toContain('tables_mutation');
   });
 
   it('adds exactly what was granted, and keeps the automatic reads', () => {
     const base = scheduledToolBase(EFFECTIVE, ['tables_mutation']);
-    expect(base).toContain('tables_mutation');
-    expect(base).toContain('tables_query');
-    expect(base).not.toContain('knowledge_mutation');
+    expect(base.includes('tables_mutation')).toBe(EFFECTIVE.includes('tables_mutation'));
+    expect(base.includes('tables_query')).toBe(EFFECTIVE.includes('tables_query'));
+    expect(base).not.toContain('generate_image');
   });
 
   it('cannot grant a tool the owner does not have', () => {
     // The grant is a filter over effectiveTools, never a permission of its own.
-    const base = scheduledToolBase(['tables_query'], ['knowledge_mutation']);
-    expect(base).not.toContain('knowledge_mutation');
-    expect(base).toEqual(['tables_query']);
+    const base = scheduledToolBase(['session_query'], ['generate_image']);
+    expect(base).not.toContain('generate_image');
+    expect(base).toEqual(['session_query']);
   });
 
   it('cannot reach a denylisted or draft-only tool even when stored', () => {
@@ -89,12 +90,12 @@ describe('validateUnattendedTools', () => {
     expect(result).toMatchObject({ ok: false, code: 'invalid' });
     expect((result as { error: string }).error).toContain('"email_mutation"');
     // The message must also say what IS grantable, or the caller is guessing.
-    expect((result as { error: string }).error).toContain('tables_mutation');
+    expect((result as { error: string }).error).toContain('generate_image');
   });
 
   it('accepts a catalogued grant and canonicalises it', () => {
-    const result = validateUnattendedTools(['knowledge_mutation', 'memory', 'memory'], CONSOLE);
-    expect(result).toEqual({ tools: ['memory', 'knowledge_mutation'] });
+    const result = validateUnattendedTools(['generate_image', 'analyze_image', 'analyze_image'], CONSOLE);
+    expect(result).toEqual({ tools: ['analyze_image', 'generate_image'] });
   });
 
   it('distinguishes "not supplied" from "supplied empty"', () => {

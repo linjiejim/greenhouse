@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { classifyWrite, writeToolCanDelete, writeToolIsAdditiveOnly } from './risk.js';
+afterEach(() => registerWriteRisks([]));
+import { describe, expect, it, afterEach } from 'vitest';
+import { classifyWrite, registerWriteRisks, writeToolCanDelete, writeToolIsAdditiveOnly } from './risk.js';
 
 describe('classifyWrite', () => {
   it('treats delete-like actions as r3 for every tool, extension tools included', () => {
@@ -17,7 +18,15 @@ describe('classifyWrite', () => {
     expect(classifyWrite('tables_mutation', { action: 'records.update', record_id: 'r' }).risk).toBe('r2');
   });
 
-  it('lets a member create their own personal doc at once (r1)', () => {
+  it('applies a contributed lower tier while destructive actions still win', () => {
+    registerWriteRisks([
+      {
+        knowledge_mutation: (input) => {
+          const args = input as { action: string; scope: string };
+          return args.action === 'knowledge.create_doc' && args.scope === 'personal' ? 'r1' : null;
+        },
+      },
+    ]);
     expect(classifyWrite('knowledge_mutation', { action: 'knowledge.create_doc', scope: 'personal' }).risk).toBe('r1');
     expect(
       classifyWrite('knowledge_mutation', { action: 'knowledge.update_doc', scope: 'personal', doc_id: 'd' }).risk,

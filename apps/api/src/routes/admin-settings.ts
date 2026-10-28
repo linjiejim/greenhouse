@@ -17,8 +17,8 @@ import { Hono, type Context } from 'hono';
 import { getDb } from '@greenhouse/db';
 import { getWorkspaceSettingDef } from '@greenhouse/types/workspace-settings';
 import { getAuthUser } from '../auth/middleware.js';
-import { humanActor } from '../platform/actor.js';
-import { PLATFORM_ORG_ID } from '../platform/runtime.js';
+import { humanActor } from '../plugin-host/actor.js';
+import { PLATFORM_ORG_ID } from '../plugin-host/runtime.js';
 import { encryptToken, isEncryptionConfigured } from '../auth/crypto.js';
 import {
   getWorkspaceSettingViews,

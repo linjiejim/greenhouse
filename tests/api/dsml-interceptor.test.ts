@@ -1,3 +1,13 @@
+import { registerToolResultAdapters } from '../../packages/agent-core/src/tool-results.js';
+registerToolResultAdapters([
+  {
+    toolId: 'fixture_query',
+    legacyCalls: {
+      get_team_fixture: (input) => ({ action: 'get', ...input }),
+      search_team_fixture: (input) => ({ action: 'search', ...input }),
+    },
+  },
+]);
 /**
  * Tests for DSML interceptor — validates DSML detection, parsing,
  * stream transformation, and finishReason rewriting.
@@ -80,10 +90,10 @@ describe('DSML Interceptor', () => {
   it('passes through proper tool calls without interference', async () => {
     const input = [
       { type: 'stream-start', warnings: [] },
-      { type: 'tool-input-start', id: 'call_123', toolName: 'search_team_knowledge' },
+      { type: 'tool-input-start', id: 'call_123', toolName: 'search_team_fixture' },
       { type: 'tool-input-delta', id: 'call_123', delta: '{"query":"basil"}' },
       { type: 'tool-input-end', id: 'call_123' },
-      { type: 'tool-call', toolCallId: 'call_123', toolName: 'search_team_knowledge', input: '{"query":"basil"}' },
+      { type: 'tool-call', toolCallId: 'call_123', toolName: 'search_team_fixture', input: '{"query":"basil"}' },
       { type: 'finish', finishReason: { unified: 'tool-calls', raw: 'tool_calls' }, usage: {} },
     ];
 
@@ -93,7 +103,7 @@ describe('DSML Interceptor', () => {
     expect(output[4]).toEqual({
       type: 'tool-call',
       toolCallId: 'call_123',
-      toolName: 'search_team_knowledge',
+      toolName: 'search_team_fixture',
       input: '{"query":"basil"}',
     });
     expect((output[5] as any).finishReason.unified).toBe('tool-calls');
@@ -104,7 +114,7 @@ describe('DSML Interceptor', () => {
   it('recovers DSML tool calls from text-delta (official format)', async () => {
     const dsmlBlock =
       '<｜DSML｜tool_calls>\n' +
-      '<｜DSML｜invoke name="search_team_knowledge">\n' +
+      '<｜DSML｜invoke name="search_team_fixture">\n' +
       '<｜DSML｜parameter name="query" string="true">basil growing guide</｜DSML｜parameter>\n' +
       '<｜DSML｜parameter name="limit" string="false">5</｜DSML｜parameter>\n' +
       '</｜DSML｜invoke>\n' +
@@ -128,14 +138,14 @@ describe('DSML Interceptor', () => {
     expect(combinedText).toBe('Let me search for that.\n\n');
 
     // Should have recovered tool call events
-    // Legacy split name search_team_knowledge is aliased to the unified tool.
+    // Legacy split name search_team_fixture is aliased to the unified tool.
     const toolInputStarts = output.filter((p) => p.type === 'tool-input-start');
     expect(toolInputStarts).toHaveLength(1);
-    expect(toolInputStarts[0].toolName).toBe('knowledge_query');
+    expect(toolInputStarts[0].toolName).toBe('fixture_query');
 
     const toolCalls = output.filter((p) => p.type === 'tool-call');
     expect(toolCalls).toHaveLength(1);
-    expect(toolCalls[0].toolName).toBe('knowledge_query');
+    expect(toolCalls[0].toolName).toBe('fixture_query');
     const parsed = JSON.parse(toolCalls[0].input as string);
     expect(parsed.action).toBe('search');
     expect(parsed.query).toBe('basil growing guide');
@@ -147,13 +157,13 @@ describe('DSML Interceptor', () => {
 
     // Callback should have been called
     expect(onRecovered).toHaveBeenCalledTimes(1);
-    expect(onRecovered.mock.calls[0][0].toolCalls[0].name).toBe('knowledge_query');
+    expect(onRecovered.mock.calls[0][0].toolCalls[0].name).toBe('fixture_query');
   });
 
   it('recovers DSML with double full-width bars variant', async () => {
     const dsmlBlock =
       '<｜｜DSML｜｜tool_calls>\n' +
-      '<｜｜DSML｜｜invoke name="get_team_knowledge">\n' +
+      '<｜｜DSML｜｜invoke name="get_team_fixture">\n' +
       '<｜｜DSML｜｜parameter name="slug" string="true">product/lph-max</｜｜DSML｜｜parameter>\n' +
       '</｜｜DSML｜｜invoke>\n' +
       '</｜｜DSML｜｜tool_calls>';
@@ -170,7 +180,7 @@ describe('DSML Interceptor', () => {
 
     const toolCalls = output.filter((p) => p.type === 'tool-call');
     expect(toolCalls).toHaveLength(1);
-    expect(toolCalls[0].toolName).toBe('knowledge_query');
+    expect(toolCalls[0].toolName).toBe('fixture_query');
 
     const parsed = JSON.parse(toolCalls[0].input as string);
     expect(parsed.action).toBe('get');
@@ -180,7 +190,7 @@ describe('DSML Interceptor', () => {
   it('recovers DSML with ASCII pipes (rendering variant)', async () => {
     const dsmlBlock =
       '<|DSML|tool_calls>\n' +
-      '<|DSML|invoke name="search_team_knowledge">\n' +
+      '<|DSML|invoke name="search_team_fixture">\n' +
       '<|DSML|parameter name="query" string="true">battery level</|DSML|parameter>\n' +
       '</|DSML|invoke>\n' +
       '</|DSML|tool_calls>';
@@ -197,7 +207,7 @@ describe('DSML Interceptor', () => {
 
     const toolCalls = output.filter((p) => p.type === 'tool-call');
     expect(toolCalls).toHaveLength(1);
-    expect(toolCalls[0].toolName).toBe('knowledge_query');
+    expect(toolCalls[0].toolName).toBe('fixture_query');
   });
 
   it('handles DSML split across multiple text-delta chunks', async () => {
@@ -205,7 +215,7 @@ describe('DSML Interceptor', () => {
       { type: 'stream-start', warnings: [] },
       { type: 'text-start', id: 'txt-0' },
       { type: 'text-delta', id: 'txt-0', delta: 'Let me check.\n\n<｜DSML｜tool_calls>\n<｜DSML｜invoke name="search' },
-      { type: 'text-delta', id: 'txt-0', delta: '_team_knowledge">\n<｜DSML｜parameter name="query" string="true">' },
+      { type: 'text-delta', id: 'txt-0', delta: '_team_fixture">\n<｜DSML｜parameter name="query" string="true">' },
       {
         type: 'text-delta',
         id: 'txt-0',
@@ -219,7 +229,7 @@ describe('DSML Interceptor', () => {
 
     const toolCalls = output.filter((p) => p.type === 'tool-call');
     expect(toolCalls).toHaveLength(1);
-    expect(toolCalls[0].toolName).toBe('knowledge_query');
+    expect(toolCalls[0].toolName).toBe('fixture_query');
 
     const parsed = JSON.parse(toolCalls[0].input as string);
     expect(parsed.query).toBe('WiFi setup');
@@ -241,7 +251,7 @@ describe('DSML Interceptor', () => {
       { type: 'text-delta', id: 'txt-0', delta: '<' },
       { type: 'text-delta', id: 'txt-0', delta: '｜｜DSML｜｜' },
       { type: 'text-delta', id: 'txt-0', delta: 'tool_calls>' },
-      { type: 'text-delta', id: 'txt-0', delta: '\n<｜｜DSML｜｜invoke name="get_team_knowledge">\n' },
+      { type: 'text-delta', id: 'txt-0', delta: '\n<｜｜DSML｜｜invoke name="get_team_fixture">\n' },
       {
         type: 'text-delta',
         id: 'txt-0',
@@ -269,7 +279,7 @@ describe('DSML Interceptor', () => {
     // The tool call was recovered and finishReason fixed to tool-calls.
     const toolCalls = output.filter((p) => p.type === 'tool-call');
     expect(toolCalls).toHaveLength(1);
-    expect(toolCalls[0].toolName).toBe('knowledge_query');
+    expect(toolCalls[0].toolName).toBe('fixture_query');
     expect(JSON.parse(toolCalls[0].input as string)).toEqual({ action: 'get', slug: 'product/lph-max' });
     const finish = output.find((p) => p.type === 'finish');
     expect((finish as any).finishReason.unified).toBe('tool-calls');
@@ -279,10 +289,10 @@ describe('DSML Interceptor', () => {
   it('handles multiple tool calls in one DSML block', async () => {
     const dsmlBlock =
       '<｜DSML｜tool_calls>\n' +
-      '<｜DSML｜invoke name="search_team_knowledge">\n' +
+      '<｜DSML｜invoke name="search_team_fixture">\n' +
       '<｜DSML｜parameter name="query" string="true">basil</｜DSML｜parameter>\n' +
       '</｜DSML｜invoke>\n' +
-      '<｜DSML｜invoke name="search_team_knowledge">\n' +
+      '<｜DSML｜invoke name="search_team_fixture">\n' +
       '<｜DSML｜parameter name="query" string="true">tomato</｜DSML｜parameter>\n' +
       '</｜DSML｜invoke>\n' +
       '</｜DSML｜tool_calls>';
@@ -299,8 +309,8 @@ describe('DSML Interceptor', () => {
 
     const toolCalls = output.filter((p) => p.type === 'tool-call');
     expect(toolCalls).toHaveLength(2);
-    expect(toolCalls[0].toolName).toBe('knowledge_query');
-    expect(toolCalls[1].toolName).toBe('knowledge_query');
+    expect(toolCalls[0].toolName).toBe('fixture_query');
+    expect(toolCalls[1].toolName).toBe('fixture_query');
     expect(JSON.parse(toolCalls[0].input as string).query).toBe('basil');
     expect(JSON.parse(toolCalls[1].input as string).query).toBe('tomato');
   });
@@ -312,7 +322,7 @@ describe('DSML Interceptor', () => {
     // aliasing) — only the proper one should be emitted, not a duplicate.
     const dsmlBlock =
       '<｜DSML｜tool_calls>\n' +
-      '<｜DSML｜invoke name="search_team_knowledge">\n' +
+      '<｜DSML｜invoke name="search_team_fixture">\n' +
       '<｜DSML｜parameter name="query" string="true">basil</｜DSML｜parameter>\n' +
       '</｜DSML｜invoke>\n' +
       '</｜DSML｜tool_calls>';
@@ -324,10 +334,10 @@ describe('DSML Interceptor', () => {
       { type: 'text-start', id: 'txt-0' },
       { type: 'text-delta', id: 'txt-0', delta: dsmlBlock },
       { type: 'text-end', id: 'txt-0' },
-      { type: 'tool-input-start', id: 'call_real', toolName: 'knowledge_query' },
+      { type: 'tool-input-start', id: 'call_real', toolName: 'fixture_query' },
       { type: 'tool-input-delta', id: 'call_real', delta: properInput },
       { type: 'tool-input-end', id: 'call_real' },
-      { type: 'tool-call', toolCallId: 'call_real', toolName: 'knowledge_query', input: properInput },
+      { type: 'tool-call', toolCallId: 'call_real', toolName: 'fixture_query', input: properInput },
       { type: 'finish', finishReason: { unified: 'tool-calls', raw: 'tool_calls' }, usage: {} },
     ];
 
@@ -348,7 +358,7 @@ describe('DSML Interceptor', () => {
     // The old behaviour silently dropped the leaked one; now it is recovered too.
     const dsmlBlock =
       '<｜DSML｜tool_calls>\n' +
-      '<｜DSML｜invoke name="get_team_knowledge">\n' +
+      '<｜DSML｜invoke name="get_team_fixture">\n' +
       '<｜DSML｜parameter name="slug" string="true">product/lph-se</｜DSML｜parameter>\n' +
       '</｜DSML｜invoke>\n' +
       '</｜DSML｜tool_calls>';
@@ -361,7 +371,7 @@ describe('DSML Interceptor', () => {
       {
         type: 'tool-call',
         toolCallId: 'call_real',
-        toolName: 'knowledge_query',
+        toolName: 'fixture_query',
         input: '{"action":"search","query":"basil"}',
       },
       { type: 'finish', finishReason: { unified: 'tool-calls', raw: 'tool_calls' }, usage: {} },
@@ -372,7 +382,7 @@ describe('DSML Interceptor', () => {
     const toolCalls = output.filter((p) => p.type === 'tool-call');
     expect(toolCalls).toHaveLength(2);
     const recovered = toolCalls.find((t) => t.toolCallId !== 'call_real');
-    expect(recovered.toolName).toBe('knowledge_query');
+    expect(recovered.toolName).toBe('fixture_query');
     expect(JSON.parse(recovered.input as string)).toEqual({ action: 'get', slug: 'product/lph-se' });
   });
 
@@ -401,7 +411,7 @@ describe('DSML Interceptor', () => {
     // with no answer (the v1 streaming "0 content" bug). It's stripped instead.
     const dsmlBlock =
       '<｜｜DSML｜｜tool_calls>\n' +
-      '<｜｜DSML｜｜invoke name="get_team_knowledge">\n' +
+      '<｜｜DSML｜｜invoke name="get_team_fixture">\n' +
       '<｜｜DSML｜｜parameter name="slug" string="true">product/lph-max</｜｜DSML｜｜parameter>\n' +
       '</｜｜DSML｜｜invoke>\n' +
       '</｜｜DSML｜｜tool_calls>';
@@ -433,7 +443,7 @@ describe('DSML Interceptor', () => {
   it('still recovers DSML when tools are enabled (toolChoice auto) — control', async () => {
     const dsmlBlock =
       '<｜｜DSML｜｜tool_calls>\n' +
-      '<｜｜DSML｜｜invoke name="get_team_knowledge">\n' +
+      '<｜｜DSML｜｜invoke name="get_team_fixture">\n' +
       '<｜｜DSML｜｜parameter name="slug" string="true">product/lph-max</｜｜DSML｜｜parameter>\n' +
       '</｜｜DSML｜｜invoke>\n' +
       '</｜｜DSML｜｜tool_calls>';

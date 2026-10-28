@@ -51,7 +51,7 @@ const SERVICES = {
   web: { base: 3100, health: '/', timeout: 120 },
 };
 
-// target → 服务组合。web 目标自带 api（Vite 只是代理，没有 api 就是空壳）。
+// target → 服务组合。web 目标自带 api（Expo web 客户端直连 api，没有 api 就是空壳）。
 const TARGETS = {
   all: ['api', 'web'],
   web: ['api', 'web'],
@@ -207,10 +207,10 @@ function openLog(name) {
   return { file, fd: fs.openSync(file, 'a') };
 }
 
-function launch(state, name, cmd, args, env, port) {
+function launch(state, name, cmd, args, env, port, cwd = '.') {
   const { file, fd } = openLog(name);
   const child = spawn(cmd, args, {
-    cwd: ROOT,
+    cwd: path.resolve(ROOT, cwd),
     env: { ...process.env, ...env },
     detached: true, // 独立进程组，stop 时整组回收
     stdio: ['ignore', fd, fd],
@@ -233,7 +233,7 @@ function launch(state, name, cmd, args, env, port) {
 
 async function waitHealthy(name, port) {
   const svc = SERVICES[name];
-  // 两个 host 都探：api 监听 IPv4，Vite 8 只监听 `localhost` 解析出的 **IPv6 [::1]**，
+  // 两个 host 都探：api 监听 IPv4，web 开发服务器可能只监听 `localhost` 解析出的 **IPv6 [::1]**，
   // 单探 127.0.0.1 会把已就绪的 web 判成超时。
   const urls = [`http://127.0.0.1:${port}${svc.health}`, `http://localhost:${port}${svc.health}`];
   const deadline = Date.now() + svc.timeout * 1000;
@@ -346,8 +346,8 @@ function prepareSandboxDb(container, cfg, sandboxDb, fresh) {
     if (r.code !== 0) throw new Error(`建库失败：${r.err}`);
     return;
   }
-  // 3.0 跑不了 1.x 库：主库还是 1.x（有 sessions、没有 conversations）就建空库，
-  // 需要数据时用 `pnpm migrate-from-1x --from <主库> --to <沙箱库>` 搬。
+  // 4.0 跑不了 1.x 库：主库还是 1.x（有 sessions、没有 conversations）就建空库；
+  // 要数据得先用 3.0.2 把主库升到 3.x（3.x 库克隆后由 db:migrate 原地升级）。
   const shape = psql(
     container,
     cfg.user,
@@ -355,7 +355,7 @@ function prepareSandboxDb(container, cfg, sandboxDb, fresh) {
     "select coalesce(to_regclass('public.sessions')::text, '') || '|' || coalesce(to_regclass('public.conversations')::text, '')",
   );
   if (shape.code === 0 && shape.out.startsWith('sessions|') && shape.out.endsWith('|')) {
-    warn(`主库 ${cfg.db} 是 1.x 结构，3.0 不能克隆它：建空沙箱库（要数据就跑 pnpm migrate-from-1x）`);
+    warn(`主库 ${cfg.db} 是 1.x 结构，4.0 不能克隆它：建空沙箱库（要数据先用 3.0.2 升到 3.x）`);
     const r = psql(container, cfg.user, 'postgres', `create database "${sandboxDb}"`);
     if (r.code !== 0) throw new Error(`建库失败：${r.err}`);
     return;
@@ -400,18 +400,26 @@ function runMigrate(dbUrl) {
   info(`迁移完成 ✓（${path.relative(ROOT, file)}）`);
 }
 
-/** 主树模式不自动 migrate（那是用户自己的库），但要提醒有多少条没应用 */
+/**
+ * 主树模式不自动 migrate（那是用户自己的库），但要提醒有多少条没应用。
+ * 和 drizzle 同一条规则：journal 里 `when` 晚于库里最后一条记录的就是待应用；
+ * 3.x 库（只有归档链的记录）的整条 4.0 链都算待应用，db:migrate 会原地升级它。
+ */
 function warnPendingMigrations(container, cfg, dbUrl) {
-  const files = fs.readdirSync(path.join(ROOT, 'drizzle')).filter((f) => f.endsWith('.sql')).length;
-  let applied = null;
+  const journal = JSON.parse(fs.readFileSync(path.join(ROOT, 'packages/db/migrations/meta/_journal.json'), 'utf8'));
+  let last = null;
   if (container) {
-    const r = psql(container, cfg.user, cfg.db, 'select count(*) from drizzle.__drizzle_migrations');
-    if (r.code === 0) applied = Number(r.out);
-  }
-  if (applied !== null && applied < files) {
-    warn(
-      `${cfg.db} 有 ${files - applied} 条迁移未应用 —— 需要时手动跑：DATABASE_URL=${dbUrl} pnpm db:migrate`,
+    const r = psql(
+      container,
+      cfg.user,
+      cfg.db,
+      'select coalesce(max(created_at), 0) from drizzle.__drizzle_migrations',
     );
+    if (r.code === 0) last = Number(r.out);
+  }
+  const pending = last === null ? 0 : journal.entries.filter((entry) => entry.when > last).length;
+  if (pending > 0) {
+    warn(`${cfg.db} 有 ${pending} 条迁移未应用 —— 需要时手动跑：DATABASE_URL=${dbUrl} pnpm db:migrate`);
   }
 }
 
@@ -535,13 +543,15 @@ async function cmdUp(argv) {
   state.ports = ports;
   writeState(state);
 
-  // 3. api 先行（web 的 Vite 代理指向它）
+  // 3. api 先行（web 客户端直连它，跨端口要放行 CORS）
   const apiEnv = {
     API_PORT: String(ports.api),
     DATABASE_URL: dbUrl,
     // Account setup/reset links must return to the actual dynamically allocated
     // local web origin, not a stale port copied from .env.
-    ...(ports.web ? { PUBLIC_BASE_URL: `http://localhost:${ports.web}` } : {}),
+    ...(ports.web
+      ? { PUBLIC_BASE_URL: `http://localhost:${ports.web}`, CORS_ALLOWED_ORIGINS: `http://localhost:${ports.web}` }
+      : {}),
     // run-dev is always a local development process.
     NODE_ENV: 'development',
   };
@@ -556,15 +566,16 @@ async function cmdUp(argv) {
   state.account = account;
   writeState(state);
 
-  // 5. web（Vite 的 port 写死在 vite.config.ts，只能命令行覆盖；API_PORT 决定代理目标）
+  // 5. web = 通用客户端的 Expo web（apps/client），直连上面的 api
   if (selected.includes('web')) {
     launch(
       state,
       'web',
-      'pnpm',
-      ['--filter', '@greenhouse/web', 'exec', 'vite', '--port', String(ports.web), '--strictPort'],
-      { API_PORT: String(ports.api) },
+      'npx',
+      ['expo', 'start', '--web', '--port', String(ports.web)],
+      { EXPO_PUBLIC_API_BASE_URL: `http://localhost:${ports.api}`, CI: '1' },
       ports.web,
+      'apps/client',
     );
     if (!(await waitHealthy('web', ports.web))) {
       printSummary(state);
@@ -602,7 +613,7 @@ async function cmdStop(argv) {
         /* 组已消亡 */
       }
     }
-    await sleep(3000); // 给 pnpm/vite 子进程退出的时间
+    await sleep(3000); // 给 pnpm/expo 子进程退出的时间
     for (const [name, svc] of Object.entries(state.services || {})) {
       if (sh('ps', ['-p', String(svc.pid), '-o', 'command=']).out) {
         warn(`${name} 未退，SIGKILL`);

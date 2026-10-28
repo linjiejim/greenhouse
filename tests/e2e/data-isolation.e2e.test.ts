@@ -125,7 +125,7 @@ describe('E2E: Session Data Isolation', () => {
   });
 
   it('session preserves its profile_id', async () => {
-    const sessionId = await createSession('team');
+    const sessionId = await createSession('sprouty');
     // The only other system profile (`desktop`) is hidden, so the override target
     // is a custom Agent the caller owns — a profile they could legitimately pick.
     const agentRes = await fetch(`${BASE_URL}/api/profiles/custom`, {
@@ -164,7 +164,7 @@ describe('E2E: Session Data Isolation', () => {
   });
 
   it('deleting a session removes all its messages', async () => {
-    const sessionId = await createSession('team');
+    const sessionId = await createSession('sprouty');
     await sendMessage(sessionId, 'This is a test message that should be deleted');
 
     // Wait a moment for message to persist
@@ -258,8 +258,8 @@ describe('E2E: Information Disclosure Prevention', () => {
 
 describe('E2E: ID Enumeration Protection', () => {
   it('sessions use prefixed ULID ids (not sequential)', async () => {
-    const session1 = await createSession('team');
-    const session2 = await createSession('team');
+    const session1 = await createSession('sprouty');
+    const session2 = await createSession('sprouty');
 
     // Ids are a type prefix plus a ULID, never sequential integers
     expect(session1).toMatch(/^cnv_[0-9A-HJKMNP-TV-Z]{26}$/);

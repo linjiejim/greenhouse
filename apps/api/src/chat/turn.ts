@@ -12,7 +12,12 @@
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { getDb } from '@greenhouse/db';
-import { withFinalAnswerGuarantee, processStreamPart, buildEngineResult } from '@greenhouse/agent-core';
+import {
+  withFinalAnswerGuarantee,
+  processStreamPart,
+  buildEngineResult,
+  toolResultReferences,
+} from '@greenhouse/agent-core';
 import type {
   ChatEngineResult,
   StreamCollectors,
@@ -21,7 +26,6 @@ import type {
   ProviderAttemptHook,
 } from '@greenhouse/agent-core';
 import type { StreamTextResult, ToolSet } from 'ai';
-import type { ClientActionBridge } from '../tools/client-action-bridge.js';
 import type { AgentProfile } from '../profiles/profile.js';
 import { persistChatResult } from './persist.js';
 import { chatRunRegistry, type ChatRun } from './runs.js';
@@ -103,7 +107,6 @@ export interface ChatTurnArgs {
   userId: string;
   userLocale?: string;
   titlePromise: Promise<string> | null;
-  clientActionBridge: ClientActionBridge | null;
   replaceAssistantMessageId?: string;
   expectedTail?: {
     id: string;
@@ -141,7 +144,6 @@ export async function pumpChatTurn(args: ChatTurnArgs): Promise<void> {
     userId,
     userLocale,
     titlePromise,
-    clientActionBridge,
     replaceAssistantMessageId,
     expectedTail,
     providerAttemptHook,
@@ -169,12 +171,6 @@ export async function pumpChatTurn(args: ChatTurnArgs): Promise<void> {
       .then(() => checkpointChatRuntimeStream(getDb(), runtimeTrace, sequence, snapshot))
       .catch((error) => logger.error('[chat-runtime] stream checkpoint failed', error));
   };
-
-  // Client-action requests are emitted by the bridge from inside a tool's
-  // execute(); routing them through the run reaches every attached client.
-  if (clientActionBridge) {
-    clientActionBridge.setWriter(async (event) => run.emit(event));
-  }
 
   if (run.sessionId) {
     connectionManager.sendToUser(userId, {
@@ -391,24 +387,7 @@ export async function pumpChatTurn(args: ChatTurnArgs): Promise<void> {
                 output: tr.output,
                 recovered_from_sdk_steps: true,
               });
-              if (
-                tr.toolName === 'knowledge_query' &&
-                tr.output &&
-                typeof (tr.output as any).doc_id === 'string' &&
-                typeof (tr.output as any).title === 'string' &&
-                !(tr.output as any).error
-              ) {
-                const out = tr.output;
-                if (out.doc_id) {
-                  engineResult.references.push({
-                    slug: out.doc_id as string,
-                    title: (out.title as string) ?? '',
-                    type: 'kb_doc',
-                    category: (out.folder as string) ?? undefined,
-                    source_id: (out.source_id as string) ?? undefined,
-                  });
-                }
-              }
+              engineResult.references.push(...toolResultReferences(tr.toolName, tr.output));
             }
           }
         }

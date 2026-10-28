@@ -1,0 +1,2 @@
+-- Email and Feishu table ownership moves to plugin migration lanes.
+-- The immutable 3.0 baseline still creates them; adoption never drops or copies data.

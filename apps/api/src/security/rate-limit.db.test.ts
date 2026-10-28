@@ -147,6 +147,12 @@ describe('session reads under /api/auth', () => {
     }
   });
 
+  it('lets every sign-in page load list the identity providers', async () => {
+    const app = new Hono().use('*', rateLimitMiddleware).get('/api/auth/providers', (c) => c.json({ providers: [] }));
+    const sourceIp = `192.0.2.${Math.floor(Math.random() * 200) + 1}`;
+    for (let i = 0; i < 40; i++) expect(await hit(app, '/api/auth/providers', sourceIp)).toBe(200);
+  });
+
   it('keeps the login budget at ten attempts per source, and gives token refresh its own', async () => {
     const app = new Hono()
       .use('*', rateLimitMiddleware)

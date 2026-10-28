@@ -8,15 +8,15 @@ security reports seriously.
 
 ## Supported versions
 
-Security fixes land on the **latest stable release line** (3.x) and on `main`. Only tagged releases are considered stable — the
-`edge` / `main` builds are unstable by design (see the README
-["Releases & stability"](./README.md#releases--stability) and
-[RELEASING.md](./RELEASING.md)).
+Security fixes land on the **latest release line** (4.x) and on `main`. Only tagged releases are
+considered stable; the `edge` / `main` builds are unstable by design (see the README
+["Releases"](./README.md#releases) and [RELEASING.md](./RELEASING.md)). Older lines are not
+patched: upgrade with [docs/upgrading-to-4.0.md](./docs/upgrading-to-4.0.md).
 
 | Version | Supported |
 |---|---|
-| Latest `3.x` tagged release | ✅ |
-| Older tags | ❌ — upgrade to the latest release |
+| Latest `4.x` tagged release | ✅ |
+| `3.x` and older tags | ❌ — upgrade to the latest release |
 | `main` / `:edge` (unreleased tip) | ⚠️ unstable; fine to reproduce & report against |
 
 Please reproduce against the latest release (or `main`) before reporting.
@@ -61,8 +61,10 @@ Please include:
 - **Secret handling** — encryption of stored provider credentials, workspace
   secrets and email passwords (`PROVIDER_TOKEN_ENCRYPTION_KEY`, AES-256-GCM).
 - **Tool execution** — the sandboxed `compute` tool, the per-member cloud computer
-  (E2B), file/upload handling, SSRF in outbound fetch (search, page reads, email),
-  prompt-injection of the agent.
+  (Computer plugin, E2B), file/upload handling, SSRF in outbound fetch (search, page reads,
+  connectors, email), prompt-injection of the agent.
+- **Plugin host** — plugin route guards, data-source row/field policies, the embed token
+  (`/api/ext-ui/token`, scoped to one plugin's API) and the embed bridge's origin checks.
 - **Injection** — path traversal, SQL/FTS injection, XSS in rendered content.
 
 There is an automated e2e security suite (`pnpm test:e2e`, see `tests/e2e`) that

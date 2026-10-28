@@ -63,7 +63,6 @@ import {
   buildProxyManifest,
   executeProxyTool,
   isMutatingProxyTool,
-  canonicalProxyToolId,
   ProxyToolError,
   type ProxyToolManifestEntry,
 } from '../agent-runtime/tool-proxy.js';
@@ -82,14 +81,9 @@ import {
   type ToolOutputCaller,
 } from '../agent-runtime/tool-output-store.js';
 import type { AppEnv } from '../app-env.js';
-import { delegatedAgentActor } from '../platform/actor.js';
+import { delegatedAgentActor } from '../plugin-host/actor.js';
 import { filterMcpToolIdsByPlatform, MCP_PROFILE_ID } from '../agent-runtime/mcp-tool-visibility.js';
-import { dispatchKnowledgeOperation } from '../platform/knowledge/adapter.js';
-import {
-  KNOWLEDGE_RESOURCE_URI_TEMPLATE,
-  listKnowledgeResources,
-  readKnowledgeResource,
-} from '../platform/knowledge/resources.js';
+import { listPluginResources, listPluginResourceTemplates, readPluginResource } from '../plugin-host/mcp-resources.js';
 import { DATA_CATALOG_TOOL, TEAM_CONTEXT_TOOL } from '@greenhouse/types/hub-context';
 import { countUsage } from '../usage/counters.js';
 import {
@@ -125,10 +119,8 @@ const SERVER_INSTRUCTIONS =
   'they agree send the same call again with confirm:true. ' +
   'A result too long for one reply comes back as {"truncated":true,"output_id":…} plus a preview; ' +
   `page through the rest with ${TOOL_OUTPUT_READ_TOOL} only as far as you need. ` +
-  'For reusable output skills (decks, reports, reviews…) use skill_query skills.find ' +
-  'to search and skills.download to install them locally. ' +
   `Call ${TEAM_CONTEXT_TOOL} first in a new task: it returns the team's conventions, glossary, ` +
-  `skills and data sources (also readable as greenhouse://context/* resources and MCP prompts); ` +
+  `prompts and data sources (also readable as greenhouse://context/* resources and MCP prompts); ` +
   `${DATA_CATALOG_TOOL} lists every data source you can query and the tool to use.`;
 
 /** Protocol-level tools: listed for every grant, their content cut to it. */
@@ -136,7 +128,7 @@ const TEAM_CONTEXT_TOOL_DEF = {
   name: TEAM_CONTEXT_TOOL,
   description:
     "Call this first in a new task. Returns the team's context in one reply: what this connection can reach, " +
-    "the team's conventions and glossary (documents an administrator picked), the SkillHub skills and saved " +
+    "the team's conventions and glossary (documents an administrator picked), saved and contributed " +
     'prompts you can use, and a summary of the data sources. Read-only; takes no arguments.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, openWorldHint: false },
@@ -482,9 +474,7 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
         }
         const { view } = written;
         const bounded =
-          written.status === 'executed'
-            ? await boundReplyText(JSON.stringify(view.output), outputCaller, canonicalProxyToolId(name))
-            : null;
+          written.status === 'executed' ? await boundReplyText(JSON.stringify(view.output), outputCaller, name) : null;
         await recordMcpAudit(c, {
           endpoint: 'mcp:tools/call',
           statusCode: written.status === 'executed' ? 200 : written.status === 'failed' ? 422 : 500,
@@ -529,7 +519,7 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
         usageClient: 'mcp',
         metering: meteringScope,
       });
-      const bounded = await boundReplyText(JSON.stringify(output), outputCaller, canonicalProxyToolId(name));
+      const bounded = await boundReplyText(JSON.stringify(output), outputCaller, name);
       await recordMcpAudit(c, {
         endpoint: 'mcp:tools/call',
         statusCode: 200,
@@ -560,100 +550,29 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
     const start = Date.now();
-    const context = await listContextResources(contextCaller());
-    // Knowledge documents only for a grant that reaches the knowledge tools:
-    // resources follow the same resource-group scopes as tools.
-    if (!reachable.has('knowledge_query')) {
-      await recordMcpAudit(c, { endpoint: 'mcp:resources/list', statusCode: 200, durationMs: Date.now() - start });
-      return { resources: context };
-    }
-    const result = await dispatchKnowledgeOperation(
-      actor,
-      'listDocuments',
-      { transport: 'mcp-resource' },
-      async () => ({
-        ok: true,
-        data: {
-          resources: await listKnowledgeResources(getDb(), identity.userId),
-        },
-      }),
-    );
-    await recordMcpAudit(c, {
-      endpoint: 'mcp:resources/list',
-      statusCode: result.ok ? 200 : 403,
-      durationMs: Date.now() - start,
-      error: result.ok ? undefined : result.message,
-    });
-    return { resources: [...context, ...(result.ok ? result.data.resources : [])] };
+    const caller = contextCaller();
+    const resources = [...(await listContextResources(caller)), ...(await listPluginResources(caller))];
+    await recordMcpAudit(c, { endpoint: 'mcp:resources/list', statusCode: 200, durationMs: Date.now() - start });
+    return { resources };
   });
-
-  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
-    if (!reachable.has('knowledge_query')) return { resourceTemplates: [] };
-    const result = await dispatchKnowledgeOperation(
-      actor,
-      'listDocuments',
-      { transport: 'mcp-resource-template' },
-      async () => ({
-        ok: true,
-        data: {
-          resourceTemplates: [
-            {
-              name: 'knowledge-document',
-              title: 'Knowledge document',
-              description: 'A team, personal, or explicitly shared knowledge document.',
-              uriTemplate: KNOWLEDGE_RESOURCE_URI_TEMPLATE,
-              mimeType: 'text/markdown',
-            },
-          ],
-        },
-      }),
-    );
-    return result.ok ? result.data : { resourceTemplates: [] };
-  });
-
+  server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => ({
+    resourceTemplates: await listPluginResourceTemplates(contextCaller()),
+  }));
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
     const start = Date.now();
-    if (isContextResourceUri(req.params.uri)) {
-      const content = await readContextResource(contextCaller(), req.params.uri);
-      await recordMcpAudit(c, {
-        endpoint: 'mcp:resources/read',
-        statusCode: content ? 200 : 404,
-        durationMs: Date.now() - start,
-        meta: { uri: req.params.uri },
-      });
-      if (!content) throw new McpError(ErrorCode.InvalidParams, 'Resource not found');
-      return { contents: [content] };
-    }
-    if (!reachable.has('knowledge_query')) {
-      await recordMcpAudit(c, {
-        endpoint: 'mcp:resources/read',
-        statusCode: 404,
-        durationMs: Date.now() - start,
-        error: 'knowledge not granted',
-        meta: { uri: req.params.uri },
-      });
-      throw new McpError(ErrorCode.InvalidParams, 'Resource not found');
-    }
-    const result = await dispatchKnowledgeOperation(
-      actor,
-      'readDocument',
-      { uri: req.params.uri, transport: 'mcp-resource' },
-      async () => {
-        const content = await readKnowledgeResource(getDb(), identity.userId, req.params.uri);
-        return content
-          ? { ok: true, data: { contents: [content] } }
-          : { ok: false, code: 'NOT_FOUND', message: 'Resource not found' };
-      },
-    );
+    const caller = contextCaller();
+    const contextContent = isContextResourceUri(req.params.uri)
+      ? await readContextResource(caller, req.params.uri)
+      : undefined;
+    const content = contextContent ?? (await readPluginResource(req.params.uri, caller));
     await recordMcpAudit(c, {
       endpoint: 'mcp:resources/read',
-      statusCode: result.ok ? 200 : result.code === 'FORBIDDEN' ? 403 : 404,
+      statusCode: content ? 200 : 404,
       durationMs: Date.now() - start,
-      error: result.ok ? undefined : result.message,
       meta: { uri: req.params.uri },
     });
-    if (!result.ok) throw new McpError(ErrorCode.InvalidParams, 'Resource not found');
-    return result.data;
+    if (!content) throw new McpError(ErrorCode.InvalidParams, 'Resource not found');
+    return { contents: [content] };
   });
 
   // Prompts: SkillHub skills and the member's saved prompts (hub-context/prompts.ts).
@@ -705,7 +624,7 @@ async function handleToolOutputRead(
 export function createMcpRoutes(toolRegistry: ToolRegistry) {
   return (
     new Hono<AppEnv>()
-      // OAuth or legacy API key → current internal-user identity → scoped rate limit.
+      // OAuth access token → current internal-user identity → scoped rate limit.
       .use('*', mcpCredentialMiddleware)
       // Single MCP endpoint. POST carries JSON-RPC; GET/DELETE are handled by the
       // transport per spec (405 in stateless mode).

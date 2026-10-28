@@ -1,12 +1,13 @@
+import { getDb } from '@greenhouse/db';
+import { stationManifest } from '../plugin-host/station-manifest.js';
 /**
  * GET /api/extensions — what this deployment's active extensions contribute.
  *
- * The web client compiles every extension in but renders only the active ones,
- * so it needs the list. One registry additionally has to reach the browser
- * as DATA rather than as code: record-kind routes (so `entityUrl` /
- * `parseEntityUrl` resolve an extension's deeplinks, which is what turns a link
- * in chat into a peek). They are declared once, on the API half, and shipped
- * here — a second hand-written copy in the web half is exactly the drift this
+ * The station manifest (packages/types/src/plugins.ts): clients render plugins
+ * from it as DATA rather than as code — nav, pages, entities and record-kind
+ * routes (so an extension's deeplinks resolve, which is what turns a link in
+ * chat into a peek). They are declared once, on the api half, and shipped
+ * here — a second hand-written copy in a client is exactly the drift this
  * avoids.
  *
  * Authenticated: which extensions a deployment runs is configuration, not
@@ -14,13 +15,28 @@
  */
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env.js';
-import { EXTENSIONS, fromExtensions } from '../extensions/index.js';
+import { GREENHOUSE_CONFIG } from '../config/greenhouse-config.js';
+import { fromExtensions } from '../plugin-host/index.js';
 
-const extensionsRoutes = new Hono<AppEnv>().get('/', (c) =>
-  c.json({
-    extensions: EXTENSIONS.map((ext) => ({ id: ext.id, name: ext.name, description: ext.description ?? null })),
-    entityKinds: fromExtensions('entityKinds'),
-  }),
-);
+const extensionsRoutes = new Hono<AppEnv>().get('/', async (c) => {
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({
+    ...(await stationManifest(getDb(), c.get('user'))),
+    notificationTransports: fromExtensions('notificationTransports').map(
+      ({ id, title, bindingSettings, acceptsWebhook }) => ({
+        id,
+        title,
+        bindingSettings,
+        // An automation's group-bot webhook is offered only when some transport takes one.
+        webhook: typeof acceptsWebhook === 'function',
+      }),
+    ),
+    identityProviders: fromExtensions('identityProviders')
+      .filter((p) => p.available())
+      .map(({ id, title, icon, login, bind }) => ({ id, title, icon, login, bind })),
+    automationTools: fromExtensions('automationTools'),
+    conversations: GREENHOUSE_CONFIG.conversations,
+  });
+});
 
 export default extensionsRoutes;

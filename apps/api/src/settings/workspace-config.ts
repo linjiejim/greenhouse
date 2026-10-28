@@ -1,3 +1,4 @@
+import { workspaceSettingValidators, workspaceSettingValueValidators } from './validation-registry.js';
 /**
  * Workspace config — resolution, env overlay and validation for the
  * `workspace_settings` table (registry: @greenhouse/types/workspace-settings).
@@ -22,7 +23,6 @@
  * PROVIDER_TOKEN_ENCRYPTION_KEY path as provider tokens) and are never returned
  * by the admin read API (has_value/source only).
  */
-
 import {
   allWorkspaceSettings,
   getWorkspaceSettingDef,
@@ -37,38 +37,26 @@ import {
   type WorkspaceFlagView,
   type ThemeTokens,
 } from '@greenhouse/types/workspace-settings';
-import { MAX_CONVENTION_DOCS } from '@greenhouse/types/hub-context';
 import { getDb, isDbInitialized } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { decryptToken } from '../auth/crypto.js';
 import { reloadModelCatalog } from '../config/models.js';
-import {
-  E2B_DOMAIN_PATTERN as COMPUTER_DOMAIN_RE,
-  E2B_TEMPLATE_PATTERN as COMPUTER_TEMPLATE_RE,
-} from '../computer/config.js';
-
 // ─── State ───────────────────────────────────────────────
-
 /** Resolved DB values (secrets decrypted), keyed by registry key. */
 let cache: Map<string, unknown> | null = null;
-
 /** Pre-overlay env values for every registry `env` var (undefined = unset). */
 const envSnapshot = new Map<string, string | undefined>();
-
 function snapshotEnv(envVar: string): void {
   if (!envSnapshot.has(envVar)) envSnapshot.set(envVar, process.env[envVar]);
 }
-
 /** The env var's ORIGINAL (pre-overlay) value — overlay writes make live
  *  process.env reads useless for "is there an env fallback?" questions. */
 function originalEnv(envVar: string): string | undefined {
   snapshotEnv(envVar);
   return envSnapshot.get(envVar);
 }
-
 // ─── DB load / cache ─────────────────────────────────────
-
 async function loadDbValues(): Promise<Map<string, unknown>> {
   const map = new Map<string, unknown>();
   const rows = await getDb().workspaceSettings.list();
@@ -90,18 +78,14 @@ async function loadDbValues(): Promise<Map<string, unknown>> {
   }
   return map;
 }
-
 async function ensureCache(): Promise<Map<string, unknown>> {
   if (!cache) cache = await loadDbValues();
   return cache;
 }
-
 export function invalidateWorkspaceConfigCache(): void {
   cache = null;
 }
-
 // ─── Resolution ──────────────────────────────────────────
-
 /** Effective value: DB → original env → undefined. */
 export async function getWorkspaceValue(key: string): Promise<unknown> {
   const def = getWorkspaceSettingDef(key);
@@ -114,9 +98,7 @@ export async function getWorkspaceValue(key: string): Promise<unknown> {
   }
   return undefined;
 }
-
 const ENV_ON = new Set(['true', '1', 'yes', 'on']);
-
 /**
  * A 'boolean' setting resolved: the stored override (a DB row holding
  * true/false), what it falls back to without one (its env var — on for
@@ -137,14 +119,11 @@ export async function getWorkspaceFlagState(key: string): Promise<WorkspaceFlagS
     source: override !== null ? 'db' : fromEnv !== undefined ? 'env' : 'default',
   };
 }
-
 /** A 'boolean' setting's effective value (see getWorkspaceFlagState). */
 export async function getWorkspaceFlag(key: string): Promise<boolean> {
   return (await getWorkspaceFlagState(key)).effective;
 }
-
 // ─── Env overlay ─────────────────────────────────────────
-
 /**
  * Materialize effective values onto process.env for every env-mapped setting.
  * Safe to call before initDatabase (snapshots only, no overlay).
@@ -153,7 +132,6 @@ export async function applyWorkspaceEnvOverlay(): Promise<void> {
   // Snapshot first so originals survive the overlay writes below.
   for (const def of allWorkspaceSettings()) if (def.env) snapshotEnv(def.env);
   if (!isDbInitialized()) return;
-
   const db = await ensureCache();
   let applied = 0;
   for (const def of allWorkspaceSettings()) {
@@ -171,7 +149,6 @@ export async function applyWorkspaceEnvOverlay(): Promise<void> {
   }
   if (applied > 0) logger.info(`[WorkspaceConfig] ${applied} setting(s) overlaid onto process.env`);
 }
-
 /** Invalidate + re-resolve + re-overlay — call after every settings write. */
 export async function refreshWorkspaceConfig(): Promise<void> {
   invalidateWorkspaceConfigCache();
@@ -180,15 +157,17 @@ export async function refreshWorkspaceConfig(): Promise<void> {
   // changed LLM_* value only takes effect once the catalog is re-read.
   reloadModelCatalog();
 }
-
 // ─── Validation (write path) ─────────────────────────────
-
-export type ValidationResult = { ok: true; value: unknown } | { ok: false; error: string };
-
+export type ValidationResult =
+  | {
+      ok: true;
+      value: unknown;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
 const DATA_URL_RE = /^data:([a-z0-9.+/-]+);base64,[A-Za-z0-9+/=]+$/i;
-/** A knowledge document id (`knowledge_base.doc_id`): no whitespace or slashes (legacy ids may be non-ASCII). */
-const DOC_ID_RE = /^[^\s/]{1,200}$/u;
-
 export function isValidTimeZone(zone: string): boolean {
   try {
     new Intl.DateTimeFormat('en', { timeZone: zone });
@@ -197,24 +176,24 @@ export function isValidTimeZone(zone: string): boolean {
     return false;
   }
 }
-
 /**
  * Validate + canonicalize one value against its registry def. `null` /
  * empty-string are handled by the caller as "clear" and never reach here.
  */
 export function validateWorkspaceValue(def: WorkspaceSettingDef, raw: unknown): ValidationResult {
+  for (const validate of workspaceSettingValueValidators()) {
+    const result = validate(def.key, raw);
+    if (result) return result;
+  }
   const maxLength = def.maxLength ?? 2000;
-
   if (def.type === 'boolean') {
     if (typeof raw !== 'boolean') return { ok: false, error: `${def.key} must be true or false` };
     return { ok: true, value: raw };
   }
-
   if (def.type === 'string' || def.type === 'text') {
     if (typeof raw !== 'string') return { ok: false, error: `${def.key} must be a string` };
     const value = raw.trim();
     if (value.length > maxLength) return { ok: false, error: `${def.key} exceeds ${maxLength} characters` };
-
     if (def.key === 'branding.logo') {
       const match = DATA_URL_RE.exec(value);
       if (!match) return { ok: false, error: 'branding.logo must be a base64 data URL' };
@@ -222,20 +201,12 @@ export function validateWorkspaceValue(def: WorkspaceSettingDef, raw: unknown): 
         return { ok: false, error: `branding.logo mime must be one of: ${LOGO_ALLOWED_MIME.join(', ')}` };
       if (value.length > LOGO_MAX_DATA_URL_LENGTH) return { ok: false, error: 'branding.logo exceeds 256 KB' };
     }
-    if (def.key === 'computer.max_running' && !(/^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 1000)) {
-      return { ok: false, error: 'computer.max_running must be a whole number from 1 to 1000' };
-    }
-    if (def.key === 'computer.domain' && !COMPUTER_DOMAIN_RE.test(value.toLowerCase())) {
-      return { ok: false, error: 'computer.domain must be a domain name such as e2b.app' };
-    }
-    if (def.key === 'computer.template' && !COMPUTER_TEMPLATE_RE.test(value)) {
-      return { ok: false, error: 'computer.template must be a template name or id' };
+    for (const validate of workspaceSettingValidators()) {
+      const error = validate(def.key, value);
+      if (error) return { ok: false, error };
     }
     if (def.key === 'team_context.timezone' && !isValidTimeZone(value)) {
       return { ok: false, error: 'team_context.timezone must be an IANA time zone such as Asia/Shanghai' };
-    }
-    if (def.key === 'team_context.glossary' && !DOC_ID_RE.test(value)) {
-      return { ok: false, error: 'team_context.glossary must be a knowledge document id' };
     }
     if (def.key.endsWith('base_url')) {
       try {
@@ -247,34 +218,19 @@ export function validateWorkspaceValue(def: WorkspaceSettingDef, raw: unknown): 
     }
     return { ok: true, value };
   }
-
   // type === 'json'
   const serialized = JSON.stringify(raw);
   if (!serialized || serialized.length > maxLength)
     return { ok: false, error: `${def.key} exceeds ${maxLength} characters` };
-
   if (def.key === 'branding.theme_tokens') {
     const tokens = sanitizeThemeTokens(raw);
     if (!tokens) return { ok: false, error: 'branding.theme_tokens has no valid token entries' };
     return { ok: true, value: tokens };
   }
-  if (def.key === 'team_context.conventions') {
-    const ids = Array.isArray(raw) ? raw : null;
-    if (!ids || ids.some((id) => typeof id !== 'string' || !DOC_ID_RE.test(id.trim()))) {
-      return { ok: false, error: 'team_context.conventions must be a list of knowledge document ids' };
-    }
-    const unique = [...new Set(ids.map((id) => (id as string).trim()))];
-    if (unique.length > MAX_CONVENTION_DOCS) {
-      return { ok: false, error: `team_context.conventions takes at most ${MAX_CONVENTION_DOCS} documents` };
-    }
-    return { ok: true, value: unique };
-  }
   if (!raw || typeof raw !== 'object') return { ok: false, error: `${def.key} must be a JSON object` };
   return { ok: true, value: raw };
 }
-
 // ─── Views (admin read) ──────────────────────────────────
-
 export async function getWorkspaceSettingViews(): Promise<WorkspaceSettingView[]> {
   const db = await ensureCache();
   const views = allWorkspaceSettings().map((def) => {
@@ -304,9 +260,7 @@ export async function getWorkspaceSettingViews(): Promise<WorkspaceSettingView[]
   }
   return views;
 }
-
 // ─── Bootstrap payload (public, pre-login) ───────────────
-
 /** Non-sensitive personalization for GET /api/bootstrap. Fails open to
  *  defaults — the login page must render even if the DB is unreachable. */
 export async function getWorkspaceBootstrap(): Promise<WorkspaceBootstrap> {

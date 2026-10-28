@@ -1,8 +1,8 @@
 /**
  * Migration lane for extensions.
  *
- * Core DDL stays in `drizzle/*.sql` (applied by `drizzle-kit migrate` before the
- * API starts). An extension ships its own ordered `*.sql` files instead of
+ * Core DDL stays in `packages/db/migrations` (applied by `pnpm db:migrate` before
+ * the API starts). An extension ships its own ordered `*.sql` files instead of
  * editing the core chain; this runner applies the pending ones at boot, tracked
  * in `extension_migrations` (one row per extension + file, with a checksum so a
  * file edited after it was applied fails fast instead of silently diverging).
@@ -14,13 +14,13 @@
  *
  * Core generation marker. A file whose header carries
  * `-- greenhouse:core-generation 1x` was written against the 1.x core tables
- * (it alters or reads a 1.x table). 3.0 never executes such a file:
+ * (it alters or reads a 1.x table). 3.0 and later never execute such a file:
  *  - on a database that was never carried from 1.x it is recorded as satisfied
  *    and reported as skipped;
  *  - on a carried database whose copied bookkeeping has the row, nothing happens;
  *  - on a carried database where the extension ran on 1.x but this row is
- *    missing, 1.x never applied the file, so the lane refuses: run it on 1.x and
- *    carry again.
+ *    missing, 1.x never applied the file, so the lane refuses (the only fix is
+ *    running it on 1.x and carrying again with 3.0.2).
  * The marker line is not part of the checksum, so marking a file that is
  * already applied does not count as editing it.
  *
@@ -123,6 +123,26 @@ export function readMigrationFiles(dir: string): MigrationFile[] {
     .map((name) => parseMigrationFile(name, readFileSync(join(dir, name), 'utf8')));
 }
 
+/** Net tables owned by current-generation files plus explicitly registered test/reset tables. */
+export function extensionMigrationTables(
+  source: ExtensionMigrationSource,
+  resetTables: readonly string[] = [],
+): string[] {
+  const tables = new Set(resetTables);
+  for (const file of readMigrationFiles(source.dir)) {
+    if (file.generation) continue;
+    for (const table of file.createsTables) tables.add(table);
+    for (const table of file.dropsTables) tables.delete(table);
+  }
+  const core = coreTableNames();
+  for (const table of tables) {
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table) || core.has(table)) {
+      throw new Error(`Refusing to drop protected or invalid table "${table}" for plugin "${source.extensionId}"`);
+    }
+  }
+  return [...tables].sort();
+}
+
 const checksumMatches = (file: MigrationFile, recorded: string) =>
   recorded === file.checksum || recorded === file.rawChecksum;
 
@@ -155,7 +175,7 @@ function missing1xError(extensionId: string, names: string[]): Error {
   return new Error(
     `Extension migration(s) ${names.map((n) => `${extensionId}/${n}`).join(', ')} target the 1.x core ` +
       '(-- greenhouse:core-generation 1x) and were never applied on the 1.x database this one was carried from. ' +
-      '3.0 does not run 1.x migrations: apply them on the 1.x database, then run migrate-from-1x again.',
+      'Greenhouse never runs 1.x migrations: apply them on the 1.x database, then run 3.0.2’s migrate-from-1x again.',
   );
 }
 
@@ -185,6 +205,42 @@ export function createExtensionMigrationRunner(db: Db) {
   }
 
   return {
+    /** Serialize first installation across API replicas. Retry a failed hook without marking it installed. */
+    async installOnce(extensionId: string, install: () => Promise<void>): Promise<boolean> {
+      await ensureTable();
+      return db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`);
+        const rows = await tx.execute(
+          sql`SELECT 1 FROM extension_migrations WHERE extension_id = ${extensionId} AND name = '@onInstall'`,
+        );
+        if (rows.length) return false;
+        await install();
+        await tx.execute(
+          sql`INSERT INTO extension_migrations (extension_id, name, checksum) VALUES (${extensionId}, '@onInstall', 'sdk2-install-v1')`,
+        );
+        return true;
+      });
+    },
+    /** Operator-only uninstall. The host checks disabled state and confirmation before calling. */
+    async drop(source: ExtensionMigrationSource, resetTables: readonly string[] = []): Promise<string[]> {
+      const tables = extensionMigrationTables(source, resetTables);
+      await ensureTable();
+      return db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`);
+        // A single RESTRICT statement permits dependencies within this plugin, but
+        // refuses dependencies from any other table. Never cascade into another lane.
+        if (tables.length) {
+          await tx.execute(
+            sql`DROP TABLE IF EXISTS ${sql.join(
+              tables.map((table) => sql`public.${sql.identifier(table)}`),
+              sql`, `,
+            )} RESTRICT`,
+          );
+        }
+        await tx.execute(sql`DELETE FROM extension_migrations WHERE extension_id = ${source.extensionId}`);
+        return tables;
+      });
+    },
     /** What is applied / pending / drifted per source, without changing anything. */
     async status(sources: readonly ExtensionMigrationSource[]): Promise<ExtensionMigrationStatus[]> {
       await ensureTable();

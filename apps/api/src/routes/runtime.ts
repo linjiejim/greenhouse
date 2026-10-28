@@ -1,3 +1,4 @@
+import { isRegisteredDiscriminator } from '@greenhouse/types/discriminators';
 /**
  * Runtime 统一执行读模型 — /api/runtime
  *
@@ -17,7 +18,6 @@ import {
   projectRuntimeForUser,
   RUNTIME_INTERRUPT_STATUSES,
   RUNTIME_RUN_COMMAND_TYPES,
-  RUNTIME_RUN_KINDS,
   type RuntimeInterruptStatus,
   type RuntimeRunCommand,
   type RuntimeRunCommandType,
@@ -96,7 +96,7 @@ function requestedKinds(raw: string | undefined, isSuper: boolean): RuntimeRunKi
         .filter(Boolean),
     ),
   ];
-  if (values.length === 0 || values.some((value) => !(RUNTIME_RUN_KINDS as readonly string[]).includes(value))) {
+  if (values.length === 0 || values.some((value) => !isRegisteredDiscriminator('runKinds', value))) {
     throw new Error('kinds contains an unknown Runtime kind');
   }
   if (!isSuper && values.some((value) => !(DEFAULT_TASK_KINDS as readonly string[]).includes(value))) {

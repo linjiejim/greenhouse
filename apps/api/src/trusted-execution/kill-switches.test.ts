@@ -17,7 +17,6 @@ describe('trusted-execution kill switches', () => {
       runtimeWorker: true,
       automationDriver: true,
       notificationProjector: true,
-      taskCenter: true,
       approvalInbox: true,
       invalidEnv: [],
     });
@@ -30,17 +29,15 @@ describe('trusted-execution kill switches', () => {
       RUNTIME_WORKER_ENABLED: 'FALSE',
       RUNTIME_AUTOMATION_DRIVER_ENABLED: 'no',
       RUNTIME_NOTIFICATION_PROJECTOR_ENABLED: 'bad-value',
-      TASK_CENTER_ENABLED: 'tru',
-      RUNTIME_APPROVAL_INBOX_ENABLED: '1',
+      RUNTIME_APPROVAL_INBOX_ENABLED: 'tru',
     });
     expect(switches).toMatchObject({
       chatAdapter: true,
       runtimeWorker: false,
       automationDriver: false,
       notificationProjector: false,
-      taskCenter: false,
-      approvalInbox: true,
-      invalidEnv: ['RUNTIME_NOTIFICATION_PROJECTOR_ENABLED', 'TASK_CENTER_ENABLED'],
+      approvalInbox: false,
+      invalidEnv: ['RUNTIME_NOTIFICATION_PROJECTOR_ENABLED', 'RUNTIME_APPROVAL_INBOX_ENABLED'],
     });
   });
 
@@ -50,15 +47,13 @@ describe('trusted-execution kill switches', () => {
       RUNTIME_WORKER_ENABLED: '0',
       RUNTIME_AUTOMATION_DRIVER_ENABLED: '1',
       RUNTIME_NOTIFICATION_PROJECTOR_ENABLED: '1',
-      TASK_CENTER_ENABLED: '0',
-      RUNTIME_APPROVAL_INBOX_ENABLED: '1',
+      RUNTIME_APPROVAL_INBOX_ENABLED: '0',
     });
     expect(trustedExecutionBootPlan(switches)).toEqual({
       runtimeWorker: false,
       chatAdapter: false,
       automationDriver: false,
       notificationProjector: false,
-      taskCenter: false,
       approvalInbox: false,
     });
     expect(trustedExecutionHealthView(switches)).toEqual({
@@ -69,30 +64,30 @@ describe('trusted-execution kill switches', () => {
         notification_projector: false,
         notification_delivery: false,
       },
-      surfaces: { task_center: false, approval_inbox: false },
+      surfaces: { approval_inbox: false },
       invalid_env: [],
     });
   });
 
   it('returns a stable 503 when a killed surface is requested', async () => {
     const app = new Hono<AppEnv>()
-      .use('/tasks/*', requireTrustedExecutionSurface(false, 'task-center'))
-      .get('/tasks/list', (c) => c.json({ ok: true }));
+      .use('/interrupts/*', requireTrustedExecutionSurface(false, 'approval-inbox'))
+      .get('/interrupts/list', (c) => c.json({ ok: true }));
 
-    const response = await app.request('/tasks/list');
+    const response = await app.request('/interrupts/list');
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({
-      error: 'Run details are unavailable in this environment',
-      code: 'task_center_disabled',
+      error: 'Approval Inbox is unavailable in this environment',
+      code: 'approval_inbox_disabled',
     });
   });
 
   it('passes through when the surface is enabled', async () => {
     const app = new Hono<AppEnv>()
-      .use('/tasks/*', requireTrustedExecutionSurface(true, 'task-center'))
-      .get('/tasks/list', (c) => c.json({ ok: true }));
+      .use('/interrupts/*', requireTrustedExecutionSurface(true, 'approval-inbox'))
+      .get('/interrupts/list', (c) => c.json({ ok: true }));
 
-    const response = await app.request('/tasks/list');
+    const response = await app.request('/interrupts/list');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true });
   });

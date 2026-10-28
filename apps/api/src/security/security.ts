@@ -1,3 +1,4 @@
+import { extensionRateLimit } from './extension-rate-limits.js';
 /**
  * Security middleware — rate limiting, security headers, input validation.
  *
@@ -77,14 +78,14 @@ export function _resetRateLimitWarnings(): void {
 // ─── CORS ────────────────────────────────────────────────
 
 const DEFAULT_CORS_ORIGINS = [
+  'tauri://localhost',
   // Production web app / backend origin
   'https://greenhouse.example.com',
   // Local dev
   'http://localhost:3000',
   'http://127.0.0.1:3000',
-  // Vite dev server. A browser at :3100 normally reaches the API through Vite's
-  // proxy (same-origin); a build with GREENHOUSE_API_BASE_URL pointed elsewhere
-  // makes those calls genuinely cross-origin.
+  // `pnpm dev`: the client's Expo web dev server (WEB_PORT, default 3100) calls
+  // the API cross-origin (EXPO_PUBLIC_API_BASE_URL).
   'http://localhost:3100',
   'http://127.0.0.1:3100',
   // Expo Web mobile client uses a fixed dev port. Keep both loopback spellings
@@ -99,6 +100,23 @@ function getAllowedCorsOrigins(): Set<string> {
     .map((origin) => origin.trim())
     .filter(Boolean);
   return new Set([...DEFAULT_CORS_ORIGINS, ...fromEnv]);
+}
+
+// A CSP source must be one token: a value with whitespace, `;`, `,` or quotes
+// would end or widen the directive, so it is left out.
+const CSP_ORIGIN = /^[a-z][a-z0-9+.-]*:\/\/[^\s;,'"]+$/i;
+
+/**
+ * Who may frame a host-mounted plugin UI: the API itself and the desktop shell.
+ * Outside production the CORS allowed origins may too, so the client's Expo web
+ * dev server (another port) can frame plugin pages; production never widens.
+ */
+export function pluginUiFrameAncestors(): string {
+  const ancestors = new Set(["'self'", 'tauri://localhost']);
+  if (process.env.NODE_ENV !== 'production') {
+    for (const origin of getAllowedCorsOrigins()) if (CSP_ORIGIN.test(origin)) ancestors.add(origin);
+  }
+  return [...ancestors].join(' ');
 }
 
 function isAllowedCorsOrigin(origin: string): boolean {
@@ -148,6 +166,9 @@ const RATE_LIMITS: Record<string, RateLimitConfig> = {
   // Token refresh presents a long random secret, not a guessable password: every tab refreshes
   // on its own schedule, and a whole office may share one source IP.
   '/api/auth/refresh': { windowMs: 5 * 60_000, max: 60 },
+  // The sign-in page lists identity providers on every load; it mints no state, and an office
+  // behind one source IP must not lose its SSO buttons after ten page loads.
+  '/api/auth/providers': { windowMs: 60_000, max: 120 },
   '/api/auth': { windowMs: 5 * 60_000, max: 10 }, // 10 attempts per 5 min
   // Run control (probe/list/attach/stop) is cheap registry access, not LLM
   // spend — auto-resume retries and multi-tab attaches must not eat the chat
@@ -157,9 +178,6 @@ const RATE_LIMITS: Record<string, RateLimitConfig> = {
   '/oauth/register': { windowMs: 60 * 60_000, max: 10 }, // bound anonymous dynamic client registration
   '/oauth/token': { windowMs: 60_000, max: 60 }, // bound anonymous code/refresh credential attempts
   '/oauth/revoke': { windowMs: 60_000, max: 60 }, // bound anonymous revocation probing
-  // Publishing is now a user-facing action (SkillHub Upload), and every call
-  // writes an object to the skill store — bound it per user/IP.
-  '/api/skills/publish': { windowMs: 60_000, max: 10 },
   // One write per page view; a generous ceiling keeps a looping client from
   // turning the counter table into a write hotspot.
   '/api/usage': { windowMs: 60_000, max: 240 },
@@ -173,7 +191,6 @@ const RATE_LIMITS: Record<string, RateLimitConfig> = {
 const INTERNAL_RATE_LIMITS: Record<string, RateLimitConfig> = {
   '/api/chat/runs': { windowMs: 60_000, max: 120 }, // run control for internal users
   '/api/chat': { windowMs: 60_000, max: 30 }, // 30 messages per min for internal users
-  '/api/skills/publish': { windowMs: 60_000, max: 20 }, // bulk skill sync runs are legitimate
 };
 
 /**
@@ -185,6 +202,8 @@ const INTERNAL_RATE_LIMITS: Record<string, RateLimitConfig> = {
 const UNTHROTTLED_PREFIXES = ['/api/auth/me'] as const;
 
 function matchRateLimit(path: string): RateLimitConfig | null {
+  const contributed = extensionRateLimit(path);
+  if (contributed) return contributed;
   if (UNTHROTTLED_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix + '/'))) return null;
   for (const [prefix, config] of Object.entries(RATE_LIMITS)) {
     if (path === prefix || path.startsWith(prefix + '/')) {
@@ -195,6 +214,8 @@ function matchRateLimit(path: string): RateLimitConfig | null {
 }
 
 function matchInternalRateLimit(path: string): RateLimitConfig | null {
+  const contributed = extensionRateLimit(path, true);
+  if (contributed) return contributed;
   for (const [prefix, config] of Object.entries(INTERNAL_RATE_LIMITS)) {
     if (path === prefix || path.startsWith(prefix + '/')) {
       return config;
@@ -252,24 +273,27 @@ export async function securityHeadersMiddleware(c: Context, next: Next) {
   await next();
 
   c.header('X-Content-Type-Options', 'nosniff');
-  c.header('X-Frame-Options', 'DENY');
+  const pluginUi = c.get('extensionUi') === true;
+  if (!pluginUi) c.header('X-Frame-Options', 'DENY');
   c.header('X-XSS-Protection', '1; mode=block');
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
   c.header(
     'Content-Security-Policy',
-    [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "worker-src 'self' blob:",
-      "style-src 'self' 'unsafe-inline'",
-      "font-src 'self' data:",
-      "img-src 'self' data: blob: https://unpkg.com https://*.myqcloud.com https://ui-avatars.com",
-      "media-src 'self' https://*.myqcloud.com",
-      "frame-src 'self' https://*.myqcloud.com",
-      // COS: authed file endpoints (chat files, Drive) 302 to a presigned object
-      // URL, and fetch()-based downloads follow that redirect from the page.
-      "connect-src 'self' https://unpkg.com https://*.myqcloud.com",
-    ].join('; '),
+    pluginUi
+      ? `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors ${pluginUiFrameAncestors()}`
+      : [
+          "default-src 'self'",
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+          "worker-src 'self' blob:",
+          "style-src 'self' 'unsafe-inline'",
+          "font-src 'self' data:",
+          "img-src 'self' data: blob: https://unpkg.com https://*.myqcloud.com https://ui-avatars.com",
+          "media-src 'self' https://*.myqcloud.com",
+          "frame-src 'self' https://*.myqcloud.com",
+          // COS: authed file endpoints (chat files, Drive) 302 to a presigned object
+          // URL, and fetch()-based downloads follow that redirect from the page.
+          "connect-src 'self' https://unpkg.com https://*.myqcloud.com",
+        ].join('; '),
   );
 
   // Only add HSTS if we detect we're behind HTTPS

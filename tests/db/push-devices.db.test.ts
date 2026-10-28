@@ -7,16 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  _resetProvider,
-  initDatabase,
-  isDeliverable,
-  MAX_ACTIVE_PUSH_DEVICES,
-  PUSH_DEVICE_STALE_MS,
-  pushDevicePrefs,
-  type DatabaseProvider,
-  type UserRow,
-} from '@greenhouse/db';
+import { _resetProvider, initDatabase, isDeliverable, MAX_ACTIVE_PUSH_DEVICES, PUSH_DEVICE_STALE_MS, pushDevicePrefs, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
 import { DEFAULT_PUSH_PREFS } from '@greenhouse/types/push';
 

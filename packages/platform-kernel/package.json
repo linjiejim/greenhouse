@@ -1,6 +1,6 @@
 {
   "name": "@greenhouse/platform-kernel",
-  "version": "0.1.0",
+  "version": "4.0.0-rc.1",
   "private": true,
   "type": "module",
   "exports": {

@@ -6,14 +6,14 @@
 # fonts, images) do NOT need a rebuild.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TMP="$ROOT/apps/web/.landing-tw.css"
+TMP="$ROOT/.landing-tw.css"
 cleanup() { rm -f "$TMP"; }
 trap cleanup EXIT
 
-# The @import must resolve tailwindcss from apps/web/node_modules (pnpm layout).
+# The @import resolves tailwindcss from the root node_modules (a root devDependency).
 cat > "$TMP" <<'CSS'
 @import "tailwindcss" source(none);
-@source "../../docs/index.html";
+@source "./docs/index.html";
 @theme {
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -26,5 +26,5 @@ cat > "$TMP" <<'CSS'
 }
 CSS
 
-( cd "$ROOT/apps/web" && npx @tailwindcss/cli@^4 -i .landing-tw.css -o "$ROOT/docs/tailwind.css" --minify )
+( cd "$ROOT" && npx @tailwindcss/cli@^4 -i .landing-tw.css -o "$ROOT/docs/tailwind.css" --minify )
 echo "✓ built docs/tailwind.css"

@@ -1,3 +1,6 @@
+import { registerDriveFolderContents } from '@greenhouse/db';
+import { registerDrivePlacements } from '@greenhouse/types/discriminators';
+import { registerDiscriminators } from '@greenhouse/types/discriminators';
 /**
  * Drive access resolution — single source of truth for who can do what to a drive
  * node (folder or file), shared by every /api/drive route + tool so the paths can
@@ -7,7 +10,6 @@
  * - kb scope   → team nodes (visibility='team') are collaborative (every internal
  *   user reads + writes); private nodes are owner-only. Granular folder sharing is
  *   intentionally deferred — until it ships, a non-owner gets nothing.
- * - tables scope → mirrors Base role: owner, builder/editor, viewer, or denied.
  * - an extension scope → whatever resolver the extension registered, which is
  *   async because such a rule usually has to read something (a feature flag, a
  *   record's entity policy). Core never guesses: an unregistered scope is denied.
@@ -39,7 +41,17 @@ export interface DriveScopeContext {
 export interface DriveScopeDef {
   /** Stored in `folders.scope` / `files.scope`; namespace it with your id. */
   scope: string;
+  /** Reuse a legacy team/personal cabinet for Files while this scope is enabled. */
+  cabinet?: boolean;
   /** `owner_key` is whatever the extension put there; return null to deny. */
+  validatePlacement?: (input: import('@greenhouse/types/discriminators').DrivePlacementInput) => boolean;
+  placement?: (
+    input: { base_id?: string | null; visibility?: 'team' | 'private'; owner_key?: string | null },
+    userId: string,
+  ) => DrivePlacement | { error: string };
+  hasFolderContents?: (db: import('@greenhouse/db').Db, folderId: string) => Promise<boolean>;
+  authorizeSync?: (node: DriveAccessNode, userId: string) => DriveAccess;
+  authorizeNode?: (node: DriveAccessNode, ctx: DriveScopeContext) => Promise<DriveAccess>;
   authorize: (ownerKey: string | null, ctx: DriveScopeContext) => Promise<DriveAccess>;
 }
 
@@ -47,14 +59,18 @@ const extensionScopes = new Map<string, DriveScopeDef>();
 
 export function registerDriveScopes(defs: readonly DriveScopeDef[]): void {
   for (const def of defs) {
-    if (def.scope === 'kb' || def.scope === 'tables') throw new Error(`Drive scope "${def.scope}" is owned by core`);
     if (extensionScopes.has(def.scope)) throw new Error(`Drive scope "${def.scope}" is already registered`);
+    if (def.cabinet && [...extensionScopes.values()].some((scope) => scope.cabinet))
+      throw new Error('Only one plugin file cabinet may be selected');
     extensionScopes.set(def.scope, def);
+    if (def.hasFolderContents) registerDriveFolderContents(def.scope, def.hasFolderContents);
+    registerDiscriminators({ folderScopes: [def.scope] });
+    if (def.validatePlacement) registerDrivePlacements([{ scope: def.scope, validate: def.validatePlacement }]);
   }
 }
 
 export function isKnownDriveScope(scope: string): boolean {
-  return scope === 'kb' || scope === 'tables' || extensionScopes.has(scope);
+  return scope === 'drive' || extensionScopes.has(scope);
 }
 
 export function extensionDriveScopes(): readonly DriveScopeDef[] {
@@ -70,36 +86,16 @@ export function _resetExtensionDriveScopes(): void {
  * Authorize a node in any scope. Core's two resolve synchronously through
  * {@link resolveDriveAccess}; an extension scope goes to its own resolver.
  */
-export async function resolveDriveAccessAsync(
-  node: DriveAccessNode,
-  ctx: DriveScopeContext & { tablesRole?: 'owner' | 'builder' | 'editor' | 'viewer' | null },
-): Promise<DriveAccess> {
+export async function resolveDriveAccessAsync(node: DriveAccessNode, ctx: DriveScopeContext): Promise<DriveAccess> {
   const def = extensionScopes.get(node.scope);
-  if (def) return def.authorize(node.owner_key ?? null, ctx);
-  return resolveDriveAccess(node, ctx.userId, { tablesRole: ctx.tablesRole });
+  if (def) return def.authorizeNode ? def.authorizeNode(node, ctx) : def.authorize(node.owner_key ?? null, ctx);
+  return resolveDriveAccess(node, ctx.userId, {});
 }
 
-export function resolveDriveAccess(
-  node: DriveAccessNode,
-  userId: string,
-  ctx: {
-    tablesRole?: 'owner' | 'builder' | 'editor' | 'viewer' | null;
-  },
-): DriveAccess {
-  if (node.scope === 'tables') {
-    if (ctx.tablesRole === 'owner') return 'owner';
-    if (ctx.tablesRole === 'builder' || ctx.tablesRole === 'editor') return 'editor';
-    return ctx.tablesRole === 'viewer' ? 'reader' : null;
-  }
-
-  // An extension scope never resolves here — `resolveDriveAccessAsync` routes it
-  // to the owning extension first, so reaching this point means "unknown scope".
-  if (node.scope !== 'kb') return null;
-
-  // kb scope
-  if (node.owner_user_id === userId) return 'owner';
-  if (node.visibility === 'team') return 'editor';
-  return null; // private node owned by someone else (no folder sharing yet)
+export function resolveDriveAccess(node: DriveAccessNode, userId: string, _ctx: object): DriveAccess {
+  if (node.scope === 'drive')
+    return node.owner_user_id === userId ? 'owner' : node.visibility === 'team' ? 'editor' : null;
+  return extensionScopes.get(node.scope)?.authorizeSync?.(node, userId) ?? null;
 }
 
 /** Read (list / download). */
@@ -124,4 +120,33 @@ export function sameDriveCabinet(
     (a.base_id ?? null) === (b.base_id ?? null) &&
     (a.owner_key ?? null) === (b.owner_key ?? null)
   );
+}
+
+export interface DrivePlacement {
+  base_id: string | null;
+  visibility: 'team' | 'private' | null;
+  owner_user_id: string | null;
+  owner_key: string | null;
+}
+export function extensionDrivePlacement(
+  scope: string,
+  input: { base_id?: string | null; visibility?: 'team' | 'private'; owner_key?: string | null },
+  userId: string,
+): DrivePlacement | { error: string } {
+  if (scope === 'drive')
+    return {
+      base_id: null,
+      owner_key: null,
+      visibility: input.visibility ?? 'team',
+      owner_user_id: input.visibility === 'private' ? userId : null,
+    };
+  const def = extensionScopes.get(scope);
+  if (!def) return { error: 'unknown scope' };
+  if (def.placement) return def.placement(input, userId);
+  if (!input.owner_key) return { error: `owner_key is required for the ${scope} scope` };
+  return { base_id: null, visibility: null, owner_user_id: null, owner_key: input.owner_key };
+}
+
+export function cabinetDriveScope(): string {
+  return [...extensionScopes.values()].find((scope) => scope.cabinet)?.scope ?? 'drive';
 }

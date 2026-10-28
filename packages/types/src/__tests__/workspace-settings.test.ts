@@ -41,28 +41,28 @@ describe('sanitizeThemeTokens', () => {
       fontSans: "'Inter', ui-sans-serif, system-ui, sans-serif",
       fontScale: 1.05,
       radiusScale: 0.5,
-      light: { '--t-surface': '#ffffff' },
-      dark: { '--t-surface': '#111827' },
+      light: { '--gh-background': '#ffffff' },
+      dark: { '--gh-background': '#111827' },
     });
     expect(tokens).toEqual({
       brand: '#14b8a6',
       fontSans: "'Inter', ui-sans-serif, system-ui, sans-serif",
       fontScale: 1.05,
       radiusScale: 0.5,
-      light: { '--t-surface': '#ffffff' },
-      dark: { '--t-surface': '#111827' },
+      light: { '--gh-background': '#ffffff' },
+      dark: { '--gh-background': '#111827' },
     });
   });
 
   it('drops CSS-injection attempts in var names and values', () => {
     const tokens = sanitizeThemeTokens({
       light: {
-        '--t-surface': '#fff; } body { display:none', // value tries to escape
+        '--gh-background': '#fff; } body { display:none', // value tries to escape
         'not-a-var': '#fff',
-        '--t-ok': '#123456',
+        '--gh-ok': '#123456',
       },
     });
-    expect(tokens).toEqual({ light: { '--t-ok': '#123456' } });
+    expect(tokens).toEqual({ light: { '--gh-ok': '#123456' } });
   });
 
   it('rejects font stacks with declaration-breaking characters', () => {

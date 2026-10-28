@@ -73,3 +73,10 @@ describe('validateListParams', () => {
     if (r.ok) expect(r.params.filter![0].value).toEqual([false]);
   });
 });
+
+it('rejects invalid typed/scalar operands before querying and parses exists as a boolean', () => {
+  expect(validateListParams({ filter: [{ key: 'priority', method: 'eq', value: ['oops'] }] }, contract).ok).toBe(false);
+  expect(validateListParams({ filter: [{ key: 'status', method: 'eq', value: [{}] }] }, contract).ok).toBe(false);
+  const result = validateListParams({ filter: [{ key: 'priority', method: 'exists', value: ['false'] }] }, contract);
+  expect(result.ok && result.params.filter?.[0].value).toEqual([false]);
+});

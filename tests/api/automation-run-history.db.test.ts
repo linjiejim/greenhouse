@@ -24,7 +24,7 @@ let owner: UserRow;
 let task: ScheduledTaskRow;
 
 async function taskSession(taskId: string, title: string): Promise<string> {
-  const session = await db.sessions.create(title, 'team', owner.id, undefined, 'task', {
+  const session = await db.sessions.create(title, 'sprouty', owner.id, undefined, 'task', {
     metadata: { task_id: taskId, task_name: title },
   });
   return session.id;
@@ -37,7 +37,7 @@ describe('automation run history', () => {
     task = await db.scheduledTasks.create({
       user_id: owner.id,
       name: 'History fixture',
-      profile_id: 'team',
+      profile_id: 'sprouty',
       task_prompt: 'Summarise the day for the history fixture.',
       schedule: '0 9 * * *',
       timezone: 'UTC',
@@ -90,7 +90,7 @@ describe('automation run history', () => {
     const other = await db.scheduledTasks.create({
       user_id: owner.id,
       name: 'Other fixture',
-      profile_id: 'team',
+      profile_id: 'sprouty',
       task_prompt: 'A different automation entirely.',
       schedule: '0 10 * * *',
       timezone: 'UTC',

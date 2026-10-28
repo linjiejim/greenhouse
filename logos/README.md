@@ -13,11 +13,11 @@ space suggests an agent growing inside a shared workspace.
 
 - `greenhouse-mark.svg` / `.png`: the standalone mark (canonical geometry).
 - `greenhouse-logo.svg` / `.png`: mark and outlined Nunito wordmark.
-- `greenhouse-app-icon.svg` / `.png`: the rounded app tile (also `apps/web/public/favicon.svg`).
+- `greenhouse-app-icon.svg` / `.png`: the rounded app tile (also `apps/client/public/favicon.svg`).
 - `greenhouse-mobile-icon.svg`: the opaque square iOS icon; `greenhouse-adaptive-icon.svg`: the
   inset Android foreground; `greenhouse-template.svg`: the monochrome template.
 
-These files, `apps/mobile/assets/icon.png` / `adaptive-icon.png`, `apps/mobile/src/ui/brand.generated.ts`
-and the web icons are exports of `scripts/build-brand-assets.py` on `main` (geometry source:
-`packages/ui/src/assets/greenhouse-mark.svg` there). Copy them over from `main`; never redraw an
-exported logo by hand. Changing the app icon needs a new native build, not only an OTA update.
+These files, `apps/client/assets/icon.png` / `adaptive-icon.png`, `apps/client/src/ui/brand.generated.ts`
+and the site icons in `apps/client/public/` are exports of one geometry (`greenhouse-mark.svg`); the
+export script is not part of this repository. Replace them together; never redraw an exported logo
+by hand. Changing the app icon needs a new native build, not only an OTA update.

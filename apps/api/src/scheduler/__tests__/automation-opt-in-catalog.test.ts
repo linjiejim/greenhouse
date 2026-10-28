@@ -63,8 +63,8 @@ describe('automation opt-in catalog', () => {
 
 describe('normalizeAutomationOptInTools', () => {
   it('drops unknown ids, duplicates and non-strings', () => {
-    expect(normalizeAutomationOptInTools(['tables_mutation', 'tables_mutation', 'email_mutation', 7, null])).toEqual([
-      'tables_mutation',
+    expect(normalizeAutomationOptInTools(['generate_image', 'generate_image', 'email_mutation', 7, null])).toEqual([
+      'generate_image',
     ]);
   });
 

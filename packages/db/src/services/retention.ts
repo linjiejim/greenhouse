@@ -5,9 +5,9 @@
  *                            the event's outbox rows is still waiting to deliver
  *   run_outbox               7 days after delivery
  *   request_log              30 days
- *   feishu_receipts          7 days
  *   budget_ledger            13 months
  *   notification_deliveries  7 days after reaching a terminal state
+ *   client_reports           90 days, and never more than the newest 10,000
  *   expired credentials      refresh tokens, OAuth codes / tokens, login states,
  *                            rate-limit buckets, password links (30 days past expiry)
  *
@@ -17,25 +17,27 @@
  */
 
 import { sql, type SQL } from 'drizzle-orm';
+import { extensionRetentionRules } from '../extensions.js';
 import type { Db } from '../client.js';
 
 export const RETENTION_POLICY = {
   runEventsDays: 30,
   deliveredOutboxDays: 7,
   requestLogDays: 30,
-  feishuReceiptDays: 7,
   ledgerMonths: 13,
   deliveriesDays: 7,
   expiredPasswordLinkDays: 30,
+  clientReportDays: 90,
+  clientReportMaxRows: 10_000,
 } as const;
 
 export type RetentionTarget =
   | 'run_events'
   | 'run_outbox'
   | 'request_log'
-  | 'feishu_receipts'
   | 'budget_ledger'
   | 'notification_deliveries'
+  | 'client_reports'
   | 'auth_refresh_tokens'
   | 'oauth_codes'
   | 'oauth_tokens'
@@ -43,7 +45,7 @@ export type RetentionTarget =
   | 'rate_limits'
   | 'password_links';
 
-export type RetentionReport = Record<RetentionTarget, number>;
+export type RetentionReport = Record<RetentionTarget | (string & {}), number>;
 
 export interface RetentionOptions {
   /** The instant cutoffs are computed from (tests pass a fixed one). */
@@ -112,11 +114,6 @@ export function createRetentionService(db: Db) {
         'id',
         sql`created_at < ${daysBefore(now, RETENTION_POLICY.requestLogDays)}::timestamptz`,
       );
-      report.feishu_receipts = await go(
-        'feishu_receipts',
-        'message_id',
-        sql`received_at < ${daysBefore(now, RETENTION_POLICY.feishuReceiptDays)}::timestamptz`,
-      );
       report.budget_ledger = await go(
         'budget_ledger',
         'id',
@@ -127,6 +124,18 @@ export function createRetentionService(db: Db) {
         'id',
         sql`status IN ${TERMINAL_DELIVERIES} AND updated_at < ${daysBefore(now, RETENTION_POLICY.deliveriesDays)}::timestamptz`,
       );
+      // Age first, then the row cap: a crash loop on many phones must not grow the table without bound.
+      report.client_reports =
+        (await go(
+          'client_reports',
+          'id',
+          sql`created_at < ${daysBefore(now, RETENTION_POLICY.clientReportDays)}::timestamptz`,
+        )) +
+        (await go(
+          'client_reports',
+          'id',
+          sql`id IN (SELECT id FROM client_reports ORDER BY created_at DESC, id DESC OFFSET ${RETENTION_POLICY.clientReportMaxRows})`,
+        ));
       report.auth_refresh_tokens = await go('auth_refresh_tokens', 'id', sql`expires_at <= ${nowIso}::timestamptz`);
       report.oauth_codes = await go('oauth_codes', 'code_hash', sql`expires_at <= ${nowIso}::timestamptz`);
       report.oauth_tokens = await go('oauth_tokens', 'id', sql`expires_at <= ${nowIso}::timestamptz`);
@@ -137,6 +146,13 @@ export function createRetentionService(db: Db) {
         'id',
         sql`expires_at < ${daysBefore(now, RETENTION_POLICY.expiredPasswordLinkDays)}::timestamptz`,
       );
+      for (const rule of extensionRetentionRules()) {
+        report[rule.table] = await go(
+          rule.table,
+          'ctid',
+          sql`${sql.identifier(rule.column)} < ${daysBefore(now, rule.days)}::timestamptz`,
+        );
+      }
       return report;
     },
   };

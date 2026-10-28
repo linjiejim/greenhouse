@@ -3,7 +3,7 @@
  *
  * GET  /.well-known/oauth-protected-resource/api/mcp — RFC 9728 metadata
  * GET  /.well-known/oauth-authorization-server          — RFC 8414 metadata
- * GET  /oauth/authorize                                 — open the SPA consent screen
+ * GET  /oauth/authorize                                 — open the client consent page (/oauth-consent)
  * POST /oauth/register                                  — dynamic public-client registration
  * POST /oauth/token                                     — code exchange / refresh rotation
  * POST /oauth/revoke                                    — token revocation
@@ -18,12 +18,13 @@ import type { Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod';
 import { getDb } from '@greenhouse/db';
+import { CLIENT_ROUTES } from '@greenhouse/types/client-routes';
 import type { PlatformOAuthClientRow } from '@greenhouse/db';
 import type { AuthUser } from '../auth/token.js';
 import { getAuthUser, requireInternal } from '../auth/middleware.js';
 import type { AppEnv } from '../app-env.js';
-import { humanActor } from '../platform/actor.js';
-import { getPlatformRuntime, PLATFORM_ORG_ID } from '../platform/runtime.js';
+import { humanActor } from '../plugin-host/actor.js';
+import { getPlatformRuntime, PLATFORM_ORG_ID } from '../plugin-host/runtime.js';
 import {
   clientSecretMatches,
   expiresAt,
@@ -51,7 +52,7 @@ import {
   scopesAreSubset,
   scopesToString,
   type OAuthScope,
-} from '../platform/oauth.js';
+} from '../agent-access/oauth.js';
 
 const MANAGE_OWN_CAPABILITY = 'platform.oauth.manageOwn';
 const OAUTH_BODY_LIMIT_BYTES = 64 * 1024;
@@ -212,9 +213,10 @@ const oauthRoutes = new Hono<AppEnv>()
     return c.json(oauthAuthorizationServerMetadata());
   })
   .get('/oauth/authorize', (c) => {
-    const target = new URL('/', getOAuthWebUrl());
+    // The client's consent page takes the request's query unchanged (PKCE included); it lives
+    // beside this endpoint, because /oauth/* never falls through to the client.
+    const target = new URL(CLIENT_ROUTES.oauthConsent, getOAuthWebUrl());
     for (const [key, value] of new URL(c.req.url).searchParams) target.searchParams.append(key, value);
-    target.searchParams.set('oauth_authorize', '1');
     return c.redirect(target.href, 302);
   })
   .post('/oauth/register', oauthBodyLimit, async (c) => {

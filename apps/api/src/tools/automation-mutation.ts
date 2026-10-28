@@ -1,3 +1,4 @@
+import { notificationTransports } from '../notifications/transports.js';
 /**
  * Automation Mutation tool — write side of Automations (the user's scheduled
  * tasks): create, update (including enable/disable), delete, and run now.
@@ -40,9 +41,7 @@ import {
   MIN_PROMPT_LENGTH,
 } from '../scheduler/task-limits.js';
 import type { AutomationToolContext } from './automation-query.js';
-import { AUTOMATION_OPT_IN_TOOLS } from '@greenhouse/types/automation-tools';
-
-const OPT_IN_IDS = AUTOMATION_OPT_IN_TOOLS.map((t) => t.id) as [string, ...string[]];
+import { isAutomationOptInTool } from '@greenhouse/types/automation-tools';
 
 const automationMutationSchema = z.object({
   action: z
@@ -67,23 +66,11 @@ const automationMutationSchema = z.object({
   max_steps: z.number().int().optional().describe(`Tool-call budget per run, 1-${MAX_STEPS_LIMIT}. Defaults to 15.`),
   enabled: z.boolean().optional().describe('false pauses the automation without deleting it.'),
   notify: z
-    .object({
-      webhook: z
-        .string()
-        .nullable()
-        .optional()
-        .describe(
-          'Group-bot webhook the scheduler posts each run summary to; must be an https://qyapi.weixin.qq.com (WeCom) or https://open.feishu.cn/open-apis/bot/... (Feishu) URL. null clears it. Without one the result only lands silently in the conversation list.',
-        ),
-      email: z
-        .boolean()
-        .optional()
-        .describe(
-          "Email each run summary to the owner's own account address. No address to supply — it is always the owner.",
-        ),
-    })
+    .record(z.string(), z.union([z.boolean(), z.string(), z.null()]))
     .optional()
-    .describe('Where each run summary is delivered. On update only the keys given change.'),
+    .describe(
+      'Optional notification transport preferences. Only enabled transports can deliver. In-app notifications are always recorded.',
+    ),
   quiet_when_empty: z
     .boolean()
     .optional()
@@ -91,7 +78,7 @@ const automationMutationSchema = z.object({
       'Stay quiet when a run finds nothing new: the run is told to answer exactly NO_UPDATE in that case, is kept in history as "no update", and sends no notification on any channel. Good for frequent watch-style checks.',
     ),
   unattended_tools: z
-    .array(z.enum(OPT_IN_IDS))
+    .array(z.string().refine(isAutomationOptInTool, 'Unknown automation opt-in tool'))
     .optional()
     .describe(
       "Extra tools this automation's runs may use, beyond the automatic reads and web search. Replaces the stored list on update ([] removes all). Only set it when the user asked for that capability; name each tool back to them first.",
@@ -110,11 +97,11 @@ Each run starts a FRESH conversation with no history, so task_prompt must stand 
 
 enabled:false pauses and enabled:true resumes — never delete what the user only wants paused. delete drops the definition but keeps past run conversations. run_now executes once immediately and returns its session_id, so the user can check the output without waiting for the schedule.
 
-Always set notify.webhook or notify.email — a 03:00 run nobody is told about is worth little. For frequent "watch for X" checks, also set quiet_when_empty so runs that find nothing stay silent.
+Every run creates an in-app notification; optional external delivery uses enabled notification transports. For frequent "watch for X" checks, also set quiet_when_empty so runs that find nothing stay silent.
 
 Before create, update or delete, state the configuration back in plain language — name, what it will do, and when it fires spelled out ("every weekday at 09:00 Hong Kong time") — then get explicit agreement. Read the current settings with automation_query first when changing an existing one.
 
-What a run can use: every run automatically gets the owner's internal read tools (knowledge, tables, projects, past conversations, automations, report templates…) plus web search (external_search). Everything else is off until switched on per automation with unattended_tools: ${OPT_IN_IDS.join(', ')} — that covers writes (tables, knowledge, projects, reports, connector writes), images, memory and exports. Destructive actions (deleting anything, sending email, creating automations) never run unattended; no setting enables them. Writes are recorded under the owner and listed in each run summary. Every create/update result returns unattended_tools and run_tools — the exact tools the next run will have. Only promise what is in run_tools; if a tool is missing, the owner lacks it or it cannot run unattended.
+What a run can use: every run automatically gets the owner's available replay-safe reads and web search. Other tools need a per-automation unattended_tools grant from the active catalog. Destructive actions (deleting anything, sending email, creating automations) never run unattended; no setting enables them. Writes are recorded under the owner and listed in each run summary. Every create/update result returns unattended_tools and run_tools — the exact tools the next run will have — and url, the automation's link: name it as a Markdown link to that url. Only promise what is in run_tools; if a tool is missing, the owner lacks it or it cannot run unattended.
 
 Limit ${MAX_TASKS_PER_USER} per user; check the count with automation_query when near it. You can only manage your own.`,
   category: 'core',
@@ -146,7 +133,13 @@ async function runToolsFor(db: DatabaseProvider, task: ScheduledTaskRow): Promis
 }
 
 function automationResult(task: ScheduledTaskView, runTools: string[] | null) {
-  return { automation: task, unattended_tools: task.unattended_tools ?? [], run_tools: runTools };
+  return {
+    automation: task,
+    // The client opens this address as the automation's sheet over the conversation.
+    url: `#/automations?id=${encodeURIComponent(task.id)}`,
+    unattended_tools: task.unattended_tools ?? [],
+    run_tools: runTools,
+  };
 }
 
 export function createAutomationMutationTool(db: DatabaseProvider, ctx: AutomationMutationContext) {
@@ -159,7 +152,15 @@ export function createAutomationMutationTool(db: DatabaseProvider, ctx: Automati
   };
   return tool({
     description: meta.description,
-    inputSchema: automationMutationSchema,
+    inputSchema: automationMutationSchema.extend({
+      notify: automationMutationSchema.shape.notify.refine((value) => {
+        if (!value) return true;
+        const transports = notificationTransports();
+        const keys = new Set(transports.flatMap((t) => (t.bindingSettings ? [t.bindingSettings.preference] : [])));
+        if (transports.some((t) => t.acceptsWebhook)) keys.add('webhook');
+        return Object.keys(value).every((key) => keys.has(key));
+      }, 'Notification transport is not enabled'),
+    }),
     execute: async (input: AutomationMutationInput) => {
       try {
         if (input.action === 'create') {

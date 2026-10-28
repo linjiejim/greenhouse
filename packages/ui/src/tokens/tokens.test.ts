@@ -1,20 +1,17 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { format } from 'prettier';
 import { describe, expect, it } from 'vitest';
 import { contrastRatio, lightness } from './contrast';
-import { MOBILE_TS_PATH, WEB_CSS_PATH, renderMobileTs, renderWebCss } from './render';
+import { MOBILE_TS_PATH, EMBED_TS_PATH, renderEmbedTs, renderMobileTs } from './render';
 import { categorical, chartSeries, color, primaryRamp, type ColorToken, type ThemeMode } from './tokens';
 
 const ROOT = resolve(__dirname, '../../../..');
 const MODES: ThemeMode[] = ['light', 'dark'];
 
 describe('generated token files', () => {
-  it('tokens.css is generated from tokens.ts (run `pnpm tokens:build`)', async () => {
-    const expected = await format(renderWebCss(), { parser: 'css', singleQuote: true, printWidth: 120 });
-    expect(readFileSync(resolve(ROOT, WEB_CSS_PATH), 'utf8')).toBe(expected);
+  it('the embed package is generated from the shared tokens', () => {
+    expect(readFileSync(resolve(ROOT, EMBED_TS_PATH), 'utf8')).toBe(renderEmbedTs());
   });
-
   it('the mobile copy is generated from tokens.ts (run `pnpm tokens:build`)', () => {
     expect(readFileSync(resolve(ROOT, MOBILE_TS_PATH), 'utf8')).toBe(renderMobileTs());
   });

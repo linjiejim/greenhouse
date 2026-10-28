@@ -8,36 +8,18 @@ import type { EngineMessage } from '@greenhouse/agent-core';
 import { TURN_CONTEXT_HEADER, appendImageIdHints, appendTurnContext, buildTurnContextBlock } from './turn-context.js';
 
 const NOW = new Date('2026-10-23T02:00:00Z');
-const AMBIENT = {
-  version: 1 as const,
-  scope_id: 'scope-1',
-  source: 'current-page' as const,
-  label: 'Pricing',
-  route: '#/tables/base-1',
-  hint: 'PAGE-HINT-7',
-};
 
 describe('buildTurnContextBlock', () => {
   it('always carries the current time under a header that says the user did not write it', () => {
     const block = buildTurnContextBlock({ now: NOW });
     expect(block.startsWith(`\n\n---\n${TURN_CONTEXT_HEADER}\n[Current Time: 2026-10-23 Friday 10:00]`)).toBe(true);
-    expect(block).not.toContain('## Ambient');
     expect(block).not.toContain('## Attached Images');
-    expect(block).not.toContain('## UI Actions');
   });
 
-  it('collects page context, the attached-images note and the UI-actions note', () => {
-    const block = buildTurnContextBlock({
-      now: NOW,
-      ambientContext: AMBIENT,
-      visionInlinedImages: 2,
-      clientActionNames: ['tables_open', 'tables_get_current_view'],
-    });
-    expect(block).toContain('## Ambient application context (reference only)');
-    expect(block).toContain('PAGE-HINT-7');
+  it('collects the attached-images note and the connectors block', () => {
+    const block = buildTurnContextBlock({ now: NOW, visionInlinedImages: 2, connectorsBlock: '\n\nCONNECTORS-7' });
     expect(block).toContain('## Attached Images');
-    expect(block).toContain('## UI Actions');
-    expect(block).toContain('tables_open, tables_get_current_view');
+    expect(block.endsWith('CONNECTORS-7')).toBe(true);
   });
 });
 

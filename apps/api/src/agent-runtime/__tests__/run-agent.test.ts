@@ -13,9 +13,9 @@
  * summarizeOutput (whose default returns the full output).
  */
 
-import { fakeMeteringServices, routeReserve } from '../../../../../tests/helpers/metering-db.js';
+import { fakeMeteringServices, routeReserve } from './../../../../../tests/helpers/metering-db.js';
 import { describe, it, expect, vi } from 'vitest';
-import { extractPipelineAndReferences, runAgentInSession } from '../run-agent.js';
+import { extractPipelineAndReferences, runAgentInSession } from './../run-agent.js';
 
 /** A single AI SDK v6 step with one tool call + its result. */
 function v6Step(toolName: string, input: unknown, output: unknown) {
@@ -39,38 +39,6 @@ describe('extractPipelineAndReferences', () => {
     expect(pipeline[0].input).toEqual({ query: 'shenzhen weather' });
   });
 
-  it('still compacts whitelisted knowledge reads and extracts references', () => {
-    const out = {
-      scope: 'shared',
-      id: 7,
-      doc_id: 'onboarding-guide',
-      url: '#/knowledge/doc/7-onboarding-guide',
-      title: 'Onboarding guide',
-      content: 'abc',
-      folder: 'guides',
-    };
-    const { pipeline, references } = extractPipelineAndReferences([
-      v6Step('knowledge_query', { action: 'get', doc_id: 'onboarding-guide' }, out),
-    ]);
-
-    expect(pipeline[0].output).toEqual({
-      action: 'get',
-      scope: 'shared',
-      doc_id: 'onboarding-guide',
-      title: 'Onboarding guide',
-      chars: 3,
-    });
-    expect(references).toEqual([
-      {
-        slug: 'onboarding-guide',
-        title: 'Onboarding guide',
-        type: 'kb_doc',
-        url: '#/knowledge/doc/7-onboarding-guide',
-        category: 'guides',
-      },
-    ]);
-  });
-
   /**
    * knowledge_query is the KB read surface, and its output carries no top-level
    * `action` — so it is summarized by SHAPE. Without a case in summarizeOutput
@@ -78,70 +46,10 @@ describe('extractPipelineAndReferences', () => {
    * body into messages.pipeline. That was cheap to miss while it was one of
    * three KB tools; it became the only one on 2026-08-14.
    */
-  it('compacts a knowledge_query document read instead of storing the whole body', () => {
-    const body = 'x'.repeat(5000);
-    const { pipeline } = extractPipelineAndReferences([
-      v6Step(
-        'knowledge_query',
-        { action: 'get', scope: 'team', doc_id: 'guide/chat' },
-        { scope: 'team', id: 7, doc_id: 'guide/chat', title: 'Chat 进阶', content: body, tags: [] },
-      ),
-    ]);
-
-    expect(pipeline[0].output).toEqual({
-      action: 'get',
-      scope: 'team',
-      doc_id: 'guide/chat',
-      title: 'Chat 进阶',
-      chars: 5000,
-    });
-    expect(JSON.stringify(pipeline[0].output)).not.toContain(body);
-  });
-
-  it('summarizes a knowledge_query folder listing to its size, not the tree', () => {
-    const { pipeline } = extractPipelineAndReferences([
-      v6Step(
-        'knowledge_query',
-        { action: 'folders', scope: 'team' },
-        {
-          scope: 'team',
-          root: '/',
-          folders: [{ id: 1, path: '指南', depth: 1, docs: 3 }],
-          total_folders: 1,
-        },
-      ),
-    ]);
-    expect(pipeline[0].output).toEqual({ action: 'folders', scope: 'team', root: '/', folders: 1 });
-  });
-
-  it('summarizes a knowledge_query search by shape, keeping the weak-match flag', () => {
-    const { pipeline } = extractPipelineAndReferences([
-      v6Step(
-        'knowledge_query',
-        { action: 'search', scope: 'team', query: '规格' },
-        { scope: 'team', found: 2, weak_match: true, results: [{ id: 1 }, { id: 2 }] },
-      ),
-    ]);
-
-    // weak_match must survive: it is the honesty signal about that answer.
-    expect(pipeline[0].output).toEqual({ action: 'search', scope: 'team', found: 2, weak_match: true });
-  });
-
-  it('summarizes a knowledge_query tree browse without the per-folder document lists', () => {
-    const { pipeline } = extractPipelineAndReferences([
-      v6Step(
-        'knowledge_query',
-        { action: 'tree', scope: 'team' },
-        { scope: 'team', root: '/', total_docs: 12, folders: [{ path: '指南', docs: [{ id: 1, title: 'a' }] }] },
-      ),
-    ]);
-
-    expect(pipeline[0].output).toEqual({ action: 'tree', scope: 'team', root: '/', docs: 12 });
-  });
 });
 
 describe('runAgentInSession transcript persistence', () => {
-  const usageContext = { profileId: 'team', userId: 'owner-1', caller: 'scheduled-task' };
+  const usageContext = { profileId: 'sprouty', userId: 'owner-1', caller: 'scheduled-task' };
 
   function createRunnerFixture(options: { tailContent?: string; appendOk?: boolean } = {}) {
     const getLatestMessage = vi.fn().mockResolvedValue({
@@ -189,6 +97,37 @@ describe('runAgentInSession transcript persistence', () => {
     return { appendAssistantIfTail, db, generate, getLatestMessage, recordUsage, tokenReserve, settleBudget };
   }
 
+  it('counts every executed tool under its client and never fails the run on a lost count', async () => {
+    const fixture = createRunnerFixture();
+    const increment = vi.fn().mockRejectedValueOnce(new Error('counter table locked')).mockResolvedValue(undefined);
+    (fixture.db as Record<string, unknown>).usageCounters = { increment };
+    const toolExecute = vi.fn().mockResolvedValue({ docs: 1 });
+    fixture.generate.mockImplementation(
+      async (args: { tools?: Record<string, { execute: (input: unknown, options: unknown) => Promise<unknown> }> }) => {
+        await args.tools!.knowledge_query.execute({ action: 'tree' }, { toolCallId: 'c1', messages: [] });
+        await args.tools!.knowledge_query.execute({ action: 'tree' }, { toolCallId: 'c2', messages: [] });
+        return { text: 'Generated answer', usage: { inputTokens: 4, outputTokens: 2 }, steps: [] };
+      },
+    );
+
+    const result = await runAgentInSession({
+      db: fixture.db as never,
+      sessionId: 'session-1',
+      system: 'System',
+      prompt: 'Current prompt',
+      modelConfig: {} as never,
+      tools: { knowledge_query: { execute: toolExecute } },
+      maxSteps: 2,
+      generate: fixture.generate,
+      toolCallClient: 'automation',
+      usageContext,
+    });
+
+    expect(result.persisted).toBe(true);
+    expect(toolExecute).toHaveBeenCalledTimes(2);
+    expect(increment).toHaveBeenCalledTimes(2);
+    expect(increment).toHaveBeenCalledWith('tool_call', 'knowledge_query', 'automation');
+  });
   it('persists through the same exact-tail CAS as streaming chat', async () => {
     const fixture = createRunnerFixture();
 
@@ -255,7 +194,7 @@ describe('runAgentInSession transcript persistence', () => {
 
     expect(fixture.recordUsage).toHaveBeenCalledWith(
       expect.objectContaining({
-        profile_id: 'team',
+        profile_id: 'sprouty',
         caller: 'scheduled-task',
         session_id: 'session-1',
         user_id: 'owner-1',
@@ -346,37 +285,5 @@ describe('runAgentInSession transcript persistence', () => {
     ).rejects.toThrow('Session transcript changed before agent generation');
     expect(fixture.generate).not.toHaveBeenCalled();
     expect(fixture.appendAssistantIfTail).not.toHaveBeenCalled();
-  });
-
-  it('counts every executed tool under its client and never fails the run on a lost count', async () => {
-    const fixture = createRunnerFixture();
-    const increment = vi.fn().mockRejectedValueOnce(new Error('counter table locked')).mockResolvedValue(undefined);
-    (fixture.db as Record<string, unknown>).usageCounters = { increment };
-    const toolExecute = vi.fn().mockResolvedValue({ docs: 1 });
-    fixture.generate.mockImplementation(
-      async (args: { tools?: Record<string, { execute: (input: unknown, options: unknown) => Promise<unknown> }> }) => {
-        await args.tools!.knowledge_query.execute({ action: 'tree' }, { toolCallId: 'c1', messages: [] });
-        await args.tools!.knowledge_query.execute({ action: 'tree' }, { toolCallId: 'c2', messages: [] });
-        return { text: 'Generated answer', usage: { inputTokens: 4, outputTokens: 2 }, steps: [] };
-      },
-    );
-
-    const result = await runAgentInSession({
-      db: fixture.db as never,
-      sessionId: 'session-1',
-      system: 'System',
-      prompt: 'Current prompt',
-      modelConfig: {} as never,
-      tools: { knowledge_query: { execute: toolExecute } },
-      maxSteps: 2,
-      generate: fixture.generate,
-      toolCallClient: 'automation',
-      usageContext,
-    });
-
-    expect(result.persisted).toBe(true);
-    expect(toolExecute).toHaveBeenCalledTimes(2);
-    expect(increment).toHaveBeenCalledTimes(2);
-    expect(increment).toHaveBeenCalledWith('tool_call', 'knowledge_query', 'automation');
   });
 });

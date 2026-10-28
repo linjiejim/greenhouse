@@ -5,14 +5,19 @@ const mocks = vi.hoisted(() => ({
   send: vi.fn(),
 }));
 
-vi.mock('../email/service.js', () => ({
-  getSharedMailboxCredentials: () => (mocks.sharedMailbox ? { email_address: 'greenhouse@example.com' } : null),
-  sendFromSharedMailbox: mocks.send,
+vi.mock('../notifications/transports.js', () => ({
+  accountLinkTransport: () =>
+    mocks.sharedMailbox
+      ? {
+          send: ({ db, recipient, message, actorId }: import('../notifications/transports.js').SystemMailContext) =>
+            mocks.send(db, recipient, message, { userId: actorId, origin: 'account-security' }),
+        }
+      : undefined,
 }));
 vi.mock('../chat/runs.js', () => ({ chatRunRegistry: { stopForUser: vi.fn() } }));
 vi.mock('../ws/connection-manager.js', () => ({ connectionManager: { disconnectUser: vi.fn() } }));
 vi.mock('../scheduler/index.js', () => ({ getScheduler: () => null }));
-vi.mock('../platform/runtime.js', () => ({ PLATFORM_ORG_ID: 'default' }));
+vi.mock('../plugin-host/runtime.js', () => ({ PLATFORM_ORG_ID: 'default' }));
 
 const { deliverAccountPasswordLink, getPasswordLinkCapability, maskEmail } = await import('./account.js');
 
@@ -60,10 +65,10 @@ describe('account password-link delivery', () => {
     );
 
     const message = mocks.send.mock.calls[0]?.[2] as { body_text: string; body_html: string };
-    expect(message.body_text).toContain(`https://greenhouse.example.com/#/activate?token=${token}`);
-    expect(message.body_text).not.toContain(`greenhouse.example.com/?token=${token}`);
+    expect(message.body_text).toContain(`https://greenhouse.example.com/activate#token=${token}`);
+    expect(message.body_text).not.toContain(`?token=${token}`);
     expect(message.body_text).toContain('can only set your password');
-    expect(message.body_html).toContain('#/activate?token=');
+    expect(message.body_html).toContain('/activate#token=');
   });
 
   it('reveals only a small part of the mailbox local name', () => {

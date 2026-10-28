@@ -90,15 +90,12 @@ describe('retention cleanup', () => {
     expect(await exists('run_outbox', 'id', `dead_${t}`)).toBe(true);
   });
 
-  it('applies the request-log, Feishu receipt, ledger and delivery windows', async () => {
+  it('applies the request-log, ledger and delivery windows', async () => {
     const t = tag();
     await db.executeRaw(sql`
       INSERT INTO request_log (id, app_id, endpoint, method, created_at) VALUES
         (${`old_${t}`}, 'mcp', '/api/mcp', 'POST', ${daysAgo(31)}::timestamptz),
         (${`new_${t}`}, 'mcp', '/api/mcp', 'POST', ${daysAgo(29)}::timestamptz)`);
-    await db.executeRaw(sql`
-      INSERT INTO feishu_receipts (message_id, received_at) VALUES
-        (${`old_${t}`}, ${daysAgo(8)}::timestamptz), (${`new_${t}`}, ${daysAgo(6)}::timestamptz)`);
     await db.executeRaw(sql`
       INSERT INTO budget_ledger (id, account_id, operation_key, entry_type, reserved_units_after, spent_units_after, created_at) VALUES
         (${`old_${t}`}, ${`acct_${t}`}, ${`op1_${t}`}, 'settle', 0, 0, ${daysAgo(400)}::timestamptz),
@@ -115,8 +112,6 @@ describe('retention cleanup', () => {
 
     expect(await exists('request_log', 'id', `old_${t}`)).toBe(false);
     expect(await exists('request_log', 'id', `new_${t}`)).toBe(true);
-    expect(await exists('feishu_receipts', 'message_id', `old_${t}`)).toBe(false);
-    expect(await exists('feishu_receipts', 'message_id', `new_${t}`)).toBe(true);
     expect(await exists('budget_ledger', 'id', `old_${t}`)).toBe(false);
     expect(await exists('budget_ledger', 'id', `new_${t}`)).toBe(true);
     expect(await exists('notification_deliveries', 'id', `done_${t}`)).toBe(false);
@@ -145,6 +140,34 @@ describe('retention cleanup', () => {
     expect(await exists('login_states', 'id', `dead_${t}`)).toBe(false);
     expect(await exists('rate_limits', 'key', `dead_${t}`)).toBe(false);
     expect(report.auth_refresh_tokens).toBeGreaterThanOrEqual(1);
+  });
+
+  it('keeps client error reports 90 days and at most the newest 10,000', async () => {
+    const t = tag();
+    const insert = (id: string, at: string) =>
+      db.executeRaw(sql`
+        INSERT INTO client_reports (id, user_id, client_report_id, fingerprint, fatal, source, name, message, platform, occurred_at, created_at)
+        VALUES (${id}, 'u', ${id}, 'f', false, 'global', 'Error', 'm', 'ios', ${at}::timestamptz, ${at}::timestamptz)`);
+    await insert(`old_${t}`, daysAgo(91));
+    await insert(`new_${t}`, daysAgo(89));
+    const report = await db.retention.run({ now: NOW });
+    expect(await exists('client_reports', 'id', `old_${t}`)).toBe(false);
+    expect(await exists('client_reports', 'id', `new_${t}`)).toBe(true);
+    expect(report.client_reports).toBeGreaterThanOrEqual(1);
+
+    // a crash storm: the oldest rows beyond the cap go, however recent
+    await db.executeRaw(sql`
+      INSERT INTO client_reports (id, user_id, client_report_id, fingerprint, fatal, source, name, message, platform, occurred_at, created_at)
+      SELECT ${`cap_${t}_`} || g, 'u', ${`cap_${t}_`} || g, 'f', false, 'global', 'Error', 'm', 'ios', now(),
+             ${daysAgo(10)}::timestamptz + g * interval '1 second'
+      FROM generate_series(1, 10005) g`);
+    await db.retention.run({ now: NOW, batchSize: 2000 });
+    const left = await db.executeRaw(sql`SELECT count(*)::int AS n FROM client_reports`);
+    expect(Number(left[0].n)).toBeLessThanOrEqual(10_000);
+    expect(await exists('client_reports', 'id', `new_${t}`)).toBe(false);
+    for (const g of [1, 2, 3, 4, 5]) expect(await exists('client_reports', 'id', `cap_${t}_${g}`)).toBe(false);
+    expect(await exists('client_reports', 'id', `cap_${t}_6`)).toBe(true);
+    expect(await exists('client_reports', 'id', `cap_${t}_10005`)).toBe(true);
   });
 
   it('deletes in bounded batches until the backlog is gone', async () => {

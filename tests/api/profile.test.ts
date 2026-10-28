@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { resolve } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
+import { clearProfileCache, registerKnownTools, loadProfile } from '../../apps/api/src/profiles/profile.js';
 
 // We test the profile loading logic directly since the module
 // uses import.meta.dirname which points to the actual profiles dir.
@@ -45,9 +46,10 @@ describe('Profile: sprouty.yaml', () => {
     }
   });
 
-  it('has internal knowledge tools', () => {
-    expect(profile.tools).toContain('knowledge_query');
-    expect(profile.tools.length).toBeGreaterThanOrEqual(2);
+  it('loads the permission-derived built-in without optional plugin tools', () => {
+    clearProfileCache();
+    registerKnownTools(['ask_user', 'compute']);
+    expect(loadProfile('sprouty').tools).toEqual([]);
   });
 
   it('system_prompt is non-empty', () => {

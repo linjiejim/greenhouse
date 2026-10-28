@@ -9,12 +9,8 @@ import { at, createdAt, id, json, jsonOrNull, oneOf, updatedAt } from './_column
 import { users } from './identity.js';
 
 /** Where an automation reports a finished run. `webhook` null = no webhook. */
-export interface AutomationNotify {
-  webhook: string | null;
-  email: boolean;
-  wecom: boolean;
-  feishu: boolean;
-}
+export type { AutomationNotify } from '@greenhouse/types/api';
+import type { AutomationNotify } from '@greenhouse/types/api';
 
 export const DEFAULT_AUTOMATION_NOTIFY: AutomationNotify = { webhook: null, email: false, wecom: false, feishu: false };
 
@@ -26,7 +22,7 @@ export const automations = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
-    profile_id: text('profile_id').notNull().default('team'),
+    profile_id: text('profile_id').notNull().default('sprouty'),
     task_prompt: text('task_prompt').notNull(),
     /** Cron expression, e.g. `0 22 * * *`. */
     schedule: text('schedule').notNull(),
@@ -95,7 +91,7 @@ export const runProfiles = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     description: text('description'),
-    base_profile_id: text('base_profile_id').notNull().default('team'),
+    base_profile_id: text('base_profile_id').notNull().default('sprouty'),
     model_id: text('model_id'),
     tools: json<string[]>('tools', []),
     /** MCP connector ids this Agent may reach; null = every connector its user may use (only narrows). */

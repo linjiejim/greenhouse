@@ -1,3 +1,4 @@
+import { fromExtensions } from '../../plugin-host/index.js';
 /**
  * `admin seed` — load the example dataset in `data/examples/`.
  *
@@ -22,7 +23,6 @@ import { sql } from 'drizzle-orm';
 import chalk from 'chalk';
 import { DATA_DIR } from '../../paths.js';
 import { hashPassword } from '../../auth/password.js';
-import { markdownToTiptapJson } from '@greenhouse/knowledge-editor/markdown';
 import { getProductName } from '@greenhouse/utils/brand';
 import { openDb, parseFlags, flagStr, flagBool, confirmExact, heading, dim, dbName } from './shared.js';
 
@@ -38,21 +38,14 @@ const EXAMPLES_DIR = GREENHOUSE_CONFIG.packs.seeds
  */
 const LOAD_ORDER = [
   'users',
-  'kb_documents',
-  'kb_versions',
+
   'shares',
-  'projects',
-  'project_members',
-  'tasks',
-  'task_comments',
   'conversations',
   'messages',
   'conversation_shares',
   'conversation_share_reads',
   'prompts',
-  'memories',
   'automations',
-  'feedback',
   'run_profiles',
   'user_grants',
   'audit_events',
@@ -136,8 +129,17 @@ export async function run(args: string[]): Promise<number> {
   }
 
   let totalRows = 0;
-  for (const table of LOAD_ORDER) {
-    const file = resolve(EXAMPLES_DIR, `${table}.json`);
+  const sources = [
+    ...LOAD_ORDER.map((table) => ({ table, dir: EXAMPLES_DIR })),
+    ...fromExtensions('seeds').flatMap((source) =>
+      source.tables.map((table) => ({ table, dir: GREENHOUSE_CONFIG.packs.seeds ? EXAMPLES_DIR : source.dir })),
+    ),
+  ].filter(
+    (source, index, all) =>
+      all.findIndex((candidate) => candidate.table === source.table && candidate.dir === source.dir) === index,
+  );
+  for (const { table, dir } of sources) {
+    const file = resolve(dir, `${table}.json`);
     if (!existsSync(file)) continue;
 
     const rows = readJsonl(file);
@@ -154,9 +156,6 @@ export async function run(args: string[]): Promise<number> {
       }
       // KB docs are authored as canonical Markdown only; derive the Tiptap
       // editor state the same way the knowledge_mutation tool does at runtime.
-      if (table === 'kb_documents' && !row.content_json && typeof row.content === 'string') {
-        row.content_json = markdownToTiptapJson(row.content);
-      }
       // Ids are text (3.0): the dataset may author them as numbers.
       if (typeof row.id === 'number') row.id = String(row.id);
       await db.executeRaw(buildInsert(table, row));
@@ -166,7 +165,7 @@ export async function run(args: string[]): Promise<number> {
     console.log(`• ${table}: ${rows.length} rows`);
   }
 
-  console.log(chalk.green(`\n✓ seeded ${totalRows} rows across ${LOAD_ORDER.length} tables.`));
+  console.log(chalk.green(`\n✓ seeded ${totalRows} rows across ${sources.length} tables.`));
   console.log(dim(`  Demo login password for every seeded user: "${demoPassword}"`));
   console.log(dim('  Try: super admin → maya@greenhouse.example'));
   return 0;

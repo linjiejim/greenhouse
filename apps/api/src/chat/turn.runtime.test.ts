@@ -86,7 +86,6 @@ async function runPump(run: ChatRun, parts: unknown[]) {
     sessionId: 'session-1',
     userId: 'user-1',
     titlePromise: null,
-    clientActionBridge: null,
     providerAttemptHook: vi.fn(),
     runtimeTrace: { runId: 'runtime-run', stepId: 'runtime-step', actorUserId: 'user-1' },
   });

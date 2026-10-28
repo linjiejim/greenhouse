@@ -28,8 +28,8 @@ describe('session pins', () => {
   it('pins in order, reorders, and unpins per user', async () => {
     const alice = await createUser('alice@pins.test');
     const bob = await createUser('bob@pins.test');
-    const first = await db.sessions.create('first', 'team', alice.id);
-    const second = await db.sessions.create('second', 'team', alice.id);
+    const first = await db.sessions.create('first', 'sprouty', alice.id);
+    const second = await db.sessions.create('second', 'sprouty', alice.id);
 
     await db.sessionPins.pin(alice.id, first.id);
     await db.sessionPins.pin(alice.id, second.id);
@@ -59,7 +59,7 @@ describe('session pins', () => {
   it('keeps a recipient pin on their read row, independent of the owner and of read state', async () => {
     const owner = await createUser('owner@pins.test');
     const reader = await createUser('reader@pins.test');
-    const shared = await db.sessions.create('shared', 'team', owner.id);
+    const shared = await db.sessions.create('shared', 'sprouty', owner.id);
     await db.sessionShares.createMany([{ session_id: shared.id, shared_with: reader.id, shared_by: owner.id }]);
 
     await db.sessionPins.pin(reader.id, shared.id);

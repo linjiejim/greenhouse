@@ -15,7 +15,7 @@ import { getDb } from '@greenhouse/db';
 import { isPageModuleId } from '@greenhouse/types/usage';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { EXTENSIONS } from '../extensions/index.js';
+import { EXTENSIONS } from '../plugin-host/index.js';
 import { pageOpenClient, requestAppClient } from '../usage/counters.js';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser } from '../auth/middleware.js';

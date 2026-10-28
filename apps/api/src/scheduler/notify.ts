@@ -25,10 +25,11 @@
  */
 
 import { logger } from '@greenhouse/utils/logger';
-import { toRowId } from '@greenhouse/utils/id';
+import { isRowId } from '@greenhouse/utils/id';
+import { CLIENT_ROUTES, clientRouteUrl } from '@greenhouse/types/client-routes';
 import type { DatabaseProvider, ScheduledTaskRow } from '@greenhouse/db';
 import { flattenRichOutput, renderNotificationEmail } from '../notifications/render.js';
-import { notifyWebhookKind } from './task-limits.js';
+import { notificationTransports } from '../notifications/transports.js';
 import { connectionManager } from '../ws/connection-manager.js';
 import { queueMobilePush } from '../notifications/push/queue.js';
 
@@ -180,52 +181,22 @@ export interface TaskNotificationProvenance {
   eventId?: string;
 }
 
-const EMAIL_USER_PREFIX = 'email:user:';
-const WECOM_USER_PREFIX = 'wecom:user:';
-const WECOM_WEBHOOK_PREFIX = 'wecom:webhook:';
-const FEISHU_USER_PREFIX = 'feishu:user:';
-const FEISHU_WEBHOOK_PREFIX = 'feishu:webhook:';
-
 export const automationDeliveryRecipient = {
-  emailUser(userId: string): string {
-    return `${EMAIL_USER_PREFIX}${userId}`;
+  user(channel: string, userId: string): string {
+    return `${channel}:user:${userId}`;
   },
-  wecomUser(userId: string): string {
-    return `${WECOM_USER_PREFIX}${userId}`;
-  },
-  wecomWebhook(webhook: string): string {
-    return `${WECOM_WEBHOOK_PREFIX}${webhook}`;
-  },
-  feishuUser(userId: string): string {
-    return `${FEISHU_USER_PREFIX}${userId}`;
-  },
-  feishuWebhook(webhook: string): string {
-    return `${FEISHU_WEBHOOK_PREFIX}${webhook}`;
+  webhook(channel: string, webhook: string): string {
+    return `${channel}:webhook:${webhook}`;
   },
   parse(
+    channel: string,
     value: string,
-  ):
-    | { kind: 'email_user'; userId: string }
-    | { kind: 'wecom_user'; userId: string }
-    | { kind: 'wecom_webhook'; webhook: string }
-    | { kind: 'feishu_user'; userId: string }
-    | { kind: 'feishu_webhook'; webhook: string }
-    | null {
-    if (value.startsWith(EMAIL_USER_PREFIX) && value.length > EMAIL_USER_PREFIX.length) {
-      return { kind: 'email_user', userId: value.slice(EMAIL_USER_PREFIX.length) };
-    }
-    if (value.startsWith(WECOM_USER_PREFIX) && value.length > WECOM_USER_PREFIX.length) {
-      return { kind: 'wecom_user', userId: value.slice(WECOM_USER_PREFIX.length) };
-    }
-    if (value.startsWith(WECOM_WEBHOOK_PREFIX) && value.length > WECOM_WEBHOOK_PREFIX.length) {
-      return { kind: 'wecom_webhook', webhook: value.slice(WECOM_WEBHOOK_PREFIX.length) };
-    }
-    if (value.startsWith(FEISHU_USER_PREFIX) && value.length > FEISHU_USER_PREFIX.length) {
-      return { kind: 'feishu_user', userId: value.slice(FEISHU_USER_PREFIX.length) };
-    }
-    if (value.startsWith(FEISHU_WEBHOOK_PREFIX) && value.length > FEISHU_WEBHOOK_PREFIX.length) {
-      return { kind: 'feishu_webhook', webhook: value.slice(FEISHU_WEBHOOK_PREFIX.length) };
-    }
+  ): { kind: 'user'; userId: string } | { kind: 'webhook'; webhook: string } | null {
+    const user = `${channel}:user:`;
+    const webhook = `${channel}:webhook:`;
+    if (value.startsWith(user) && value.length > user.length) return { kind: 'user', userId: value.slice(user.length) };
+    if (value.startsWith(webhook) && value.length > webhook.length)
+      return { kind: 'webhook', webhook: value.slice(webhook.length) };
     return null;
   },
 };
@@ -236,7 +207,7 @@ export function parseAutomationResultNotificationPayload(value: unknown): Automa
   if (
     payload.schema !== 1 ||
     payload.type !== 'automation_result' ||
-    toRowId(payload.task_id) === null ||
+    !isRowId(payload.task_id) ||
     typeof payload.task_name !== 'string' ||
     !payload.task_name.trim() ||
     typeof payload.session_id !== 'string' ||
@@ -256,23 +227,14 @@ export function parseAutomationResultNotificationPayload(value: unknown): Automa
   // so bad entries are dropped instead of rejecting the whole payload.
   return {
     ...(payload as AutomationResultNotificationPayload),
-    // Payloads written by 1.x carry the old numeric task id.
-    task_id: toRowId(payload.task_id)!,
     ...(writes.length ? { writes } : {}),
   };
 }
 
-/**
- * The session lives at `#/chat?session=<id>`, NOT `#/chat/<id>`.
- *
- * The hash router reads the session from the query string; a path segment after
- * `#/chat` is simply ignored, so the old form opened an empty new conversation
- * and the run people were notified about was nowhere to be seen. A link that
- * lands on the wrong screen is worse than no link, because nobody suspects it.
- */
+/** The conversation the run wrote to, as a client route: `/chat?session=<id>`. */
 function sessionLink(sessionId: string): string | null {
   const base = process.env.PUBLIC_BASE_URL?.replace(/\/$/, '');
-  return base ? `${base}/#/chat?session=${encodeURIComponent(sessionId)}` : null;
+  return base ? clientRouteUrl(base, CLIENT_ROUTES.conversation, { query: { session: sessionId } }) : null;
 }
 
 function taskHeading(task: Pick<ScheduledTaskRow, 'name'>, outcome: TaskNotification): string {
@@ -322,7 +284,7 @@ export async function notifyTaskResult(
   task: ScheduledTaskRow,
   outcome: TaskNotification,
   provenance: TaskNotificationProvenance = {},
-): Promise<{ wecom: boolean; email: boolean; wecomDm: boolean; feishuDm: boolean }> {
+): Promise<Record<string, boolean>> {
   const writes = await collectWrites(db, provenance.runId);
   const payload: AutomationResultNotificationPayload = {
     schema: 1,
@@ -353,49 +315,19 @@ export async function notifyTaskResult(
       ? `automation-result:${provenance.runId}:${outcome.status}`
       : `automation-result:${task.id}:${outcome.sessionId}:${outcome.status}`,
   });
-  const queued = { wecom: false, email: false, wecomDm: false, feishuDm: false };
+  const queued: Record<string, boolean> = {};
+  for (const transport of notificationTransports())
+    for (const key of transport.automationResultKeys ?? []) queued[key] = false;
   await queueMobilePush(db, result.notification);
-
-  const notify = task.notify ?? { webhook: null, email: false, wecom: false, feishu: false };
-  if (notify.webhook) {
-    // The webhook family is derived from the (write-time validated) URL host,
-    // so one field serves both group-bot flavours without a second key.
-    const feishu = notifyWebhookKind(notify.webhook) === 'feishu';
-    await db.notifications.createDelivery({
-      notification_id: result.notification.id,
-      channel: feishu ? 'feishu' : 'wecom',
-      recipient: feishu
-        ? automationDeliveryRecipient.feishuWebhook(notify.webhook)
-        : automationDeliveryRecipient.wecomWebhook(notify.webhook),
-    });
-    queued.wecom = true;
-  }
-
-  if (notify.email) {
-    await db.notifications.createDelivery({
-      notification_id: result.notification.id,
-      channel: 'email',
-      recipient: automationDeliveryRecipient.emailUser(task.user_id),
-    });
-    queued.email = true;
-  }
-
-  if (notify.wecom) {
-    await db.notifications.createDelivery({
-      notification_id: result.notification.id,
-      channel: 'wecom',
-      recipient: automationDeliveryRecipient.wecomUser(task.user_id),
-    });
-    queued.wecomDm = true;
-  }
-
-  if (notify.feishu) {
-    await db.notifications.createDelivery({
-      notification_id: result.notification.id,
-      channel: 'feishu',
-      recipient: automationDeliveryRecipient.feishuUser(task.user_id),
-    });
-    queued.feishuDm = true;
+  for (const transport of notificationTransports()) {
+    for (const { recipient, resultKey } of transport.automationRecipients?.(task) ?? []) {
+      await db.notifications.createDelivery({
+        notification_id: result.notification.id,
+        channel: transport.id,
+        recipient,
+      });
+      queued[resultKey] = true;
+    }
   }
 
   if (result.created) {

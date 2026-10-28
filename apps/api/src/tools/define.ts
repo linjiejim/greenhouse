@@ -62,9 +62,9 @@ export interface ToolMeta {
   surface?: {
     proxy?: 'read' | 'write' | 'none';
     mcp?: McpResourceGroup | (string & {});
-    /** @deprecated Ignored since 3.0 (the Home workbench was removed); kept so 2.x extensions compile. Removed in 4.0. */
-    workbench?: boolean;
     unattendedReplaySafe?: boolean;
+    /** This surface needs a person to read its confirmation. Overrides any automation opt-in. */
+    unattendedDenied?: boolean;
     /**
      * MCP `openWorldHint`: the tool reaches outside Greenhouse (the web, a
      * cloud computer). Default false — everything else stays inside.
@@ -106,6 +106,8 @@ export interface ToolMeta {
    * user does not have keeps the tool out. See resolveEffectiveTools.
    */
   builtin?: boolean;
+  /** Produces an interactive card; a headless run cannot confirm it. */
+  interactiveOnly?: boolean;
   /**
    * Runtime ToolCall risk classification. Omit for ordinary reads (`r0`) and
    * proxy-confirmed writes (`surface.proxy='write'`, derived as `r2`). Set it
@@ -118,10 +120,8 @@ export interface ToolMeta {
    * How this tool's result is surfaced in the chat UI:
    * - 'trace' (default) — a row inside the collapsible "N tool calls" block.
    * - 'artifact' — a rich card rendered inline in the message body.
-   * The frontend artifact registry (apps/web/src/components/tool-call/body-artifacts.tsx)
-   * is the authoritative render source; this flag declares the same intent at the
-   * tool source (note: client-only tools like `update_page` have no ToolMeta, so the
-   * FE registry — not this flag — is the complete list).
+   * The client's card rules (apps/client/src/chat/parts.ts) are the authoritative
+   * render source; this flag declares the same intent at the tool source.
    */
   presentation?: 'trace' | 'artifact';
 }

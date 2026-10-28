@@ -14,6 +14,12 @@
  * See docs/specs/20260804-entity-references-and-peek.md.
  */
 
+export const RESERVED_ENTITY_OWNERS: Readonly<Record<string, string>> = {
+  project: 'projects',
+  kb_doc: 'knowledge',
+  tables_record: 'tables',
+};
+
 export type CoreEntityKind = 'project' | 'kb_doc' | 'tables_record';
 
 /**
@@ -39,7 +45,7 @@ export const ENTITY_KINDS: readonly CoreEntityKind[] = ['project', 'kb_doc', 'ta
 
 export interface ExtensionEntityKindDef {
   /** `ext:<extension id>:<name>`. */
-  kind: ExtensionEntityKind;
+  kind: ExtensionEntityKind | CoreEntityKind;
   /**
    * Hash route with exactly one `:id` segment, e.g. `#/crm/companies/:id`.
    * One template drives both directions, so construction and parsing cannot
@@ -50,14 +56,15 @@ export interface ExtensionEntityKindDef {
 
 const extensionKinds = new Map<string, ExtensionEntityKindDef>();
 
-const ROUTE_SHAPE = /^#(?:\/[^/?#]+)+$/;
+const ROUTE_SHAPE = /^#(?:\/[^/?#]+)+(?:\?[^#]+)?$/;
 
 /** Register the record kinds of one extension. Called at boot from the extension list. */
 export function registerEntityKinds(defs: readonly ExtensionEntityKindDef[]): void {
   for (const def of defs) {
-    if (!def.kind.startsWith('ext:')) throw new Error(`Entity kind "${def.kind}" must start with "ext:"`);
+    if (!def.kind.startsWith('ext:') && !ENTITY_KINDS.includes(def.kind as CoreEntityKind))
+      throw new Error(`Entity kind "${def.kind}" must start with "ext:"`);
     if (extensionKinds.has(def.kind)) throw new Error(`Entity kind "${def.kind}" is already registered`);
-    if (!ROUTE_SHAPE.test(def.route) || def.route.split('/').filter((s) => s === ':id').length !== 1) {
+    if (!ROUTE_SHAPE.test(def.route) || (def.route.match(/:id(?=[/?&#]|$)/g) ?? []).length !== 1) {
       throw new Error(
         `Entity kind "${def.kind}" needs a hash route with exactly one ":id" segment (got "${def.route}")`,
       );
@@ -84,8 +91,6 @@ export function _resetExtensionEntityKinds(): void {
  */
 export function entityUrl(ref: EntityRef): string {
   switch (ref.kind) {
-    case 'project':
-      return `#/projects/${ref.id}`;
     case 'kb_doc':
       return `#/knowledge/doc/${ref.id}-${ref.slug}`;
     case 'tables_record':
@@ -128,12 +133,6 @@ export function parseEntityUrl(href: string): EntityRef | null {
   const query = rest.join('?');
   const segments = path.split('/').filter((s) => s !== '');
 
-  // #/projects/<id>
-  if (segments[0] === 'projects' && segments.length === 2) {
-    const id = toRowIdSegment(segments[1]);
-    return id === null ? null : { kind: 'project', id };
-  }
-
   // #/knowledge/doc/<id>-<slug> — ids never contain a dash; the slug may.
   if (segments[0] === 'knowledge' && segments[1] === 'doc' && segments.length === 3) {
     const dash = segments[2].indexOf('-');
@@ -166,7 +165,13 @@ export function parseEntityUrl(href: string): EntityRef | null {
         break;
       }
     }
-    if (matched && id) return { kind: def.kind, id: toId(id) ?? id };
+    if (matched && id) {
+      if (ENTITY_KINDS.includes(def.kind as CoreEntityKind)) {
+        const rowId = toRowIdSegment(id);
+        return rowId ? ({ kind: def.kind, id: rowId } as EntityRef) : null;
+      }
+      return { kind: def.kind, id: toId(id) ?? id } as EntityRef;
+    }
   }
 
   return null;
@@ -175,4 +180,10 @@ export function parseEntityUrl(href: string): EntityRef | null {
 /** True when `href` addresses a record we can open in a detail peek. */
 export function isEntityUrl(href: string): boolean {
   return parseEntityUrl(href) !== null;
+}
+
+/** Replace station-owned kinds after capability discovery; stale station links must not stay actionable. */
+export function setExtensionEntityKinds(defs: readonly ExtensionEntityKindDef[]): void {
+  extensionKinds.clear();
+  registerEntityKinds(defs);
 }

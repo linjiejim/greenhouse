@@ -1,16 +1,26 @@
 node_modules/
 # Expo app keeps its own toolchain/formatting (not in the pnpm workspace)
-apps/mobile/
+apps/client/
 dist/
 public/
-drizzle/
+packages/db/migrations/
 data/
 pnpm-lock.yaml
 *.md
 **/target/
 .turbo/
-apps/mobile/.expo/
-apps/mobile/android/
-apps/mobile/ios/
+apps/client/.expo/
+apps/client/android/
+apps/client/ios/
 # Expo 生成并自带「should not be edited」注释，跑过 expo start / prebuild 就会出现
-apps/mobile/expo-env.d.ts
+apps/client/expo-env.d.ts
+
+# Plugin seed files use JSONL to match the example dataset loader.
+plugins/*/seeds/*.json
+
+# Tauri-generated configuration and ACL schemas
+apps/desktop/.tauri-build.json
+apps/desktop/src-tauri/gen/
+
+# Generated standalone embed token data; freshness is checked against the renderer.
+packages/ui-tokens/src/tokens.generated.ts

@@ -4,9 +4,9 @@
  * One row per Agent holds its whole current configuration; `version` counts
  * configuration edits and is bumped by every `update` / `createVersion`.
  * Immutable version rows were retired in 3.0: a 1.x pin `custom:<id>@<n>`
- * (n ≤ version) resolves to the CURRENT configuration. `getVersion`,
- * `getCurrentVersion` and `listVersions` therefore synthesize a version object
- * from the row so those pins keep working (see docs agent-profiles.md).
+ * (n ≤ version) resolves to the CURRENT configuration. `getVersion` and
+ * `getCurrentVersion` therefore synthesize a version object from the row so
+ * those pins keep working (see docs agent-profiles.md).
  *
  * Visibility: an Agent is private to its owner unless `is_shared` is true, and
  * only a super switches that (`setShared`).
@@ -27,10 +27,6 @@ export interface CustomProfileGovernanceInput {
   risk_level?: CustomProfileRiskLevel;
   budget_policy?: Record<string, unknown>;
   owner_backup_user_id?: string | null;
-  /** Accepted for compatibility; change logs are no longer stored. */
-  change_log?: string;
-  /** Accepted for compatibility; the editor is not recorded per version. */
-  created_by?: string | null;
 }
 
 export interface CustomProfileInput extends CustomProfileGovernanceInput {
@@ -74,7 +70,6 @@ export interface CustomProfileVersionRow {
   profile_id: string;
   version: number;
   manifest_hash: string;
-  change_log: string;
   name: string;
   description: string | null;
   base_profile_id: string;
@@ -90,7 +85,6 @@ export interface CustomProfileVersionRow {
   risk_level: CustomProfileRiskLevel;
   budget_policy: Record<string, unknown>;
   owner_backup_user_id: string | null;
-  created_by: string | null;
   created_at: string;
 }
 
@@ -132,10 +126,8 @@ function versionOf(row: CustomProfileRow, version = row.version): CustomProfileV
     profile_id: row.id,
     version,
     manifest_hash: createHash('sha256').update(canonical(manifest)).digest('hex'),
-    change_log: '',
     ...manifest,
     connectors: row.connectors ?? null,
-    created_by: row.user_id,
     created_at: row.updated_at,
   };
 }
@@ -153,7 +145,7 @@ export function createCustomProfileService(db: Db) {
           user_id: input.user_id,
           name: input.name,
           description: input.description ?? null,
-          base_profile_id: input.base_profile_id ?? 'team',
+          base_profile_id: input.base_profile_id ?? 'sprouty',
           model_id: input.model_id ?? null,
           tools: input.tools,
           connectors: input.connectors ?? null,
@@ -194,12 +186,6 @@ export function createCustomProfileService(db: Db) {
     async getCurrentVersion(profileId: string): Promise<CustomProfileVersionRow | undefined> {
       const row = await service.getById(profileId);
       return row ? versionOf(row) : undefined;
-    },
-
-    /** Only the current configuration exists; older numbers are aliases of it. */
-    async listVersions(profileId: string): Promise<CustomProfileVersionRow[]> {
-      const current = await service.getCurrentVersion(profileId);
-      return current ? [current] : [];
     },
 
     /** Agents visible to a user: their own plus every Agent shared with the team. */

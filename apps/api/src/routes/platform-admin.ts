@@ -33,9 +33,9 @@ import {
 import { getDb } from '@greenhouse/db';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser, requireSuper } from '../auth/middleware.js';
-import { humanActor } from '../platform/actor.js';
-import { getPlatformRuntime, PLATFORM_ORG_ID } from '../platform/runtime.js';
-import { PLATFORM_CONTROL_CAPABILITIES } from '../platform/bootstrap.js';
+import { humanActor } from '../plugin-host/actor.js';
+import { getPlatformRuntime, PLATFORM_ORG_ID } from '../plugin-host/runtime.js';
+import { PLATFORM_CONTROL_CAPABILITIES } from '../plugin-host/bootstrap.js';
 import {
   generateClientSecret,
   generateOAuthClientId,
@@ -43,7 +43,7 @@ import {
   hashOAuthCredential,
   normalizeOAuthScopes,
   parseStoredStringArray,
-} from '../platform/oauth.js';
+} from '../agent-access/oauth.js';
 import type { PlatformOAuthClientRow } from '@greenhouse/db';
 
 /** Secret hashes never leave the API, even to super admins. */
@@ -176,7 +176,7 @@ const platformAdminRoutes = new Hono<AppEnv>()
     const role = await getDb().platform.getRole(c.req.param('id'));
     if (!role) return c.json({ error: 'Role not found' }, 404);
     if (role.system_protected) {
-      return c.json({ error: 'Use user overrides instead of editing protected baseline roles' }, 409);
+      return c.json({ error: 'Assign a custom role instead of editing protected baseline roles' }, 409);
     }
     const body = (await c.req.json()) as { capabilities?: string[] };
     if (!Array.isArray(body.capabilities)) return c.json({ error: 'capabilities must be an array' }, 400);

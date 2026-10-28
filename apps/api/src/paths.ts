@@ -19,14 +19,8 @@ export const PUBLIC_DIR = resolve(REPO_ROOT, 'public');
 /** data/ directory at repo root */
 export const DATA_DIR = resolve(REPO_ROOT, 'data');
 
-/** The core migration chain (drizzle-kit's `out`). */
-export const DRIZZLE_DIR = resolve(REPO_ROOT, 'drizzle');
+/** The core migration chain (drizzle-kit's `out`); the archived 3.x chain is its `archive-3x/`. */
+export const MIGRATIONS_DIR = resolve(REPO_ROOT, 'packages', 'db', 'migrations');
 
 /** data/uploads/ directory */
 export const UPLOADS_DIR = resolve(DATA_DIR, 'uploads');
-
-/** data/skills/ directory — local-disk default of the Skill Center bundle store */
-export const SKILLS_DIR = resolve(DATA_DIR, 'skills');
-
-/** apps/api/assets/fonts — the CJK font subsets embedded in rendered reports (OFL, see OFL.txt there) */
-export const REPORT_FONTS_DIR = resolve(REPO_ROOT, 'apps', 'api', 'assets', 'fonts');

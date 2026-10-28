@@ -1,3 +1,5 @@
+import { cabinetDriveScope } from '../drive/access.js';
+import { fromExtensions } from '../plugin-host/index.js';
 /**
  * Object references — /api/refs
  *
@@ -13,8 +15,7 @@
  *   caller may not read — or that does not exist — comes back with `title: null`, never an
  *   error, and the two cases look the same (no existence oracle);
  * - a doc may be named by id (`#/knowledge/doc/<id>-…`) or by slug (`#/knowledge/doc/<slug>`
- *   without an id, or the scope routes `#/knowledge/internal/<space>/<slug>`); a slug link
- *   reports the doc's id only when readable;
+ *   without an id); a slug link reports the doc's id only when readable;
  * - URLs that name no object are left out;
  * - absolute URLs count only on this workspace's own origin (request origin, `Origin`,
  *   `PUBLIC_BASE_URL`, `WEB_BASE_URL`): `#/projects/3` on another instance is another project.
@@ -36,20 +37,16 @@ import type { ActorContext } from '@greenhouse/platform-kernel';
 import type { AppEnv } from '../app-env.js';
 import { getAuthUser, requireInternal } from '../auth/middleware.js';
 import type { AuthUser } from '../auth/token.js';
-import { userHasFeature } from '../auth/features.js';
-import { canRead, resolveKbAccess } from '../knowledge/access.js';
 import { canReadDrive, resolveDriveAccess } from '../drive/access.js';
 import { canAccessSession } from '../sessions/access.js';
-import { humanActor } from '../platform/actor.js';
-import { projectResource, taskReadAuthorizer } from '../platform/projects/application.js';
-import { tablesResource } from '../platform/tables/application.js';
-import { getPlatformRuntime, type PlatformHandlerContext } from '../platform/runtime.js';
+import { humanActor } from '../plugin-host/actor.js';
+import { getPlatformRuntime } from '../plugin-host/runtime.js';
 
 const RESOLVE_CONCURRENCY = 8;
 const TITLE_MAX = 200;
 
 /** `id` replaces the link's own id (a doc linked by slug, once it is known to be readable). */
-type Resolved = Pick<ResolvedObjectRef, 'title' | 'meta'> & { id?: string };
+export type Resolved = Pick<ResolvedObjectRef, 'title' | 'meta'> & { id?: string };
 
 /** The origins whose absolute URLs are this workspace. */
 function workspaceOrigins(c: Context): string[] {
@@ -76,86 +73,35 @@ function refKey(ref: ObjectRef): string {
         : `${ref.type}:${ref.id}`;
 }
 
-/** Scalar → display text; anything else (arrays, objects, empty) → null. */
-function displayValue(value: unknown): string | null {
-  if (typeof value === 'string') return value.trim() || null;
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  return null;
-}
-
-interface Resolver {
+export interface ObjectRefResolver {
   db: DatabaseProvider;
   user: AuthUser;
   actor: ActorContext;
   capability: (name: string) => Promise<boolean>;
 }
 
-async function resolveRef(ref: ObjectRef, r: Resolver): Promise<Resolved> {
+async function resolveRef(ref: ObjectRef, r: ObjectRefResolver): Promise<Resolved> {
   const hidden: Resolved = { title: null };
+  const contributed = fromExtensions('objectRefs').find((resolver) => resolver.type === ref.type);
+  if (contributed) return contributed.resolve(ref, r);
   switch (ref.type) {
-    case 'doc': {
-      if (!(await r.capability('knowledge.library.read'))) return hidden;
-      // By slug exactly like GET /api/knowledge/docs/:slug, the route the slug link opens.
-      const doc =
-        ref.slug !== undefined
-          ? await r.db.knowledgeBase.get(ref.slug, 'shared')
-          : await r.db.knowledgeBase.getById(ref.id);
-      if (!doc || doc.status === 'archived') return hidden;
-      if (!canRead(await resolveKbAccess(r.db, doc, r.user.id))) return hidden;
-      return ref.slug !== undefined ? { title: clip(doc.title), id: String(doc.id) } : { title: clip(doc.title) };
-    }
+    case 'doc':
+      return hidden;
     case 'folder': {
       const folder = await r.db.drive.getFolder(ref.id);
-      if (!folder || folder.scope !== 'kb') return hidden;
+      if (!folder || folder.scope !== cabinetDriveScope()) return hidden;
       return canReadDrive(resolveDriveAccess(folder, r.user.id, {})) ? { title: clip(folder.name) } : hidden;
     }
     case 'file': {
       const file = await r.db.drive.getFile(ref.id);
-      if (!file || file.scope !== 'kb' || file.status !== 'active') return hidden;
+      if (!file || file.scope !== cabinetDriveScope() || file.status !== 'active') return hidden;
       if (!canReadDrive(resolveDriveAccess(file, r.user.id, {}))) return hidden;
       return { title: clip(file.name), meta: { size: file.size, contentType: file.content_type } };
     }
-    case 'project': {
-      const result = await getPlatformRuntime().dispatch({
-        actor: r.actor,
-        appId: 'projects',
-        actionId: 'getProject',
-        payload: { projectId: ref.id },
-        resource: projectResource('getProject', { projectId: ref.id }),
-      });
-      if (!result.ok) return hidden;
-      const project = (result.data as { project?: { title?: unknown } }).project;
-      return typeof project?.title === 'string' ? { title: clip(project.title) } : hidden;
-    }
-    case 'task': {
-      if (!(await r.capability('projects.execution.read'))) return hidden;
-      const task = await r.db.projects.getTaskById(ref.id);
-      // The link names its project too; a task quoted under the wrong project is not this link.
-      if (!task || task.project_id !== ref.projectId) return hidden;
-      const context: PlatformHandlerContext = { db: r.db };
-      const readable = await taskReadAuthorizer(context, r.actor)(task);
-      return readable ? { title: clip(task.title) } : hidden;
-    }
-    case 'record': {
-      if (!(await userHasFeature(r.user.id, r.user.role, 'tables', r.db))) return hidden;
-      const result = await getPlatformRuntime().dispatch({
-        actor: r.actor,
-        appId: 'tables',
-        actionId: 'getRecord',
-        payload: { tableId: ref.tableId, recordId: ref.id },
-        resource: tablesResource('getRecord', { tableId: ref.tableId, recordId: ref.id }),
-      });
-      if (!result.ok) return hidden;
-      const [table, fields] = await Promise.all([
-        r.db.tables.getTable(ref.tableId),
-        r.db.tables.listFields(ref.tableId),
-      ]);
-      if (!table || (ref.baseId !== null && table.base_id !== ref.baseId)) return hidden;
-      const record = (result.data as { record?: { values?: Record<string, unknown> } }).record;
-      const primary = fields.find((field) => field.is_primary) ?? fields[0];
-      const value = primary ? displayValue(record?.values?.[String(primary.id)]) : null;
-      return { title: clip(value ?? `#${ref.id}`) };
-    }
+    case 'record':
+    case 'project':
+    case 'task':
+      return hidden;
     case 'conversation': {
       const session = await r.db.sessions.getById(ref.id);
       if (!session || !(await canAccessSession(r.user, session))) return hidden;
@@ -184,7 +130,7 @@ export function createRefsRoutes() {
     const db = getDb();
     const actor = humanActor(user, c);
     const capabilities = new Map<string, Promise<boolean>>();
-    const resolver: Resolver = {
+    const resolver: ObjectRefResolver = {
       db,
       user,
       actor,
@@ -225,4 +171,9 @@ export function createRefsRoutes() {
     });
     return c.json({ items } satisfies ResolveRefsResponse);
   });
+}
+
+export interface ObjectRefSource {
+  type: ObjectRef['type'];
+  resolve: (ref: ObjectRef, ctx: ObjectRefResolver) => Promise<Resolved>;
 }

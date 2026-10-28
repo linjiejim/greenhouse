@@ -17,7 +17,7 @@
  * Commands are imported lazily so a cheap command never pays to load the DB.
  */
 
-import { extensionCommands } from '../extensions/boot.js';
+import { extensionCommands } from '../plugin-host/boot.js';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -37,22 +37,17 @@ ${chalk.bold('Inspect')}
   profiles [list]           List built-in + custom agent profiles (--json)
   sessions [list]           Recent sessions (--user, --channel, --status, --limit, --json)
   sessions show <id>        Session detail + full transcript (--verbose, --json)
+  plugins list / status     Compiled plugins, enablement, migrations and boot facts (--json)
+  plugins drop <id> --yes   Drop a disabled plugin’s tables and lane rows
   stats                     One-glance row counts + DB health (--json)
 
 ${chalk.bold('Manage')}
   users create              Create a user (--email --password --nickname --role)
   db reset                  Wipe ALL data — truncate every table (--yes; local dev only)
-  db migrate                Apply the 3.0 migration chain (refuses a 1.x / 2.x database)
-  migrate-from-1x           Carry a 1.6 database into a new 3.0 one (--from <url> --to <url> [--dry-run] [--json])
+  db migrate                Apply the 4.0 migration chain; upgrades a 3.x database in place (refuses 1.x / 2.x)
   db baseline               Adopt an existing database: record the migration chain as applied (--dry-run, --yes)
   platform bootstrap        Synchronize system roles / baseline policies with the manifests
-  platform create-app <id>  Scaffold a fail-closed Platform app (--title, --output, --dry-run)
-  knowledge reindex         Recompute segmented FTS tokens (--batch)
-  knowledge import <dir>    Seed a folder of Markdown files into the team knowledge base
   seed                      Load the example dataset from data/examples (--reset | --keep)
-  tables list-archived      Deleted (archived) Bases and tables (--base <id>, --json)
-  tables restore-base <id>  Bring an archived Base back into everyone's list
-  tables restore-table <id> Bring an archived table back into its Base
 
 ${chalk.bold('Diagnose')}
   doctor                    Check env + DB readiness for this deployment
@@ -107,17 +102,12 @@ async function dispatch(command: string, rest: string[]): Promise<number> {
     case 'doctor':
     case 'check':
       return (await import('./commands/doctor.js')).run(rest);
+    case 'plugins':
+      return (await import('./commands/plugins.js')).run(rest);
     case 'platform':
       return (await import('./commands/platform.js')).run(rest);
-    case 'knowledge':
-    case 'kb':
-      return (await import('./commands/knowledge.js')).run(rest);
-    case 'tables':
-      return (await import('./commands/tables.js')).run(rest);
     case 'seed':
       return (await import('./commands/seed.js')).run(rest);
-    case 'migrate-from-1x':
-      return (await import('./commands/migrate-from-1x.js')).run(rest);
     // ── HTTP-driven scripts (child-process delegation) ──
     case 'chat':
       return delegate('chat.ts', rest);

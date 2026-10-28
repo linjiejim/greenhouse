@@ -1,9 +1,8 @@
 /**
  * Export sources contributed by extensions.
  *
- * `export_data` ships two sources of its own — `inline` rows the model already
- * has, and `tables_records` read through the Tables adapter. An extension that
- * owns a dataset worth exporting whole registers a third here instead of
+ * `export_data` owns the inline rows the model already has. A plugin that
+ * owns a dataset worth exporting whole registers its source here instead of
  * editing that tool, the way a new search lane registers in `search/sources.ts`.
  *
  * A source is read-only and must apply its own authorization: `export_data`
@@ -53,9 +52,4 @@ export function registerExportSources(defs: readonly ExtensionExportSource[]): v
 
 export function extensionExportSources(): readonly ExtensionExportSource[] {
   return sources;
-}
-
-/** Test hook — forget sources registered by a suite. */
-export function _resetExtensionExportSources(): void {
-  sources.length = 0;
 }

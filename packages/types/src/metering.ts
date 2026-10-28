@@ -18,6 +18,7 @@ import type { WorkspaceFlagState } from './workspace-settings.js';
 export const METERING_CLIENTS = [
   'web',
   'mobile',
+  'desktop',
   'mcp',
   'agent_api',
   'automation',

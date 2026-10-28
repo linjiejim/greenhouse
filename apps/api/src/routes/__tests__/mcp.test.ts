@@ -12,13 +12,20 @@ import type { Context } from 'hono';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
+vi.mock('../../plugin-host/mcp-resources.js', () => ({
+  listPluginResources: async () => [],
+  listPluginResourceTemplates: async () => [],
+  readPluginResource: async (uri: string) =>
+    uri === 'greenhouse://ext/fixture/doc' ? { uri, mimeType: 'text/markdown', text: 'Fixture document' } : undefined,
+}));
+
 vi.mock('@greenhouse/db', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@greenhouse/db')>();
   return { ...actual, getDb: () => ({ apiAudit: { record: async () => {} } }) };
 });
 
 // Writes are recorded in agent-access (covered end to end by
-// tests/api/agent-write-governance.db.test.ts); here the route's own job is
+// plugins/knowledge/tests/tests/api/agent-write-governance.db.test.ts); here the route's own job is
 // asserted: strip confirm and pass it on, and shape each outcome for the agent.
 const governance = vi.hoisted(() => ({ govern: vi.fn() }));
 vi.mock('../../agent-access/context.js', () => ({
@@ -48,8 +55,8 @@ function view(over: Record<string, unknown> = {}) {
   return {
     request_id: 'rtr_1',
     status: 'executed',
-    tool_id: 'project_mutation',
-    action: 'project.update',
+    tool_id: 'files_mutation',
+    action: 'document.update',
     risk: 'r2',
     client_id: 'c1',
     client_name: 'Codex',
@@ -79,8 +86,8 @@ function contextFor(clientId: string) {
         ? {
             userId: 'mcp-test-user',
             userRole: 'team',
-            allowedTools: ['project_query', 'project_mutation'],
-            allowedWriteTools: ['project_mutation'],
+            allowedTools: ['files_query', 'files_mutation'],
+            allowedWriteTools: ['files_mutation'],
           }
         : key === 'oauthClientId'
           ? clientId
@@ -91,10 +98,10 @@ function contextFor(clientId: string) {
 const fakeC = contextFor('client-a');
 
 // Fake registry keyed by REAL tool ids (so getToolMeta resolves their meta), with
-// stub execute/inputSchema. project_query = read, project_mutation = write.
+// stub execute/inputSchema. files_query = read, files_mutation = write.
 function makeCtx() {
   const registry = {
-    project_query: {
+    files_query: {
       inputSchema: z.object({ q: z.string().optional(), rows: z.number().optional() }),
       execute: async (input: { q?: string; rows?: number }) => ({
         ok: true,
@@ -104,12 +111,12 @@ function makeCtx() {
           : {}),
       }),
     },
-    project_mutation: {
+    files_mutation: {
       inputSchema: z.object({ name: z.string() }),
       execute: async (input: unknown) => ({ created: input }),
     },
   } as unknown as ToolRegistry;
-  return { toolIds: ['project_query', 'project_mutation'], registry };
+  return { toolIds: ['files_query', 'files_mutation'], registry };
 }
 
 async function connect(ctx: ReturnType<typeof makeCtx>, c: Context = fakeC) {
@@ -134,21 +141,21 @@ describe('MCP server — tools/list', () => {
     // team_context and data_catalog are protocol tools every grant lists (content cut to the grant).
     expect(tools.map((t) => t.name).sort()).toEqual([
       'data_catalog',
-      'project_mutation',
-      'project_query',
+      'files_mutation',
+      'files_query',
       'team_context',
       'tool_output_read',
     ]);
     expect(tools.find((t) => t.name === 'team_context')!.annotations).toMatchObject({ readOnlyHint: true });
 
-    const write = tools.find((t) => t.name === 'project_mutation')!;
+    const write = tools.find((t) => t.name === 'files_mutation')!;
     // No action enum to prove it only adds things: destructive, so clients ask.
     expect(write.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, openWorldHint: false });
     expect(write.description).toMatch(/recorded in their name/);
     // This write cannot delete, so it has no confirm flag at all.
     expect((write.inputSchema as { properties: Record<string, unknown> }).properties.confirm).toBeUndefined();
 
-    const read = tools.find((t) => t.name === 'project_query')!;
+    const read = tools.find((t) => t.name === 'files_query')!;
     expect(read.annotations).toMatchObject({ readOnlyHint: true });
     expect(tools.find((t) => t.name === 'tool_output_read')!.annotations).toMatchObject({ readOnlyHint: true });
 
@@ -189,42 +196,10 @@ describe('MCP server — Files tools', () => {
   });
 });
 
-describe('MCP server — Issues & requests tools', () => {
-  it('lists feedback_query read-only and the two filing tools as writes without a delete preview', async () => {
-    const { createFeedbackQueryTool } = await import('../../tools/feedback-query.js');
-    const { createFeatureRequestTool } = await import('../../tools/feature-request.js');
-    const { createLogFrictionTool } = await import('../../tools/log-friction.js');
-    const db = {} as never;
-    const ctx = {
-      toolIds: ['feedback_query', 'feature_request', 'log_friction'],
-      registry: {
-        feedback_query: createFeedbackQueryTool(db, { userId: 'mcp-test-user', userRole: 'team' }),
-        feature_request: createFeatureRequestTool(db, { userId: 'mcp-test-user', userRole: 'team' }),
-        log_friction: createLogFrictionTool(db, {}),
-      } as unknown as ToolRegistry,
-    };
-    const { client, server } = await connect(ctx);
-    const { tools } = await client.listTools();
-    expect(tools.find((t) => t.name === 'feedback_query')!.annotations).toMatchObject({ readOnlyHint: true });
-    // Neither only adds: a repeated friction replaces its detail and reopens a
-    // resolved entry; a super can update a request through feature_request.
-    expect(tools.find((t) => t.name === 'log_friction')!.annotations).toMatchObject({ destructiveHint: true });
-    expect(tools.find((t) => t.name === 'feature_request')!.annotations).toMatchObject({ destructiveHint: true });
-    for (const name of ['feature_request', 'log_friction']) {
-      const write = tools.find((t) => t.name === name)!;
-      expect(write.annotations).toMatchObject({ readOnlyHint: false });
-      expect(write.description).toMatch(/recorded in their name/);
-      expect((write.inputSchema as { properties: Record<string, unknown> }).properties.confirm).toBeUndefined();
-    }
-    await client.close();
-    await server.close();
-  });
-});
-
 describe('MCP server — tools/call', () => {
   it('runs a read tool and returns its output as JSON text', async () => {
     const { client, server } = await connect(makeCtx());
-    const res = await client.callTool({ name: 'project_query', arguments: { q: 'hi' } });
+    const res = await client.callTool({ name: 'files_query', arguments: { q: 'hi' } });
     expect(res.isError).toBeFalsy();
     expect(JSON.parse(firstText(res))).toMatchObject({ ok: true, echo: { q: 'hi' } });
     await client.close();
@@ -234,13 +209,13 @@ describe('MCP server — tools/call', () => {
   it('runs a write at once, strips confirm and passes it on, and says where it is recorded', async () => {
     governance.govern.mockResolvedValue({ status: 'executed', view: view({ output: { created: { name: 'X' } } }) });
     const { client, server } = await connect(makeCtx());
-    const res = await client.callTool({ name: 'project_mutation', arguments: { name: 'X' } });
+    const res = await client.callTool({ name: 'files_mutation', arguments: { name: 'X' } });
     expect(res.isError).toBeFalsy();
     expect(JSON.parse(firstText(res))).toEqual({ created: { name: 'X' } });
     expect((res.content as Array<{ text: string }>).at(-1)!.text).toBe('Recorded in Greenhouse as write rtr_1.');
     expect(governance.govern.mock.calls.at(-1)![0]).toMatchObject({ input: { name: 'X' }, confirmed: false });
 
-    await client.callTool({ name: 'project_mutation', arguments: { name: 'X', confirm: true } });
+    await client.callTool({ name: 'files_mutation', arguments: { name: 'X', confirm: true } });
     expect(governance.govern.mock.calls.at(-1)![0]).toMatchObject({ input: { name: 'X' }, confirmed: true });
     governance.govern.mockReset();
     await client.close();
@@ -252,7 +227,7 @@ describe('MCP server — tools/call', () => {
       status: 'needs_confirmation',
       preview: {
         status: 'needs_confirmation',
-        tool: 'project_mutation',
+        tool: 'files_mutation',
         action: 'records.delete',
         risk: 'r3',
         target: null,
@@ -261,7 +236,7 @@ describe('MCP server — tools/call', () => {
       },
     });
     const { client, server } = await connect(makeCtx());
-    const res = await client.callTool({ name: 'project_mutation', arguments: { name: 'X' } });
+    const res = await client.callTool({ name: 'files_mutation', arguments: { name: 'X' } });
     expect(res.isError).toBeFalsy();
     expect(JSON.parse(firstText(res))).toMatchObject({ status: 'needs_confirmation', risk: 'r3' });
     await client.close();
@@ -274,7 +249,7 @@ describe('MCP server — tools/call', () => {
       view: view({ status: 'failed', error: 'revision conflict' }),
     });
     const { client, server } = await connect(makeCtx());
-    const failed = await client.callTool({ name: 'project_mutation', arguments: { name: 'X' } });
+    const failed = await client.callTool({ name: 'files_mutation', arguments: { name: 'X' } });
     expect(failed.isError).toBe(true);
     expect(firstText(failed)).toBe('revision conflict');
 
@@ -282,7 +257,7 @@ describe('MCP server — tools/call', () => {
       status: 'outcome_unknown',
       view: view({ status: 'outcome_unknown', error: 'The write ran but its result could not be recorded' }),
     });
-    const unknown = await client.callTool({ name: 'project_mutation', arguments: { name: 'X' } });
+    const unknown = await client.callTool({ name: 'files_mutation', arguments: { name: 'X' } });
     expect(unknown.isError).toBeFalsy();
     expect(JSON.parse(firstText(unknown))).toMatchObject({ status: 'outcome_unknown', write_id: 'rtr_1' });
     await client.close();
@@ -292,7 +267,7 @@ describe('MCP server — tools/call', () => {
   it('returns an over-budget refusal as a tool error in its own words', async () => {
     const ctx = makeCtx();
     const refusal = { unit: 'usd_micros' as const, level: 'member' as const };
-    (ctx.registry as Record<string, any>).project_query.execute = async () => {
+    (ctx.registry as Record<string, any>).files_query.execute = async () => {
       // Wrapped the way the AI SDK / a tool would wrap it.
       throw new Error('tool failed', {
         cause: new UsageBudgetAdmissionError(
@@ -305,7 +280,7 @@ describe('MCP server — tools/call', () => {
       });
     };
     const { client, server } = await connect(ctx);
-    const res = await client.callTool({ name: 'project_query', arguments: {} });
+    const res = await client.callTool({ name: 'files_query', arguments: {} });
     expect(res.isError).toBe(true);
     expect(firstText(res)).toBe(budgetExceededMessage(refusal));
     expect(firstText(res)).toContain('联系管理员');
@@ -315,9 +290,9 @@ describe('MCP server — tools/call', () => {
 
   it('runs every tool call as the member, client mcp and the agent’s OAuth client', async () => {
     const ctx = makeCtx();
-    (ctx.registry as Record<string, any>).project_query.execute = async () => ({ scope: currentMeteringScope() });
+    (ctx.registry as Record<string, any>).files_query.execute = async () => ({ scope: currentMeteringScope() });
     const { client, server } = await connect(ctx, contextFor('client-codex'));
-    const res = await client.callTool({ name: 'project_query', arguments: {} });
+    const res = await client.callTool({ name: 'files_query', arguments: {} });
     expect(JSON.parse(firstText(res))).toEqual({
       scope: { userId: 'mcp-test-user', client: 'mcp', oauthClientId: 'client-codex' },
     });
@@ -327,7 +302,7 @@ describe('MCP server — tools/call', () => {
 
   it('rejects a tool not in the request context (not widened)', async () => {
     const { client, server } = await connect(makeCtx());
-    const res = await client.callTool({ name: 'knowledge_query', arguments: {} });
+    const res = await client.callTool({ name: 'tables_query', arguments: {} });
     expect(res.isError).toBe(true);
     expect(firstText(res)).toMatch(/not available/i);
     await client.close();
@@ -339,7 +314,7 @@ describe('MCP server — bounded replies', () => {
   it('stores an oversized read result, previews it, and pages the rest for the same client only', async () => {
     objects.clear();
     const { client, server } = await connect(makeCtx());
-    const res = await client.callTool({ name: 'project_query', arguments: { rows: 600 } });
+    const res = await client.callTool({ name: 'files_query', arguments: { rows: 600 } });
     expect(res.isError).toBeFalsy();
     const blocks = res.content as Array<{ text: string }>;
     const handle = JSON.parse(blocks[0]!.text);
@@ -382,7 +357,7 @@ describe('MCP server — bounded replies', () => {
     const big = { rows: Array.from({ length: 600 }, (_, i) => ({ id: i, note: 'n'.repeat(50) })) };
     governance.govern.mockResolvedValueOnce({ status: 'executed', view: view({ output: big }) });
     const { client, server } = await connect(makeCtx());
-    const res = await client.callTool({ name: 'project_mutation', arguments: { name: 'X' } });
+    const res = await client.callTool({ name: 'files_mutation', arguments: { name: 'X' } });
     const blocks = res.content as Array<{ text: string }>;
     expect(JSON.parse(blocks[0]!.text)).toMatchObject({ truncated: true });
     expect(blocks.at(-1)!.text).toBe('Recorded in Greenhouse as write rtr_1.');
@@ -440,4 +415,15 @@ describe('toMcpInputSchema', () => {
     expect(mcpToolAnnotations(additive)).toMatchObject({ readOnlyHint: false, destructiveHint: false });
     expect(mcpToolAnnotations(base({}))).toEqual({ readOnlyHint: true, openWorldHint: false });
   });
+});
+
+it('reads a contributed ext URI after no static context resource claims it', async () => {
+  const { client, server } = await connect(makeCtx());
+  try {
+    const read = await client.readResource({ uri: 'greenhouse://ext/fixture/doc' });
+    expect(read.contents[0]).toMatchObject({ text: 'Fixture document' });
+  } finally {
+    await client.close();
+    await server.close();
+  }
 });

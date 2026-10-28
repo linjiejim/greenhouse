@@ -5,14 +5,14 @@
  * consent. Consumed by:
  *   • apps/api — each tool declares its group in `meta.surface.mcp`
  *                (apps/api/src/tools/define.ts); the OAuth layer derives one
- *                `mcp:<group>` scope per entry (apps/api/src/platform/oauth.ts)
- *   • apps/web — the consent screen's checklist (pages/oauth-consent.tsx) and
- *                the machine-client form (pages/settings/mcp-keys.tsx)
+ *                `mcp:<group>` scope per entry (apps/api/src/agent-access/oauth.ts)
+ *   • apps/client — the consent screen's checklist (src/login/consent.ts, over a
+ *                vendored copy of the ids) and the machine-client form
+ *                (src/admin/mcp-keys.web.tsx)
  *
  * This module carries IDENTITY ONLY — no display copy. Every user-visible label
- * lives in the locale files under `mcpGroups.<id>`, derived via
- * `apps/web/src/lib/mcp-groups.ts`; a hardcoded English label here would reach
- * the consent screen untranslated.
+ * lives in the client's locale files under `entry.groups.<id>`; a hardcoded
+ * English label here would reach the consent screen untranslated.
  *
  * ─── How an authorization resolves ───────────────────────
  * Resource groups are ORTHOGONAL to `mcp:read` / `mcp:write`: the former say
@@ -34,23 +34,9 @@
 
 /**
  * The groups, in the order the consent screen lists them. Identity only —
- * display copy comes from `mcpGroups.<id>.{label,description}` in the locales.
+ * display copy comes from `entry.groups.<id>.{label,description}` in the client locales.
  */
-export const MCP_RESOURCE_GROUP_IDS = [
-  'knowledge',
-  'files',
-  'projects',
-  'tables',
-  'skills',
-  'chat',
-  'automation',
-  'image',
-  'feedback',
-  'services',
-  'computer',
-  'reports',
-  'connectors',
-] as const;
+export const MCP_RESOURCE_GROUP_IDS = ['files', 'chat', 'automation', 'image', 'services', 'connectors'] as const;
 
 export type McpResourceGroup = (typeof MCP_RESOURCE_GROUP_IDS)[number];
 

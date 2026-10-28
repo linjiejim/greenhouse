@@ -1,15 +1,16 @@
+import { identityDiscoveryRoutes } from './auth/identity-providers.js';
+import { startChannels } from './plugin-host/channels.js';
+import { fromExtensions } from './plugin-host/index.js';
 /**
  * Greenhouse API — Hono server entry point.
  *
  * Mounts route modules, applies middleware, starts server.
  */
 
-import { resolve } from 'node:path';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { readFileSync, existsSync } from 'node:fs';
 import { config } from 'dotenv';
-import { ENV_FILE, PUBLIC_DIR, REPO_ROOT } from './paths.js';
+import { ENV_FILE, PUBLIC_DIR } from './paths.js';
 
 // Load .env before anything else
 config({ path: ENV_FILE });
@@ -31,14 +32,16 @@ if (_httpsProxy) {
 
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
-import { serveStatic } from '@hono/node-server/serve-static';
+import { mountClientHosting } from './hosting.js';
+import { extUiScopeMiddleware } from './auth/middleware.js';
+import extUiRoutes from './routes/ext-ui.js';
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://greenhouse:greenhouse@localhost:5432/greenhouse';
 import { initDatabase } from '@greenhouse/db';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { createToolRegistry, type ToolRegistry } from './agent.js';
 import type { AppEnv } from './app-env.js';
 import { listProfileIds, startProfileWatcher } from './profiles/profile.js';
-import { authMiddleware, requireSuper, requireInternal, requireFeature } from './auth/middleware.js';
+import { authMiddleware, requireSuper, requireInternal } from './auth/middleware.js';
 import { assertAuthEnv } from './auth/token.js';
 import {
   corsMiddleware,
@@ -50,11 +53,10 @@ import {
 // Route modules
 import authRoutes from './routes/auth.js';
 import meRoutes from './routes/me.js';
+import peopleRoutes from './routes/people.js';
 import profileRoutes from './routes/profiles.js';
 import sessionRoutes from './routes/sessions.js';
 import { createChatRoute } from './routes/chat.js';
-import clientActionRoutes from './routes/client-actions.js';
-import { CLIENT_ACTIONS_API_PREFIX } from '@greenhouse/types/api';
 import { createAgentRoutes } from './routes/agent-tools.js';
 import { createMcpRoutes } from './routes/mcp.js';
 import { createAnthropicGatewayRoutes, createGatewayRoutes } from './routes/gateway.js';
@@ -64,35 +66,24 @@ import oauthRoutes from './routes/oauth.js';
 import healthRoutes from './routes/health.js';
 import bootstrapRoutes from './routes/bootstrap.js';
 import extensionsRoutes from './routes/extensions.js';
+import adminPluginRoutes from './routes/admin-plugins.js';
 import {
   applyExtensionMigrations,
   extensionApplicationRegistrations,
   mountExtensionRoutes,
+  mountExtensionUis,
   runExtensionBootHooks,
   runExtensionShutdownHooks,
-} from './extensions/boot.js';
+} from './plugin-host/boot.js';
 import adminSettingsRoutes from './routes/admin-settings.js';
-import { adminRetroRoutes, adminTeamContextRoutes } from './routes/admin-team-context.js';
-import dataCatalogRoutes from './routes/data-catalog.js';
+import { adminTeamContextRoutes } from './routes/admin-team-context.js';
 import { applyWorkspaceEnvOverlay } from './settings/workspace-config.js';
 import uploadRoutes from './routes/upload.js';
 import adminRoutes from './routes/admin.js';
-import costValueRoutes from './routes/cost-value.js';
-import { wecomOAuthRoutes } from './routes/wecom-oauth.js';
-import { feishuOAuthRoutes } from './routes/feishu-oauth.js';
-import { initFeishuBot, stopFeishuBot } from './feishu/bot/client.js';
-import featureRequestRoutes from './routes/feature-requests.js';
-import frictionRoutes from './routes/frictions.js';
-import projectRoutes from './routes/projects.js';
-import platformRoutes from './routes/platform.js';
 import platformAdminRoutes from './routes/platform-admin.js';
-import { bootstrapPlatform } from './platform/bootstrap.js';
-import { projectsRegistration } from './platform/projects/application.js';
-import { knowledgeRegistration } from './platform/knowledge/registration.js';
-import { tablesRegistration } from './platform/tables/application.js';
-import { initializePlatformRuntime } from './platform/runtime.js';
+import { bootstrapPlatform } from './plugin-host/bootstrap.js';
+import { initializePlatformRuntime } from './plugin-host/runtime.js';
 import promptRoutes from './routes/prompts.js';
-import knowledgeRoutes from './routes/knowledge.js';
 import { createSearchRoute } from './routes/search.js';
 import { createRefsRoutes } from './routes/refs.js';
 import { createActivityRoutes } from './routes/activity.js';
@@ -100,26 +91,15 @@ import shareRoutes from './routes/shares.js';
 import { createNotificationRoutes } from './routes/notifications.js';
 import pushDeviceRoutes from './routes/push-devices.js';
 import adminMeteringRoutes from './routes/admin-metering.js';
-import { adminComputerRoutes, computerRoutes } from './routes/computer.js';
-import { sweepComputers } from './computer/service.js';
 import usageRoutes from './routes/usage.js';
+import { adminClientReportRoutes, clientReportRoutes } from './routes/client-reports.js';
 import toolsRoutes from './routes/tools.js';
 import driveRoutes from './routes/drive.js';
 import chatFileRoutes from './routes/chat-files.js';
 import artifactActionRoutes from './routes/artifact-actions.js';
-import skillRoutes from './routes/skills.js';
-import reportTemplateRoutes from './routes/report-templates.js';
-import { seedDefaultReportTemplates } from './reports/defaults.js';
-import tablesRoutes from './routes/tables.js';
-import { getSkillStore } from './skills/store.js';
-import { seedSkillhub } from './skills/boot-seed.js';
-import { sweepUnscannedSkills } from './skills/center.js';
-import { backfillKnowledgeTokens } from './knowledge/backfill.js';
 import { initScheduler } from './scheduler/index.js';
-import { createEmailRoutes } from './routes/email.js';
 import { createTasksRoute } from './routes/tasks.js';
 import runtimeRoutes from './routes/runtime.js';
-import { settleRetiredRuntimeRuns } from './runtime/retired-kinds.js';
 import { startRuntimeWorker } from './runtime/worker.js';
 import { reconcileInterruptedChatRuntimeRuns } from './chat/runtime.js';
 import { reconcileInterruptedAgentWrites } from './agent-access/governed-write.js';
@@ -131,14 +111,10 @@ import { sweepExpiredToolOutputs } from './agent-runtime/tool-output-store.js';
 import { scheduleRetention } from './upkeep/retention.js';
 import { createAutomationRuntimeDriver } from './scheduler/runtime-driver.js';
 import { createRuntimeNotificationProjector } from './notifications/runtime-projector.js';
-import { AUTOMATION_DELIVERY_CHANNELS, startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
+import { automationDeliveryChannels, startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
 import { mobilePushEnabled } from './notifications/push/config.js';
 import { createRuntimeDomainProjector } from './runtime/domain-projector.js';
-import {
-  requireTrustedExecutionSurface,
-  resolveTrustedExecutionSwitches,
-  trustedExecutionBootPlan,
-} from './trusted-execution/kill-switches.js';
+import { resolveTrustedExecutionSwitches, trustedExecutionBootPlan } from './trusted-execution/kill-switches.js';
 import { initServiceCatalog } from './config/services.js';
 import { initModelCatalog } from './config/models.js';
 // ws CJS/ESM interop — use namespace import for reliable access
@@ -146,7 +122,6 @@ import * as _ws from 'ws';
 const WsServer = _ws.WebSocketServer ?? (_ws as any).default?.WebSocketServer;
 import wsRoutes from './ws/index.js';
 import { connectionManager } from './ws/connection-manager.js';
-import { startKnowledgeLiveUpdates } from './knowledge/live.js';
 import { chatRunRegistry } from './chat/runs.js';
 import { startUsageBudgetSweeper } from './llm/usage-budget-sweeper.js';
 
@@ -164,6 +139,9 @@ if (trustedExecutionSwitches.invalidEnv.length > 0) {
 
 app.use('*', securityHeadersMiddleware);
 app.use('*', corsMiddleware);
+app.use('*', extUiScopeMiddleware);
+mountExtensionUis(app);
+mountClientHosting(app, PUBLIC_DIR);
 app.use('*', authMiddleware);
 app.use('*', rateLimitMiddleware);
 
@@ -186,82 +164,10 @@ app.use('*', async (c, next) => {
   logger.info(`[API] ← ${statusIcon} ${method} ${path} ${status} (${duration}ms)`);
 });
 
-// ─── Static File Serving ──────────────────────────────
-
-// Root is the repo root (absolute, computed from this module's location) — NOT
-// `process.cwd()`. serve-static does `join(root, requestPath)`, so a relative
-// `./` root silently breaks when the API is launched from anywhere other than
-// the repo root (e.g. `cd apps/api && pnpm dev`), turning every /public asset
-// (the logo included) into a 404. REPO_ROOT mirrors PUBLIC_DIR used below.
-app.use('/public/*', serveStatic({ root: REPO_ROOT }));
-// Vite emits the hashed bundle under public/assets with `base: './'`, so the
-// SPA (served at `/`) requests them at `/assets/*`. Rewrite to the on-disk
-// public/assets path (mirrors the proven `/public/*` mapping above).
-app.use(
-  '/assets/*',
-  serveStatic({
-    root: REPO_ROOT,
-    rewriteRequestPath: (p) => `/public${p}`,
-    // Vite 产物是内容哈希文件名——内容变则文件名变，所以这些 URL 的内容永不改写，
-    // 可以按 immutable 永久缓存。浏览器与桌面壳都受益，WebView 壳尤其明显：冷启动
-    // 只需回源取 index.html，其余静态资源全部本地命中。
-    onFound: (_localPath, c) => {
-      c.header('Cache-Control', 'public, max-age=31536000, immutable');
-    },
-  }),
-);
-
-// Root-level static files the SPA references by absolute path (the icon set +
-// web manifest shipped in apps/web/public and copied next to index.html by
-// Vite). Explicit allowlist — never a directory listing of public/.
-const ROOT_STATIC_FILES: Record<string, string> = {
-  '/favicon.svg': 'image/svg+xml',
-  '/apple-touch-icon.png': 'image/png',
-  '/icon-192.png': 'image/png',
-  '/icon-512.png': 'image/png',
-  '/site.webmanifest': 'application/manifest+json',
-};
-for (const [path, contentType] of Object.entries(ROOT_STATIC_FILES)) {
-  app.get(path, (c) => {
-    const filePath = resolve(PUBLIC_DIR, path.slice(1));
-    if (!existsSync(filePath)) return c.body(null, 404);
-    c.header('Content-Type', contentType);
-    c.header('Cache-Control', 'public, max-age=86400');
-    return c.body(readFileSync(filePath));
-  });
-}
-
-// Favicon — serve from public or return empty
-app.get('/favicon.ico', (c) => {
-  const faviconPath = resolve(PUBLIC_DIR, 'favicon.ico');
-  if (existsSync(faviconPath)) {
-    const data = readFileSync(faviconPath);
-    c.header('Content-Type', 'image/x-icon');
-    c.header('Cache-Control', 'public, max-age=86400');
-    return c.body(data);
-  }
-  return c.body(null, 204);
-});
-
-app.get('/', (c) => {
-  // Vite build writes the production index.html (with hashed asset refs) into
-  // public/. In dev the SPA is served by the Vite dev server (:3100), not here.
-  const htmlPath = resolve(PUBLIC_DIR, 'index.html');
-  if (!existsSync(htmlPath)) {
-    return c.text('Frontend not built. Run: pnpm web:build', 404);
-  }
-  const html = readFileSync(htmlPath, 'utf-8');
-  // index.html 引用的是哈希文件名，所以它自己必须每次回源确认——否则发布后客户端
-  // 会拿着旧 HTML 去请求已经不存在的 assets。用 no-cache（可缓存但须 revalidate）
-  // 而不是 no-store，前进/后退仍能走缓存。
-  c.header('Cache-Control', 'no-cache');
-  return c.html(html);
-});
-
+// Client hosting excludes API/plugin prefixes before their authenticated routes.
 // ─── Mount Routes ────────────────────────────────────────
-// One chained expression so the full route schema composes into AppType
-// (consumed by hc clients via @greenhouse/contract). Registration order is
-// load-bearing (e.g. OAuth protocol routes precede application routes) — do not reorder.
+// One chained expression so the full route schema composes into AppType.
+// Registration order is load-bearing (e.g. OAuth protocol routes precede application routes) — do not reorder.
 // Called from main() once the toolRegistry exists (needs the DB).
 
 function mountRoutes(toolRegistry: ToolRegistry) {
@@ -271,7 +177,9 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // router must be mounted before narrower application routes.
       .route('/', oauthRoutes)
       .route('/api/auth', authRoutes)
+      .route('/api/auth', identityDiscoveryRoutes)
       .route('/api/me', meRoutes)
+      .route('/api/ext-ui', extUiRoutes)
       // A member's own connectors (connect / disconnect team ones, CRUD personal
       // ones); the router also requires the mcp_call tool.
       .use('/api/me/connectors', requireInternal())
@@ -283,16 +191,8 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       // Pre-login workspace personalization (name / logo / theme) — public.
       .route('/api/bootstrap', bootstrapRoutes)
       .route('/api/extensions', extensionsRoutes)
+      .route('/api/admin/plugins', adminPluginRoutes)
       .route('/api/upload', uploadRoutes)
-      // `/oauth/callback` is a browser redirect from WeCom and carries no Bearer,
-      // so it is allowed by isPublicPath and this router must not sit behind a
-      // wildcard role guard; `/oauth/start` and `/binding` guard themselves.
-      .route('/api/wecom', wecomOAuthRoutes)
-      // Same reason: `/oauth/callback`, `/oauth/start-login` and `/oauth/exchange`
-      // are public paths (the callback is a Feishu browser redirect; start-login /
-      // exchange serve the not-yet-logged-in QR login), so no wildcard role guard;
-      // `/oauth/start` and `/binding` guard themselves.
-      .route('/api/feishu', feishuOAuthRoutes)
       // A connector's OAuth provider redirects the browser to `/oauth/callback`
       // without a Bearer (a public path, rate-limited); it only redirects back to
       // the app. Must sit before every wildcard role guard.
@@ -301,37 +201,23 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .use('/api/admin/*', requireSuper())
       .route('/api/admin/connectors', adminConnectorRoutes)
       .route('/api/admin/platform', platformAdminRoutes)
-      .route('/api/admin/operations', costValueRoutes)
       .route('/api/admin/metering', adminMeteringRoutes)
-      .route('/api/admin/computers', adminComputerRoutes)
+      .route('/api/admin/client-reports', adminClientReportRoutes)
       .route('/api/admin', adminRoutes)
       .route('/api/admin/settings', adminSettingsRoutes)
       .route('/api/admin/team-context', adminTeamContextRoutes)
-      .route('/api/admin/retro', adminRetroRoutes)
-      .route('/api/admin/feature-requests', featureRequestRoutes)
-      .route('/api/admin/frictions', frictionRoutes)
-      // Project management — all internal users
-      .use('/api/platform/*', requireInternal())
-      .route('/api/platform', platformRoutes)
-      .use('/api/projects/*', requireInternal())
-      .route('/api/projects', projectRoutes)
-      .use('/api/tables/*', requireInternal())
-      .use('/api/tables/*', requireFeature('tables'))
-      .route('/api/tables', tablesRoutes)
       // Email accounts — every internal user (mailbox binding is per-user and
       // self-service; the shared mailbox stays super-only inside the service).
-      .use('/api/email/*', requireInternal())
-      .route('/api/email', createEmailRoutes())
       // Prompts, knowledge docs & shares — all internal users
       .use('/api/prompts/*', requireInternal())
       .route('/api/prompts', promptRoutes)
-      .use('/api/knowledge/*', requireInternal())
-      .route('/api/knowledge', knowledgeRoutes)
       // Global search — guards live inside the route (a bare `/api/search` is not
       // matched by a `/*` prefix middleware), and each domain lane gates itself.
       .route('/api/search', createSearchRoute())
       // Object links → titles for chips (guard inside; each item authorized on its own).
       .route('/api/refs', createRefsRoutes())
+      // Member ids → display names for plugin record fields (internal members only).
+      .route('/api/people', peopleRoutes)
       // Activity log — guard inside the route (a bare `/api/activity` is not matched by `/*`).
       .route('/api/activity', createActivityRoutes())
       // Drive — internal users; per-node checks live in resolveDriveAccess
@@ -351,27 +237,17 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .use('/api/auth/me/push-devices', requireInternal())
       .use('/api/auth/me/push-devices/*', requireInternal())
       .route('/api/auth/me/push-devices', pushDeviceRoutes)
-      // Skill Center — all internal users (writes owner/super-gated in skills/center.ts)
-      .use('/api/skills/*', requireInternal())
-      .route('/api/skills', skillRoutes)
-      // Report templates (v1.7) — all internal users (edit rights in reports/templates.ts)
-      .use('/api/report-templates', requireInternal())
-      .use('/api/report-templates/*', requireInternal())
-      .route('/api/report-templates', reportTemplateRoutes)
       // Module usage counts (page opens) — all internal users; counts only
-      .use('/api/data-catalog', requireInternal())
-      .route('/api/data-catalog', dataCatalogRoutes)
       .use('/api/usage/*', requireInternal())
       .route('/api/usage', usageRoutes)
-      .use('/api/computer/*', requireInternal())
-      .route('/api/computer', computerRoutes)
+      // Client error reports — a member's app sends what it caught; the bare path is the endpoint.
+      .use('/api/client-reports', requireInternal())
+      .use('/api/client-reports/*', requireInternal())
+      .route('/api/client-reports', clientReportRoutes)
       // Tool metadata — authenticated internal users
       .route('/api/tools', toolsRoutes)
       // WebSocket endpoint — internal users only (auth via query token)
       .route('/api/ws', wsRoutes)
-      // Browser client-action results — internal user-bound and part of the typed contract
-      .use(`${CLIENT_ACTIONS_API_PREFIX}/*` as const, requireInternal())
-      .route(CLIENT_ACTIONS_API_PREFIX, clientActionRoutes)
       // ── Registry-dependent routes (need DB-backed toolRegistry) ──
       .route('/api/chat', createChatRoute(toolRegistry))
       .use('/api/tasks/*', requireInternal())
@@ -385,8 +261,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/agent-access', createAgentAccessRoutes())
       .use('/api/runtime', requireInternal())
       .use('/api/runtime/*', requireInternal())
-      .use('/api/runtime', requireTrustedExecutionSurface(trustedExecutionPlan.taskCenter, 'task-center'))
-      .use('/api/runtime/*', requireTrustedExecutionSurface(trustedExecutionPlan.taskCenter, 'task-center'))
       .route('/api/runtime', runtimeRoutes)
       // Agent tool proxy (login access-token auth, revalidated against the internal user)
       .route('/api/agent', createAgentRoutes(toolRegistry))
@@ -400,8 +274,8 @@ function mountRoutes(toolRegistry: ToolRegistry) {
 }
 
 /**
- * The full typed route schema — the API contract consumed by hc clients
- * (via @greenhouse/contract). Type-only: importing this never runs the server.
+ * The full typed route schema — the API contract for Hono `hc` clients.
+ * Type-only: importing this never runs the server.
  */
 export type AppType = ReturnType<typeof mountRoutes>;
 
@@ -414,14 +288,9 @@ const HOSTNAME = process.env.API_HOST;
 
 async function main() {
   assertAuthEnv(); // fail fast before binding if the signing key is absent
-  // Resolve the Skill Center bundle store now: a PARTIAL SKILLS_S3_* config must
-  // refuse to start (silently falling back to disk would strand new bundles).
-  const skillStore = getSkillStore();
   dbProvider = await initDatabase({ type: 'pg', pgConnectionString: DATABASE_URL });
-  // Announce knowledge writes over WS (`knowledge.changed`) from the service's single write path.
-  startKnowledgeLiveUpdates(dbProvider);
   // Extension-owned tables live in their own migration lane (core DDL stays in
-  // drizzle/*.sql, applied before boot). Pending files are applied here, under
+  // packages/db/migrations, applied before boot). Pending files are applied here, under
   // an advisory lock, before anything can want the tables.
   await applyExtensionMigrations(dbProvider);
   // Admin-edited runtime config (LLM / media / search credentials) wins over the
@@ -434,12 +303,7 @@ async function main() {
   initServiceCatalog();
   const usageBudgetSweeper = await startUsageBudgetSweeper(dbProvider);
   const platformBootstrap = await bootstrapPlatform(dbProvider);
-  initializePlatformRuntime(dbProvider, [
-    projectsRegistration,
-    knowledgeRegistration,
-    tablesRegistration,
-    ...extensionApplicationRegistrations(),
-  ]);
+  initializePlatformRuntime(dbProvider, extensionApplicationRegistrations());
   if (
     platformBootstrap.rolesCreated.length > 0 ||
     platformBootstrap.capabilitiesAdded > 0 ||
@@ -448,30 +312,12 @@ async function main() {
     logger.info('[Platform] Kernel bootstrap applied', { ...platformBootstrap });
   }
 
-  // First-party skill packs ride the release: sync the repo's skillhub/ into
-  // the Skill Center on boot (no-op without the directory; never blocks boot).
-  await seedSkillhub(dbProvider);
-
-  // The shipped report templates, once, while the workspace has never had one.
-  await seedDefaultReportTemplates(dbProvider);
-
-  // Backfill security verdicts for skills published before the scanner existed.
-  // Fire-and-forget like the other boot sweeps — never blocks the health gate,
-  // and failures only warn (publishing itself scans synchronously).
-  void sweepUnscannedSkills(dbProvider);
-
   // Knowledge docs written before segmented FTS tokens existed are invisible to
   // search until tokenized. One-off backfill, fire-and-forget like the sweeps.
-  void backfillKnowledgeTokens(dbProvider);
 
   const toolRegistry = createToolRegistry(dbProvider);
   await runExtensionBootHooks(dbProvider);
 
-  // Runs of retired kinds (Eval, Mission, Workflow in v1.4; Subagent in 1.5) can never progress again;
-  // close any that were still active at upgrade so they render as finished.
-  await settleRetiredRuntimeRuns(dbProvider).catch((error) => {
-    logger.error('[runtime] retired-kind settlement unavailable', { error: String(error) });
-  });
   // Chat is trace-only and cannot safely replay after process death. Always
   // close historical active traces, even when new Chat tracing is killed for
   // rollout; a Runtime outage must not prevent the rest of Chat from booting.
@@ -496,9 +342,8 @@ async function main() {
   // reshapes the public AppType.
   mountExtensionRoutes(app);
 
-  // Feishu bot long connection: off by default (FEISHU_BOT_ENABLED=1 to connect);
-  // a failed connection only warns and never takes the main API down.
-  void initFeishuBot(toolRegistry);
+  // Active channel adapters own their connections and return their shutdown hooks.
+  const stopChannels = await startChannels(fromExtensions('channels'), { db: dbProvider, toolRegistry });
 
   startProfileWatcher();
 
@@ -514,7 +359,7 @@ async function main() {
     usageBudgetSweeper.stop();
     runtimeWorker?.stop();
     notificationDeliveryWorker?.stop();
-    stopFeishuBot();
+    await stopChannels();
     await runExtensionShutdownHooks();
     await chatRunRegistry.shutdown(5000);
     await dbProvider.close();
@@ -532,7 +377,6 @@ async function main() {
         const profileIds = listProfileIds();
         logger.info(`\n🌱 Greenhouse API running at http://localhost:${info.port}`);
         logger.info(`   Database: PostgreSQL`);
-        logger.info(`   Skill store: ${skillStore.backend === 's3' ? 'S3-compatible' : 'local disk (data/skills)'}`);
         logger.info(`   Profiles: ${profileIds.join(', ')}`);
         logger.info(`   WebSocket: enabled`);
         resolveListening();
@@ -547,7 +391,7 @@ async function main() {
   // Mobile pushes ride the same queue under their own switch (MOBILE_PUSH_ENABLED):
   // off, the worker never claims one and nothing is sent to exp.host.
   const deliveryChannels = [
-    ...(trustedExecutionPlan.notificationProjector ? AUTOMATION_DELIVERY_CHANNELS : []),
+    ...(trustedExecutionPlan.notificationProjector ? automationDeliveryChannels() : []),
     ...(mobilePushEnabled() ? (['mobile_push'] as const) : []),
   ];
   notificationDeliveryWorker =
@@ -595,17 +439,6 @@ async function main() {
 
   // Daily retention cleanup of high-growth tables (upkeep/retention.ts).
   scheduleRetention(dbProvider);
-
-  // Cloud computers, every minute: stop idle ones (all of them while the
-  // switch is off), roll per-minute billing blocks, close half-done starts and
-  // stops. Never creates a computer.
-  setInterval(
-    () =>
-      void sweepComputers(dbProvider).catch((error) =>
-        logger.warn('[computer] sweep failed', { error: toErrorMessage(error) }),
-      ),
-    60_000,
-  );
 
   // Heartbeat: ping all WS connections every 30s. Never an unhandled rejection:
   // Node would exit the whole API over one failed tick.

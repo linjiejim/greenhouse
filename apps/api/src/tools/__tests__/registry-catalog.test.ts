@@ -1,3 +1,4 @@
+import { TOOL_DEFINITIONS } from '../registry.js';
 /**
  * Tests for the catalog-driven registry assembly: the static tool factories and
  * the known-tool name list are derived from a single source (TOOL_MODULES), not
@@ -36,7 +37,7 @@ describe('catalog-driven registry', () => {
     // Lazy/per-request tools are NOT in the static registry (injected per-request).
     expect(reg.feature_request).toBeUndefined();
     expect(reg.analyze_image).toBeUndefined();
-    expect(reg.knowledge_query).toBeUndefined();
+    expect(reg.files_query).toBeUndefined();
   });
 
   it('getAllToolIds covers static + lazy with no duplicates', () => {
@@ -46,8 +47,8 @@ describe('catalog-driven registry', () => {
     // representative ids from each construction kind
     for (const id of [
       'analyze_image', // lazy, authenticated-owner budget attribution
-      'feature_request', // lazy
-      'knowledge_mutation', // lazy
+      ...(TOOL_DEFINITIONS.some((meta) => meta.id === 'feature_request') ? ['feature_request'] : []), // lazy
+      'files_mutation', // lazy
     ]) {
       expect(ids, `missing ${id}`).toContain(id);
     }

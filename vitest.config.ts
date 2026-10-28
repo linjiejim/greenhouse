@@ -17,18 +17,22 @@ const unitWorkers = positiveWorkerCount(
 );
 const dbWorkers = positiveWorkerCount(process.env.VITEST_DB_MAX_WORKERS, 3, 'VITEST_DB_MAX_WORKERS');
 
+process.env.GREENHOUSE_EXTENSIONS ??= 'all';
+
+const pluginTestExcludes = process.env.GREENHOUSE_PLUGINS?.trim() === '' ? ['plugins/**'] : [];
+
 export default defineConfig({
   resolve: {
     alias: {
       '@greenhouse/types/api': resolve(__dirname, 'packages/types/src/api.ts'),
       '@greenhouse/types/session': resolve(__dirname, 'packages/types/src/session.ts'),
       '@greenhouse/types/source': resolve(__dirname, 'packages/types/src/source.ts'),
-      '@greenhouse/types/agent-context': resolve(__dirname, 'packages/types/src/agent-context.ts'),
       '@greenhouse/types/features': resolve(__dirname, 'packages/types/src/features.ts'),
       '@greenhouse/types/config': resolve(__dirname, 'packages/types/src/config.ts'),
       '@greenhouse/types/config-schema': resolve(__dirname, 'packages/types/src/config-schema.ts'),
       '@greenhouse/types/mcp': resolve(__dirname, 'packages/types/src/mcp.ts'),
       '@greenhouse/types/connectors': resolve(__dirname, 'packages/types/src/connectors.ts'),
+      '@greenhouse/types/client-routes': resolve(__dirname, 'packages/types/src/client-routes.ts'),
       '@greenhouse/types/automation-tools': resolve(__dirname, 'packages/types/src/automation-tools.ts'),
       '@greenhouse/types/tables': resolve(__dirname, 'packages/types/src/tables.ts'),
       '@greenhouse/types/object-refs': resolve(__dirname, 'packages/types/src/object-refs.ts'),
@@ -40,8 +44,10 @@ export default defineConfig({
       '@greenhouse/types/search': resolve(__dirname, 'packages/types/src/search.ts'),
       '@greenhouse/types/notification': resolve(__dirname, 'packages/types/src/notification.ts'),
       '@greenhouse/types/push': resolve(__dirname, 'packages/types/src/push.ts'),
+      '@greenhouse/types/client-reports': resolve(__dirname, 'packages/types/src/client-reports.ts'),
       '@greenhouse/types/metering': resolve(__dirname, 'packages/types/src/metering.ts'),
       '@greenhouse/types/email': resolve(__dirname, 'packages/types/src/email.ts'),
+      '@greenhouse/types/discriminators': resolve(__dirname, 'packages/types/src/discriminators.ts'),
       '@greenhouse/types/runtime': resolve(__dirname, 'packages/types/src/runtime.ts'),
       '@greenhouse/types/agent-access': resolve(__dirname, 'packages/types/src/agent-access.ts'),
       '@greenhouse/types/hub-context': resolve(__dirname, 'packages/types/src/hub-context.ts'),
@@ -51,6 +57,8 @@ export default defineConfig({
       '@greenhouse/types/preferences': resolve(__dirname, 'packages/types/src/preferences.ts'),
       '@greenhouse/types/agent-avatar': resolve(__dirname, 'packages/types/src/agent-avatar.ts'),
       '@greenhouse/types/activity': resolve(__dirname, 'packages/types/src/activity.ts'),
+      '@greenhouse/types/plugins': resolve(__dirname, 'packages/types/src/plugins.ts'),
+      '@greenhouse/types/plugin-host': resolve(__dirname, 'packages/types/src/plugin-host.ts'),
       '@greenhouse/types': resolve(__dirname, 'packages/types/src/index.ts'),
       '@greenhouse/utils/date': resolve(__dirname, 'packages/utils/src/date.ts'),
       '@greenhouse/utils/brand': resolve(__dirname, 'packages/utils/src/brand.ts'),
@@ -64,6 +72,7 @@ export default defineConfig({
       '@greenhouse/utils/semver': resolve(__dirname, 'packages/utils/src/semver.ts'),
       '@greenhouse/utils/extension-compat': resolve(__dirname, 'packages/utils/src/extension-compat.ts'),
       '@greenhouse/utils/html': resolve(__dirname, 'packages/utils/src/html.ts'),
+      '@greenhouse/db/plugin-schema': resolve(__dirname, 'packages/db/src/plugin-schema.ts'),
       '@greenhouse/db/test-config': resolve(__dirname, 'packages/db/src/test-config.ts'),
       '@greenhouse/db': resolve(__dirname, 'packages/db/src/index.ts'),
       '@greenhouse/platform-kernel/contract': resolve(__dirname, 'packages/platform-kernel/src/contract.ts'),
@@ -81,9 +90,16 @@ export default defineConfig({
   test: {
     globals: true,
     // .claude/** holds agent worktrees (full repo copies) — never collect them.
-    // skillhub/** ships in-bundle node:test files (*.test.mjs) that vitest
-    // cannot parse; tests/skillhub/bundles.test.ts runs them via `node --test`.
-    exclude: ['tests/e2e/**', 'tests/e2e-ui/**', '**/node_modules/**', '**/.claude/**', 'skillhub/**'],
+    // skillhub/** may ship in-bundle node:test files (*.test.mjs) that vitest cannot parse.
+    exclude: [
+      'tests/e2e/**',
+      '**/node_modules/**',
+      '**/.claude/**',
+      'skillhub/**',
+      ...pluginTestExcludes,
+      '.cargo-home/**',
+      '**/target/**',
+    ],
     // Silence app loggers so error-path tests don't spam the run output.
     // Override with LOG_LEVEL=debug when debugging a specific test.
     env: { LOG_LEVEL: process.env.LOG_LEVEL ?? 'silent' },
@@ -94,13 +110,15 @@ export default defineConfig({
           name: 'unit',
           include: ['**/*.{test,spec}.{ts,tsx}'],
           exclude: [
+            ...pluginTestExcludes,
             '**/*.db.test.ts',
             '**/*.db-commit.test.ts',
             'tests/e2e/**',
-            'tests/e2e-ui/**',
             '**/node_modules/**',
             '**/.claude/**',
             'skillhub/**',
+            '.cargo-home/**',
+            '**/target/**',
           ],
           // `forks`, not `vmThreads`, and the difference is memory, not speed.
           // A VM context is cheaper per file, but its ESM module cache is never
@@ -130,6 +148,7 @@ export default defineConfig({
         test: {
           name: 'db',
           include: ['**/*.db.test.ts'],
+          exclude: [...pluginTestExcludes, '**/node_modules/**', '**/.claude/**'],
           globalSetup: ['./tests/setup/db-global.ts'],
           setupFiles: ['./tests/setup/db-transaction.ts'],
           pool: 'forks',
@@ -148,6 +167,7 @@ export default defineConfig({
         test: {
           name: 'db-commit',
           include: ['**/*.db-commit.test.ts'],
+          exclude: [...pluginTestExcludes, '**/node_modules/**', '**/.claude/**'],
           pool: 'forks',
           fileParallelism: false,
           maxWorkers: 1,

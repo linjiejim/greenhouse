@@ -1,6 +1,6 @@
 /**
  * An Automation occurrence carried in flight from 1.x keeps the uuid conversation
- * id 1.x minted for it (migrate-from-1x keeps ids verbatim); new occurrences get a
+ * id 1.x minted for it (3.x's migrate-from-1x kept ids verbatim); new occurrences get a
  * `cnv_` id. The driver must accept both when it re-validates the admitted snapshot.
  */
 
@@ -32,7 +32,7 @@ async function scheduledTask(): Promise<ScheduledTaskRow> {
   return db.scheduledTasks.create({
     user_id: owner.id,
     name: 'Carried briefing',
-    profile_id: 'team',
+    profile_id: 'sprouty',
     task_prompt: 'Prepare the briefing.',
     schedule: '0 * * * *',
     timezone: 'UTC',
@@ -54,7 +54,7 @@ describe('Automation occurrences carried from 1.x', () => {
     const task = await scheduledTask();
     const scheduledFor = '2026-08-12T02:00:00.000Z';
     const queued = await enqueueAutomationRun({ db, task, trigger: 'cron', scheduledFor });
-    // What 1.x minted for the same occurrence (migrate-from-1x keeps ids verbatim).
+    // What 1.x minted for the same occurrence (3.x's migrate-from-1x kept ids verbatim).
     const hex = createHash('sha256').update(`automation-session:${task.id}:scheduled:${scheduledFor}`).digest('hex');
     const chars = hex.slice(0, 32).split('');
     chars[12] = '4';

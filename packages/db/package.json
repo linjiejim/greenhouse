@@ -1,6 +1,6 @@
 {
   "name": "@greenhouse/db",
-  "version": "0.0.1",
+  "version": "4.0.0-rc.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -11,7 +11,8 @@
     "./test-config": {
       "import": "./src/test-config.ts",
       "types": "./src/test-config.ts"
-    }
+    },
+    "./plugin-schema": "./src/plugin-schema.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
@@ -22,7 +23,8 @@
     "@greenhouse/utils": "workspace:*",
     "@node-rs/jieba": "2.0.1",
     "drizzle-orm": "^0.45.2",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "@greenhouse/crud": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

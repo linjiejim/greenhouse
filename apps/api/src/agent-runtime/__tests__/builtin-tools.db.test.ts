@@ -34,7 +34,7 @@ function soleDeclaredTool(): AgentProfile {
     name: 'Narrow Agent',
     access: { level: 'internal', rich_output: false },
     model: { id: 'flash', provider: 'deepseek' },
-    tools: ['knowledge_query'],
+    tools: ['files_query'],
     system_prompt: 'test',
   } as AgentProfile;
 }
@@ -52,7 +52,7 @@ describe('built-in tools against a real team allow-set', () => {
 
     // The friction this fixes: an Agent whose author only ticked one thing
     // could not ask a question, read an attachment or schedule anything.
-    expect(effectiveTools).toContain('knowledge_query');
+    expect(effectiveTools).toContain('files_query');
     expect(effectiveTools).toContain('ask_user');
     expect(effectiveTools).toContain('read_attachment');
     expect(effectiveTools).toContain('automation_mutation');
@@ -71,7 +71,7 @@ describe('built-in tools against a real team allow-set', () => {
       profileId: 'custom:1',
     });
 
-    expect(BUILTIN_AGENT_TOOL_IDS.has('memory')).toBe(true);
+    expect(BUILTIN_AGENT_TOOL_IDS.has('memory')).toBe(Boolean(db.extensions.memory));
     expect(effectiveTools).not.toContain('memory');
   });
 

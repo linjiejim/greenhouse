@@ -7,9 +7,8 @@
  *   page_open  key = a page module id, client = the app that showed it
  *
  * Page module ids are a closed list so a client cannot write arbitrary keys:
- * `PAGE_MODULE_IDS` (core, pinned to the web navigation registry by
- * apps/web/src/lib/usage/page-module.test.ts) plus `ext.<id>` for every
- * extension active on this deployment.
+ * `PAGE_MODULE_IDS` (core) plus `ext.<id>` for every extension active on this
+ * deployment.
  */
 
 /**
@@ -23,6 +22,7 @@ export const TOOL_CALL_CLIENTS = [
   'web_chat',
   'browser',
   'mobile',
+  'desktop',
   'feishu',
   'automation',
   'subagent',
@@ -30,22 +30,22 @@ export const TOOL_CALL_CLIENTS = [
 export type ToolCallClient = (typeof TOOL_CALL_CLIENTS)[number];
 
 /**
- * Apps that show pages. `desktop` and `browser` are kept so counts recorded
- * before the desktop app and the browser extension were removed (1.5) still
- * read back; nothing new is labelled with them.
+ * Apps that show pages. Desktop labels the Tauri shell; browser is retained
+ * for historical browser-extension counts.
  */
 export const PAGE_OPEN_CLIENTS = ['web', 'desktop', 'mobile', 'browser'] as const;
 export type PageOpenClient = (typeof PAGE_OPEN_CLIENTS)[number];
 
 /**
- * Request header a first-party app sets on its API calls: `mobile`. Absent means
+ * Request header a first-party app sets on its API calls: `mobile` or `desktop`. Absent means
  * the plain web app. It only labels counts — never an authorization input.
  */
 export const APP_CLIENT_HEADER = 'X-Greenhouse-Client';
 
 /** The app named by `APP_CLIENT_HEADER`, or null for the plain web app / anything unknown. */
-export function parseAppClient(value: string | null | undefined): 'mobile' | null {
-  return value?.trim().toLowerCase() === 'mobile' ? 'mobile' : null;
+export function parseAppClient(value: string | null | undefined): 'mobile' | 'desktop' | null {
+  const client = value?.trim().toLowerCase();
+  return client === 'mobile' || client === 'desktop' ? client : null;
 }
 
 /**
@@ -82,6 +82,7 @@ export const PAGE_MODULE_IDS = [
   'admin.activity',
   'admin.mcp-keys',
   'admin.connectors',
+  'admin.plugins',
   'admin.team-context',
 ] as const;
 export type CorePageModuleId = (typeof PAGE_MODULE_IDS)[number];

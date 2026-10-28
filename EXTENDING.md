@@ -1,385 +1,441 @@
-# Extending Greenhouse
+# Plugins
 
-Greenhouse is built to be extended without being forked apart. Every capability plugs into a
-**registry** that already drives chat, the `/api/agent` proxy, the `/api/mcp` server,
-permissions and the admin UI. Since 0.7 those registries aggregate from one more source: the
-**extension seam** — a folder per module, one import line, zero other core edits.
+Greenhouse 4.0 consists of a governance core, official plugins and deployment-specific plugins.
+All in-process plugins use the same registries, kit, permission model and migration lane.
+Start with [plugins/example](plugins/example); it exercises SDK 2 data sources, a settings page
+and a trusted embedded UI. The identifiers `defineExtension`, `/api/extensions` and
+`GREENHOUSE_EXTENSIONS` remain the code/API vocabulary. Porting a 3.x extension is covered in
+[Upgrading to 4.0](docs/upgrading-to-4.0.md#plugin-authors-sdk-1-to-sdk-2).
 
-There are three ways to add something, from lightest to heaviest:
+## Configuration and assembly
 
-| You want to… | Do this |
+| Layer | Purpose |
 |---|---|
-| Change how a deployment is wired (which extensions are on, where content packs live, how clients treat stations) | Edit `greenhouse.config.ts` — see [Configuration](#configuration) |
-| Add a private or experimental module — tools, routes, pages, tables, jobs — without touching core | Write an **extension** — see [Extensions](#extensions) |
-| Improve Greenhouse itself | Change the core registries directly and send it upstream — see [Core extension points](#core-extension-points) |
-
-> Earlier releases (≤ 0.6) shipped a family of `*.extensions.*` seam files that were pinned
-> empty upstream, then retired them in favour of the registries. The extension seam brings the
-> idea back as one explicit contract instead of sixteen stub files.
-
-## Configuration
-
-Configuration lives in three layers, each with one job:
-
-| Layer | Holds | Changed by |
-|---|---|---|
-| `.env` | secrets and infrastructure: `DATABASE_URL`, API keys, ports | ops, per machine |
-| Administration → Runtime Config / Branding Studio (database) | live product knobs: LLM / media / search credentials, product name, logo, theme | a super, from the browser, no restart |
-| `greenhouse.config.ts` (repo root) | structure that changes with a rebuild: enabled extensions, content packs, client stations | the maintainer of the deployment or fork |
-
-`greenhouse.config.ts` is typed by `@greenhouse/types/config` and validated at boot
-(`packages/types/src/config-schema.ts`); a bad file stops the API with a readable error.
+| `.env` | Infrastructure, secrets, ports and fallback credentials. |
+| Runtime Config / Branding | DB-backed live settings and branding; secrets encrypted and write-only. |
+| `greenhouse.config.ts` | Compiled packages, active ids, packs, conversation sharing and client stations. |
 
 ```ts
 import { defineConfig } from '@greenhouse/types/config';
 
 export default defineConfig({
-  extensions: { enabled: ['crm', 'example'] }, // or 'all'; GREENHOUSE_EXTENSIONS=… overrides at boot
-  packs: {
-    skills: ['packs/skills'],        // extra skill-pack roots, same layout as skillhub/
-    profiles: ['packs/profiles'],    // extra agent profile directories (a pack may override a core id)
-    seeds: 'packs/seed',             // dataset for `pnpm seed`
-  },
-  clients: {
-    stations: { mode: 'single', defaults: [{ id: 'hq', name: 'HQ', url: 'https://greenhouse.example.com' }] },
-  },
+  plugins: ['./plugins/example'],
+  extensions: { enabled: ['example'] },
+  packs: { skills: ['packs/skills'], profiles: ['packs/profiles'] },
+  clients: { stations: { mode: 'multi', defaults: [] } },
 });
 ```
 
-- **`extensions.enabled`** — which *compiled* extensions are active. `'all'` for everything listed
-  in the two index files; an id list to trim per deployment. `GREENHOUSE_EXTENSIONS=crm,example`
-  (or `all`, or empty for none) overrides the file so one image serves several deployments.
-- **`packs`** — content, not code: skill packs, profile YAMLs and a seed dataset that live outside
-  the repository (a fork's `packs/` folder, a mounted volume). Paths are absolute or relative to
-  the repository root.
-- **`clients.stations`** — how client builds treat servers. `multi` (default) lets users add and
-  switch stations; `single` locks a client build to the one station in `defaults`. The mobile app
-  mirrors it at build time; see `apps/mobile/AGENTS.md` for the wiring.
+This is a minimal deployment, replacing the official package list. To extend a standard install,
+append your package and id to the existing lists. All dependencies must be compiled and enabled.
 
-## Extensions
+- `plugins` accepts repo-relative paths or installed package names. Workspace names resolve
+  without a root dependency; installed packages must be deployment dependencies.
+- `GREENHOUSE_PLUGINS` overrides assembly (comma-separated names/paths; empty builds no packages).
+- `extensions.enabled` accepts an id list or `'all'`. `GREENHOUSE_EXTENSIONS` replaces it at
+  boot; an empty value activates none.
+- `pnpm plugins:sync` generates static imports in `apps/api/src/plugin-host/compiled.generated.ts`.
+  Never edit or commit this ignored file. Install, dev, build, checks, tests and CLI commands sync
+  automatically; `pnpm plugins:sync --check` checks generated output without replacing it.
+- A changed compiled list requires rebuilding; enablement changes require restarting. There is no
+  hot loading, directory loader or database-managed enablement switch.
+- `clients.web` was removed in 4.0 and refuses to boot; the universal client is the only web
+  client. `clients.stations` describes client builds; native and desktop builds mirror it.
 
-An extension is two folders and two list entries:
+The upstream enabled set is Knowledge, Tables, SkillHub, Feedback and Memory. The other seven
+official plugins and Example are compiled but off. See [README](README.md#three-rings) for the
+complete lists.
 
+## Package layout and kit
+
+```text
+plugins/<id>/
+  package.json            package metadata, exports and declared dependencies
+  manifest.ts             pure JSON-serializable default export (station metadata and surfaces)
+  api/index.ts            default defineExtension export
+  api/schema.ts           owned tables (when needed)
+  api/services.ts         typed accessor for the plugin service bag
+  migrations/*.sql        immutable plugin migration lane (0001_adopt.sql is the baseline)
+  drizzle.config.ts       plugin-only Drizzle config (when it owns tables)
+  seeds/                  dataset files for `pnpm seed` (optional)
+  ui/                     optional trusted static frontend; ui/dist wins when built
+  db-schema.md            owned tables
+  README.md               purpose, defaults, settings/env, tables, tools and routes
 ```
-apps/api/src/extensions/<id>/    ← tools, routes, tables + migrations, services, jobs, commands, flags
-apps/web/src/extensions/<id>/    ← pages, navigation, settings modules, translations, chat cards
-apps/api/src/extensions/index.ts ← import + list entry (API half)
-apps/web/src/extensions/index.ts ← import + list entry (web half)
+
+```json
+{
+  "name": "@greenhouse/plugin-example",
+  "version": "4.0.0-rc.1",
+  "type": "module",
+  "greenhouse": { "id": "example", "sdk": 2, "api": "./api/index.ts" },
+  "exports": { "./manifest": "./manifest.ts", "./api": "./api/index.ts" }
+}
 ```
 
-Nothing else in core changes. The registries — tool catalog, route mounting, platform
-applications, feature flags and points, workspace settings, public paths, scheduler, CLI,
-database services, migrations, hash router, sidebar, i18n, tool cards, agent context — all read
-the active extensions and fold their contributions in. Copy `apps/api/src/extensions/example`
-and `apps/web/src/extensions/example` to start: together they exercise every field.
-
-### The API half — `defineExtension`
+A manifest supplies `id`, `name`, `version`, `sdk`, `core`, `dependsOn`, optional `features`,
+`client_min`, `surfaces` and `ui`. Import package.json for the package version; do not import API
+code into the manifest. Package id/SDK/version must agree with the manifest. The folder is `<id>`
+(installed packages may use `plugin-<id>`). Cycles, duplicate ids, missing exports, invalid
+metadata, an SDK other than 2 or a `web` entry fail assembly. There is no web half: client UI
+comes from manifest surfaces.
 
 ```ts
-// apps/api/src/extensions/crm/index.ts
-import { defineExtension, extensionPath, requireFeature } from '../../extension-kit.js';
+import manifest from '../manifest.js';
+import { defineExtension, extensionPath } from '@greenhouse/api/extension-kit';
 
-export const crmExtension = defineExtension({
-  id: 'crm',                        // lowercase, digits, dashes — also the config switch
-  name: 'CRM',
-  sdk: 1,                           // the contract revision (EXTENSION_SDK) it was written for
-  core: '>=3.0 <4',                 // Greenhouse versions it supports
-  tools: [crmQueryTool, crmMutationTool],                  // defineTool(); lazy tools use createLazy(ctx)
-  routes: [{ path: '/api/ext/crm', app: crmRoutes, guards: [requireFeature('crm')] }],
-  applications: [{ manifest: crmManifest, handlers: crmHandlers, teamCapabilities: ['crm.*'] }],
-  featureFlags: [{ key: 'crm', label: 'CRM', description: '…', defaultEnabled: false }],
-  featurePoints: [{ key: 'crm', kind: 'flag', flag: 'crm', group: 'apps', toolIds: ['crm_query', 'crm_mutation'], … }],
-  workspaceSettings: [{ key: 'crm.api_key', group: 'crm', label: 'API key', type: 'string', secret: true, … }],
-  publicPaths: { exact: ['/api/ext/crm/webhook'] },
-  jobs: [{ id: 'crm-sync', cron: '*/15 * * * *', run: syncCrm }],
-  commands: [{ name: 'crm:import', usage: 'Import customers from a CSV', run: importCsv }],
-  migrations: { dir: extensionPath(import.meta.url, 'migrations') },
-  services: (db) => ({ customers: createCustomerService(db) }),
-  resetTables: ['ext_crm_customers'],
-  skillPacks: [extensionPath(import.meta.url, 'skills')],
-  onBoot: async ({ db, config }) => { /* warm caches, validate credentials */ },
-  onShutdown: async () => { /* flush */ },
+export default defineExtension({
+  ...manifest,
+  migrations: { dir: extensionPath(import.meta.url, '../migrations') },
+  // Add only contributions the plugin implements.
 });
 ```
 
-Every field is optional and maps 1:1 onto a core registry:
+Production imports may use:
 
-| Field | Lands in | Notes |
-|---|---|---|
-| `sdk` / `core` | activation | `sdk` must equal the core's `EXTENSION_SDK` (from the kit); `core` is a semver range checked against `APP_VERSION` (else the root `package.json`), where a pre-release counts as its release (`3.0.0-rc.3` satisfies `>=3.0 <4`). A mismatch refuses to start; leaving them out only warns in 3.x and is an error from 4.0. |
-| `tools` | tool catalog → chat, `/api/agent`, `/api/mcp` | `meta.surface` decides exposure exactly like a core tool. Lazy tools implement `createLazy(ctx)` (user, session, db, `unattended`) — no per-tool case in core, and `defineExtension` refuses a lazy tool without it. Ids must not collide. A tool that changes data must declare `surface.proxy: 'write'` (see "Writing tools" below). |
-| `routes` | mounted after the typed core chain | Convention `/api/ext/<id>`; `guards` run for every request under the prefix. Extension routes are not part of the public `AppType` contract. |
-| `applications` | platform kernel (`bootstrapPlatform` + `initializePlatformRuntime`) | Manifest v2 + handlers; scaffold with `pnpm cli platform create-app <id>`. |
-| `featureFlags` / `featurePoints` | `user_grants` (`kind='feature'`), the permissions dialog, feature-owned tool sets | Extension flags are strings (the compile-time `FeatureKey` union stays core-only). A non-global tool must belong to exactly one point. |
-| `workspaceSettings` | Runtime Config (one section per extension), `workspace_settings` table, env overlay | Key `<id>.<name>`, `group: '<id>'`; secrets are encrypted at rest and write-only over the API. |
-| `publicPaths` | `isPublicPath()` in the auth middleware | Keep minimal — OAuth callbacks, webhooks. |
-| `jobs` | started/stopped with the scheduler | croner syntax; zone defaults to `SCHEDULER_TIMEZONE`. |
-| `commands` | `pnpm cli <name>` and `pnpm cli --help` | Namespace with the id: `crm:import`. |
-| `migrations` | the extension migration lane | Ordered `NNNN_name.sql` files, `--> statement-breakpoint` between statements (what `drizzle-kit generate` emits). Applied by `pnpm db:migrate` right after the core chain (same advisory lock) and again, idempotently, at boot; tracked in `extension_migrations` with a checksum — editing an applied file fails fast. A file may not `CREATE TABLE` a core table name. Core DDL stays in `drizzle/`. See "Migrations across core generations" below. |
-| `services` / `resetTables` | `db.extensions[<id>]`, integration-test truncation | Keep a typed accessor: `getExtensionServices<CrmServices>(db, 'crm')`. |
-| `entityKinds` | in-app deeplinks (`entityUrl` / `parseEntityUrl`) and chat peeks | `{ kind: 'ext:crm:company', route: '#/crm/companies/:id' }` — one template drives both directions. Put the URL in a tool result and the chat renders a peek instead of a link. |
-| `searchSources` | the ⌘P palette | One lane per record kind; it applies its own permission check and a failure only empties its own group. |
-| `mcpGroups` | MCP consent + OAuth scopes | `['crm']` gives `mcp:crm`; tools join it with `surface.mcp: 'crm'`. Existing grants never pick up a new group. |
-| `exportSources` | the `export_data` tool's source union | A whole-dataset lane (`crm_customers`) so the model exports server-side instead of transcribing rows. Apply your own authorization; the tool only persists the result. |
-| `applications[].teamExportableEntities` | the `team` role's bootstrap field policy | Which of your entities a normal user may export in full. Empty by default — bulk export is a deliberate grant. |
-| `applications[].platformTools` | MCP tool visibility | Ties `crm_query` / `crm_mutation` to the application's query / command actions, so a fully denied tool disappears from `tools/list` like core's do. |
-| `dependsOn` | a boot-time check | Ids this extension needs switched on too. Two extensions in one build can import each other by path; this makes the configuration requirement explicit and fails fast instead of deep inside a request. Reserve it for the genuinely unshareable — an authenticated transport, a credential chain. |
-| `driveScopes` | the shared Drive (`folders` / `files` rows with `source='drive'`) | Your own file cabinet inside core's tables: rows carry `scope: '<your scope>'` and `owner_key` (any text — a record id), and the `authorize(ownerKey, ctx)` you declare is the only rule core applies. |
-| `workbenchRecipes` | nothing (deprecated) | The Home workbench was removed in 3.0; the field is accepted and ignored so 2.x extensions compile, and goes in 4.0. Same for `meta.surface.workbench` and the kit's `WidgetRecipe`. |
-| `skillPacks` | Skill Center seed at boot | Same layout as `skillhub/`. |
-| `onBoot` / `onShutdown` | after the tool registry exists, before routes serve; on SIGTERM | |
+- `@greenhouse/api/extension-kit`.
+- `@greenhouse/types/*`, `@greenhouse/crud`, `@greenhouse/ui-tokens`.
+- The shared `@greenhouse/knowledge-editor/markdown` leaf for server Markdown conversion.
+- Own files, Node builtins, and declared third-party dependencies.
+- Plugin package exports declared in both `dependsOn` (ids) and package.json (dependencies).
 
-### Core data your extension touches
+Relative paths cannot leave a package. Do not import host source, DB, utils or kernel packages
+directly; the kit exposes the needed primitives. Core imports no plugin code except the generated
+registrations. The AST boundary scanner (`scripts/check-plugin-boundaries.mjs`, run by
+`pnpm lint`) checks imports, re-exports, import types and computed loads; tests may reach host
+hooks. Kit exports are snapshot-locked; removals/renames update the snapshot and an
+`extension-kit:` CHANGELOG entry. Add a symbol only for an actual plugin consumer.
 
-- Reach core only through the stable facades `db.users`, `db.drive` and `db.platform`; their
-  method shapes do not change between releases.
-- Every core id is text. New rows get a prefixed ULID (`usr_01J…`, `fil_01J…`); rows carried
-  from 1.x keep their old id as a string (`"42"`). Store user ids and other core ids as `text`,
-  without a foreign key into core, and never parse an id's shape.
-- `db.drive` takes ids as `string | number` and always returns strings. `DriveFileRow` keeps the
-  1.x field names extensions read: `cos_key` (= `files.storage_key`), `size` and `uploaded_by`
-  (= `files.created_by`).
-- There is one organization: no `org_id` anywhere. `db.platform` methods still take an `orgId`;
-  pass `'default'`.
-- Name new extension tables `ext_<id>_*`. Existing `crm_*`-style tables keep their names.
-- `pnpm cli migrate-from-1x` copies extension tables and `extension_migrations` verbatim when a
-  1.x database moves to 3.0 (DDL rebuilt from the catalog, rows streamed with COPY, sequences
-  carried), so the lane keeps running from where it was. An extension that stored a 1.x numeric
-  user id keeps resolving because carried users keep that id as a string.
+### Compatibility
 
-### Stable surface vs internals
+SDK 2 is the only declaration revision. Declare `sdk: 2` and a `core` semver range that includes
+the running release (official plugins use `>=3.0 <5`; a new plugin can use `>=4.0.0 <5.0.0`).
+Activation checks `APP_VERSION`, falling back to root package.json; prereleases count as their
+base release. A missing `sdk` or `core`, another SDK or a range that excludes the running version
+refuses activation.
 
-An extension may import only:
+## Data plugins
 
-- its own directory (and another extension's, for a declared `dependsOn`);
-- its app's kit — `apps/api/src/extension-kit.ts` / `apps/web/src/extension-kit.ts`;
-- the shared contracts in `@greenhouse/types/*` and the CRUD kit `@greenhouse/crud`;
-- third-party packages.
+The executable definition is [plugins/example/api/index.ts](plugins/example/api/index.ts).
+Enable it with `GREENHOUSE_EXTENSIONS=example` for an isolated demonstration. Its member feature
+defaults off: use a super test account or grant the Example feature before exercising the plugin
+as a team member.
 
-That is the stable surface, together with the `defineExtension` / `defineWebExtension` types.
-Everything else — `apps/*/src/**` outside the kit, `@greenhouse/db`, `@greenhouse/utils`,
-`@greenhouse/platform-kernel` — is internal and may change in any release; the kits re-export the
-parts an extension needs (actors, the platform runtime, storage, export sources, CLI helpers,
-`compileApp` / `defineApp` and policy helpers, `nowIso` / `toErrorMessage` / `safeJsonParse`; on
-the web side icons, navigation, page shells, UI and detail components, `fetchJson`, formatters).
-Each kit's export list is locked by a snapshot test (`apps/*/src/__tests__/extension-kit.snapshot.test.ts`):
-a removal or rename updates the snapshot and adds a CHANGELOG line starting `extension-kit:`.
-Test files are exempt from the import rule (they may reach core test hooks such as
-`routes/mcp`, `tools/registry` or the platform runtime's reset).
-
-`scripts/check-extension-overlay.mjs` checks these import edges and prints `file:line` for each
-one past the surface; `--strict` fails on them. Upstream CI runs `--all --strict` over the
-example extension.
-
-### Writing tools
-
-A tool that changes data declares `surface.proxy: 'write'`. That alone puts it under governed
-writes when a member's own agent calls it over `/api/mcp`: it runs as the
-member, is recorded as an `agent_write` run with a risk tier, and a delete-like action
-(`delete` / `remove` / `purge` / `destroy` / `drop`, e.g. `notes.delete`) first returns a
-`needs_confirmation` preview and runs only when called again with `confirm: true`. A writing tool
-declared `proxy: 'read'` bypasses all of that — never do it. The example's
-`example_notes_mutation` is the reference (`apps/api/src/extensions/example/tool.ts`, tested
-over `/api/mcp` in `__tests__/example-write-tool.db.test.ts`).
-
-If the tool is backed by a platform application, list it in `applications[].platformTools` —
-`{ query: ['crm_query'], command: ['crm_mutation'] }` — so MCP hides it once every query
-(respectively command) capability of that application is denied to the member, exactly as core
-does for its own tools.
-
-### Migrations across core generations
-
-A migration written against the **1.x** core tables (it alters or reads a 1.x table) starts with
-the line
-
-```sql
--- greenhouse:core-generation 1x
-```
-
-3.0 never executes such a file. On a database that was never carried from 1.x it is recorded as
-satisfied and reported as *skipped*; on a carried database whose copied `extension_migrations`
-has the row nothing happens; on a carried database where the extension ran on 1.x but this row
-is missing, 1.x never applied the file, so 3.0 refuses to start — apply it on 1.x and run
-`migrate-from-1x` again. The marker line is not part of the checksum, so marking an already
-applied file is not an edit. `pnpm cli db status` lists every file with its generation and state;
-`migrate-from-1x --dry-run` reports the same per file, plus any extension table whose name a 3.0
-core table already uses. The example's `0002_v1_session_note_count.sql` shows the form.
-
-### The web half — `defineWebExtension`
+1. Define an app with the kit's `defineApp`: modules, entities, fields, `accessScopes` and
+   `classification` use the platform kernel DSL. Use the entity id as its module id; derived
+   capabilities are `<app>.<entity>.<action>`. The app's `actions: {}` is filled by the data source.
+2. Register `dataSources` with per-entity actions, owner/member fields, physical column mappings,
+   views and peek. Own the table and migrations yourself; the data kit does not generate DDL.
+3. Reuse generated handlers unless a real operation needs customization. Example only customizes
+   search and delegates to the already-scoped service.
 
 ```ts
-// apps/web/src/extensions/crm/index.ts
-import { lazy } from 'react';
-import { defineWebExtension } from '../../extension-kit';
-
-export const crmWebExtension = defineWebExtension({
-  id: 'crm',
-  sdk: 1,                // same compatibility declaration as the API half
-  core: '>=3.0 <4',
-  messages: { en: { title: 'CRM', … }, zh: { title: '客户', … } },   // merged under ext.crm.*
-  pages: [
-    {
-      route: 'crm',
-      component: lazy(() => import('./page')),
-      sidebarPanel: CrmNavPanel,
-      titleKey: 'ext.crm.title',
-      // Optional: sub-modules of this page — `#/crm/companies`, module id `crm.companies`.
-      modules: [{ key: 'companies', labelKey: 'ext.crm.companies', icon: Users }],
-      // Optional: hashes from before the extension — `#/customers/<tail>` → `#/crm/companies/<tail>`.
-      aliases: { customers: 'crm/companies' },
-    },
-  ],
-  navigation: [{ id: 'crm', labelKey: 'ext.crm.nav', icon: Users, href: '#/crm', route: 'crm', requireFeature: 'crm' }],
-  modules: [{ key: 'crm', parent: 'settings', labelKey: 'ext.crm.settings', icon: Users, component: CrmSettings }],
-  toolCards: [{ tool: 'crm_query', component: CrmResultCard }],
-  toolIcons: { crm_query: Users, crm_mutation: Users },
-  contextProvider: { type: 'extension', label: …, emptyMessage: …, quickActions: …, contextHint: … },
-});
+// Inside defineExtension; defineApp comes from the API kit.
+dataSources: [{
+  app: defineApp({
+    id: 'notes', title: 'Notes', version: '1.0.0',
+    modules: { note: { title: 'Notes' } }, actions: {},
+    entities: { note: {
+      title: 'Note', module: 'note', table: 'ext_notes_notes', accessScopes: ['own'],
+      fields: {
+        id: { kind: 'text' },
+        body: { kind: 'text', required: true, searchable: true, filterable: true, sortable: true },
+        userId: { kind: 'user', classification: 'internal' },
+      },
+    } },
+  }),
+  entities: { note: {
+    actions: { read: 'team', create: 'team', update: 'team', delete: 'team', export: 'team' },
+    ownerField: 'userId', columns: { userId: 'user_id' }, audit: 'all',
+    peek: { title: 'body' },
+    views: [{ id: 'default', columns: ['body'], filters: ['body'] }],
+  } },
+}]
 ```
 
-| Field | Lands in | Notes |
-|---|---|---|
-| `pages` | hash router (`#/<route>` and sub-paths), top bar, contextual sidebar | Rendered only while the API reports the id active; otherwise a calm "not enabled" state. |
-| `pages[].modules` | the navigation registry as `standalone` modules, id `<id>.<key>` | What `<ModulePage moduleId="crm.companies">`, the module rail and the breadcrumb resolve against. Omit for a one-screen page. |
-| `pages[].aliases` | the hash router, before extension routes | Legacy top-level hashes → a path inside this page; the tail and query survive (`#/customers/42` → `#/crm/companies/42`). Must land in the page's own route, must not repeat a route, unique across the compiled set; a core route can never be aliased. |
-| `navigation` | the sidebar "More" menu (desktop flyout + mobile drawer) | `requireFeature` / `requireRole` hide the entry per user. |
-| `modules` | Settings ("Extensions" section) or Administration | Key becomes `#/settings/<key>` or `#/administration/<key>`; the module id is `settings.<key>` / `admin.<key>` (core's own shape), so a panel renders through `<ModulePage moduleId="admin.<key>">`; pins and breadcrumbs work. |
-| `messages` | i18n, under `ext.<id>.*` | `t('ext.crm.title')` type-checks; a missing locale falls back to English. The visible-copy guard still rejects hard-coded English in your TSX. |
-| `toolCards` / `toolIcons` | chat transcript, tool catalogs | A card replaces the trace row once the tool returned without error; `placement: 'below'` renders after the prose. |
-| `entityKinds` | peek / side-pane chrome and body for the kinds the API half registered | Same `kind` string on both halves; `render` is optional (without it the peek offers "open full page"). |
-| `mcpGroups` | consent screen and machine-client form | Display copy for a group the API half owns; the group only appears while the extension is active. |
-| `knowledgeDocPanels` | every knowledge document, below the document body | For things attached to documents — provenance, sync state. |
-| `contextProvider` | the agent panel on your pages | Receives `{ type: 'extension', extension, route, subPath }`. |
+Table-backed creates need an id field and a database-generated key/default. The manifest's app
+version is a schema contract, separate from the product/package version; bump it when the
+serialized app definition changes.
 
-`apps/web/src/extension-kit.ts` re-exports `authFetch`, `useT`, the UI kit, `useAuthStore`,
-`canUseFeature`, `usePageActions` and the contract types.
+| Derived contribution | Existing registry/consumer |
+|---|---|
+| Application, action capabilities, row/field policies | Platform kernel and role bootstrap |
+| App feature point and MCP group | Member access dialog and OAuth consent |
+| `<plugin>_query`, optional `<plugin>_mutation` | Tool catalog, chat, Agent API and MCP |
+| `/api/ext/<plugin>/entities/<entity>` | Guarded CRUD REST |
+| Data counts, search and export | Data catalog, global search and `export_data` |
+| `ext:<plugin>:<entity>` routes and peek | Entity links and client sheets |
+| Entity list/detail metadata | Station manifest v2 and the client's entity pages |
 
-On the browser side, `<DriveBrowser owner={{ scope: 'crm', owner_key: String(companyId) }} />`
-renders that cabinet with the same UI Tables and Knowledge use.
+Omitted actions are disabled. Read-only sources have no mutation tool. Multiple sources choose
+distinct tool ids via `tools.query.id` / `tools.mutation.id`. An explicit entity-kind route wins
+over the generated one, so a plugin can preserve old links without duplicate registrations.
 
-### Proving it in a browser
+### Requests, permissions and writes
 
-An API-level test cannot see the failures an extension actually ships with — a module id the
-panel cannot resolve, a page that throws on first render, a front end still calling a moved
-route. Two things cover that, and both are generic:
+REST list protocol: `POST /list` with
+`{filter: [{key, method, value: [...]}], sort: [{key, order}], skip, limit}` returns
+`{items, total}`. `GET /` accepts JSON-encoded filter/sort query parameters. Also supported:
+`GET /:id`, `POST /`, `PATCH /:id` (`PUT` accepted), `DELETE /:id`, `GET /:id/peek`.
+Unknown filters/sorts return 400; denied actions 403; unreadable records 404.
 
-- **The surface sweep** — `tests/e2e-ui/extension-surfaces.spec.ts` reads every hash the
-  *active* extensions registered (`window.__greenhouseExtensionSurfaces`, fed by
-  `defineWebExtension`: pages, page modules, "More" entries, Settings / Administration modules,
-  aliases) and opens each one, failing on an error boundary, a "not enabled" state, a blank
-  shell or an uncaught page error. Nothing to write: compile an extension in, switch it on, and
-  the sweep covers it.
-- **Extension-owned specs** — `apps/web/src/extensions/<id>/e2e/*.e2e.ts` run in the
-  `extensions` Playwright project with the shared authenticated state (see
-  `apps/web/src/extensions/example/e2e/notes.e2e.ts`). Import only `@playwright/test`; the
-  folder stays self-contained and inside the seam.
+Query tools accept `entity`, `action` (`list`, `get`, `search`, `aggregate`), `filters`, `sort`,
+`skip`, `limit`, `query`, `id`; aggregate is a scoped count. All transports enter
+`runtime.dispatch`: capability → row/field policy → handler → audit. `audit: 'writes'` omits
+successful read audits; `'all'` records them. Dispatched denials/failures are recorded.
 
-CI runs both in the `e2e-ui` job with `GREENHOUSE_EXTENSIONS=example`. A fork's CI runs the
-same `pnpm test:e2e:ui` with its own extensions enabled (the config file's list applies when
-the variable is unset), so a private extension gets the sweep and its own specs on every push.
+- `own` requires `ownerField`; `collaborating` requires a JSON-array `memberField`. Scope
+  restrictions apply in SQL **before** paging/counting. Policy scopes are OR-ed.
+- Default team fields expose public/internal values, mask confidential values and hide
+  restricted ones; masked/hidden fields cannot be filtered/sorted to infer their content.
+  Export requires its own capability and exportable fields. Super uses the full read policy.
+- Writes intersect field grants with the declaration. Ids, storage creation/update/deletion
+  timestamps (including physical mappings), internal/confidential/restricted fields and
+  `writable: false` are immutable input **even for super**.
+- Other business fields are writable by default. Owner/member fields additionally need explicit
+  `writable: true`, field permission and the action capability. Create validates input, then
+  stamps the effective caller as owner. Unknown/forbidden fields reject atomically with 400
+  naming all invalid fields; old broad persisted grants cannot bypass this.
+- Clients use the member-specific `writable === true` manifest fields and PATCH only changes,
+  preserving untouched null, JSON and timestamp values. Generic `createCrudRoutes` can take
+  request-specific `writableFields`, checked before parsers/stamping hooks.
+- Custom `handlers.list/get/search/export/create/update/delete` receive `{db, actor, policy,
+  service}`. Delegate to `service` for scoped paging and atomic restrictions. External handlers
+  own equivalent authorization/transaction correctness; host output still gets scope/field checks.
 
-### What the seam does not cover (yet)
+Writing tools declare `meta.surface.proxy: 'write'`; never label a write as read. MCP records
+writes as member-owned runs and previews delete-like actions before `confirm: true` execution.
+Agent API writes require confirmation. Handwritten protected routes use guards and the same
+platform actions; `recordWrite(request, operation)` binds a registered command. Never put secrets
+in audit metadata. `meta.builtin` widens only profile filtering, never member permissions.
+`meta.interactiveOnly` and `surface.unattendedDenied` constrain unattended use. Tools need a real
+`create()` (static) or `createLazy()` (lazy); invalid declarations fail early.
 
-Notification transports (email / WeCom / Feishu) are still closed in core. If your module needs
-one, extend the registry upstream rather than patching around it: that is a contribution, not a fork.
+## Agent context
 
-### Keeping a fork thin
+`agentContext` contributes a stable `promptFragment(ctx)`, MCP `resources` with `read(ctx)`, and
+`prompts` with `render(args, ctx)`. The host intersects the member/grant's reachable tools with
+the owner's tools and optional `toolIds`; no reach means no contribution. Fragments are capped at
+2,000 characters and must remain session-stable for prompt caching. They cannot replace the core
+system prompt or intercept model calls.
 
-A fork keeps its private modules under `apps/*/src/extensions/<id>/`, its content under
-`packs/`, its deployment files under `deploy/`, and its own `greenhouse.config.ts`; it syncs with
-`git merge upstream/main`. `scripts/check-extension-overlay.mjs` fails the fork's CI when a commit
-touches anything else, so a gap in the seam surfaces as an upstream pull request instead of a
-patch that will conflict on the next merge:
+Resources use `greenhouse://ext/<id>/<name>` and enter the compact `team_context` bundle
+(3,000-character resource excerpts plus full URIs). Prompts use `ext-<id>-<name>`. Dynamic prompt
+collections use `list(ctx)` and optional `get(name,args,ctx)` for direct lookup beyond listing
+limits. `legacyPromptPrefixes` / explicit `legacyName` preserve existing names; SkillHub keeps
+`skill-*` and compatible `prompt-*` access. Listing and reading recheck permissions.
+
+`mcpResources` supports domain URI lists/templates/reads, with the actual actor and reachable
+tools; reject unreadable probes without leaking existence. `teamContextSources` contributes
+published team-document selection, validation and candidates. Core Markdown settings work
+without any plugin; disabled document sources do not clear stored selections. A deployment
+allows one document-selection source and one Drive cabinet selector.
+
+## Lifecycle, observations and jobs
+
+`onInstall(ctx)` runs after migrations, before `onBoot`, once per plugin/database. The migration
+lane writes its `@onInstall` marker under the advisory lock after success; failures retry. A crash
+after a side effect but before the marker can repeat the hook, so it must be idempotent. `onBoot`
+prepares a process; `onShutdown` releases its resources. Enablement takes effect at restart, with
+no separate enable/disable lifecycle.
+
+Subscribe with `hooks: hooks => { hooks.on('user.created', async ({userId}) => { ... }) }`.
+The five events are `user.created`, `user.disabled`, `run.completed`,
+`conversation.turn.completed` and `automation.ran`. They carry ids/metadata, run asynchronously
+and cannot veto core writes. Each subscriber has an isolated five-second deadline; it does not
+cancel external I/O. Runtime observations use committed outbox delivery and can repeat; consumers
+must be idempotent and use bounded/cancellable I/O.
+
+`jobs` use croner syntax and the scheduler timezone by default. Run scheduled work through the
+host's job claims (`runExtensionJob` for custom planners) so replicas do not duplicate an
+occurrence. `workspaceTimeZoneChanged` replans schedules; `schedules[].nextRun` exposes their
+administrative next-run metadata. `notify(input)` writes the durable notification center and
+queues mobile push/WS; custom kinds register as `ext:<id>:<kind>`.
+
+## Registries
+
+Every contract field feeds a real consumer. Use the typed kit definitions and official packages
+for full signatures rather than creating a second registry.
+
+| Contribution | Consumer and rule |
+|---|---|
+| `tools`, `applications`, `featureFlags`, `featurePoints`, `mcpGroups` | One catalog/permission chain across HTTP, chat, proxy and MCP. Non-global tools belong to one feature point; `applications[].platformTools` hides tools when all relevant actions are denied. |
+| `workspaceSettings`, `settingValidators`, `settingValueValidators` | Runtime Config; namespaced keys/group, optional env fallback; raw-value validators handle non-string settings. |
+| `services` | DB factory exposed via `db.extensions[id]`; use a typed `getExtensionServices` accessor. This is distinct from pricing. |
+| `billableServices`, `toolAvailability` | Price catalog and request-time admission; Computer is the reference. |
+| `notificationTransports`, `notificationKinds` | Durable delivery/preferences, password-link mail and skill quarantine hooks. Recipient envelopes are validated; core owns inbox/mobile push. Transports that accept webhooks (`acceptsWebhook`) are offered for automation `notify.webhook`. |
+| `identityProviders` | Public `/api/auth/providers`, guarded binding/start and state-authenticated callback routes. Only configured providers are discovered. Feishu supports login/binding; WeCom binding only. |
+| `channels` | Starts/stops a bot channel; reuse `runAgentTurn` / `channelAgentRuntime` for member permissions and metering. |
+| `configurationEnv` | Warns about configured but disabled integrations; never activates them. |
+| `retention` | Bounded daily cleanup of owned table/column data; Feishu receipts are the reference. |
+| `searchSources`, `exportSources`, `catalogSources` | Permission-filtered search/export/catalog; `replaceDefaultSource` avoids duplicate catalog entries. Source failures stay within their lane. |
+| `entityKinds`, `objectRefs` | Deep links/peek and batched title resolution. Do not reveal unreadable titles. Official legacy kinds (`kb_doc`, `project`, `tables_record`) keep their URLs. |
+| `discriminators` | Registers `shareResources`, `fileLinkTargets`, `folderScopes`, `auditApps`, `runKinds`, `artifactKinds`; writes validate active values, historical reads remain possible. |
+| `driveScopes` | Core Files/folders with plugin authorization, placement, node checks and occupancy; optional `cabinet: true` selects one legacy cabinet. |
+| `activity`, `recentChanges` | Write labels/risks, action/target shapes and the bounded team-activity merge. Host destructive-risk classification remains authoritative. |
+| `toolResults` | Compact transcript/references/relevance and `legacyCalls` (retired names a model still writes in DSML markup); exact Runtime evidence remains intact. Retiring a tool id means rewriting the stored custom-Agent tool lists in a core migration; the proxy and MCP accept live tool ids only. |
+| `automationTools`, `hubContext`, `promptContext` | Explicit unattended grants, reachable MCP hints and stable context contributions. They never expand member permissions. |
+| `summarySources` | Aggregates for system summaries; avoid member names, message text and private titles. |
+| `routes`, `publicPaths`, `rateLimits`, `commands` | Guarded plugin HTTP routes, minimal callback/webhook auth exceptions, central admission and CLI commands. New routes use `/api/ext/<id>`; official packages retain legacy prefixes. |
+| `migrations`, `resetTables`, `seeds`, `skillPacks` | Owned DDL, test truncation, dependency-ordered seeds and SkillHub content sync when that plugin is active. |
+
+## Client surfaces and trusted embeds
+
+`manifest.surfaces` is pure data exposed by authenticated `/api/extensions` v2. The host filters
+plugins/nav/pages/entities/actions/fields/features/groups/kinds to the member. `client_min` is the wire spelling; server
+`CLIENT_API_LEVEL` and bootstrap `mobile_api` are 4. The universal client renders every surface;
+there is no plugin code in the client except the official native screens.
+
+| Page kind | Renderer |
+|---|---|
+| `native` | A screen compiled into the client (`screen`); official adapters live in `apps/client/src/plugins/<id>/`, so private plugins use the other kinds. With `parent: 'administration'` it is an Admin section (served to supers only; keep it out of `nav`). |
+| `entity-list` | Derived entity metadata, scoped paging/filter/sort and permitted create actions. |
+| `entity-detail` | Member-readable fields and permitted edit/delete actions. |
+| `settings-form` | Declared Runtime Config keys; only changed keys are submitted. The API remains super-only regardless of `parent`; `parent: 'administration'` lists it in the Admin place. |
+| `embed` | Trusted plugin static UI in an iframe or native WebView. |
+
+Nav declares `primary`/`more`, ordering, labels/icons and a page. The wide client lists app
+entries in the rail's More flyout, so keep `label` short (about ten Latin characters; the page
+`title` can be longer) and name a lucide icon (`BookOpen`, `Mail`); clients map it to their own
+icon set and draw a generic app tile for unknown names. Labels and titles are `LocalizedText`
+(`{ en, zh }`). Role/feature requirements hide inaccessible surfaces. Pages open at
+`/p/<plugin>/<page>` (Admin sections at `/admin/p/<plugin>/<page>`). A kind the client does not
+know shows a notice asking the member to update the app.
+
+Declare `ui: './ui'` in the manifest. Assembly resolves paths inside the package.
+`/ext/<id>/ui/` serves `ui/dist` when present, otherwise source UI; disabled plugins return 404.
+HTML/mutable files revalidate; fingerprinted assets cache immutably. Dotfiles/traversal are
+refused. Static assets are public and must contain no secrets or member data.
+`pnpm plugins:ui:build` builds Example's frontend using the real bridge.
+
+`@greenhouse/ui-tokens` exports token names, generated light/dark values, brand resolution and
+`connectGreenhouse`. Its source of truth is `packages/ui/src/tokens`; run `pnpm tokens:build`.
+The client constructs its own payload without importing the workspace package.
+
+```ts
+import { connectGreenhouse } from '@greenhouse/ui-tokens';
+const host = connectGreenhouse({ onInit: ({ user }) => showMember(user) });
+// Use host.token as the Bearer only after init, and only for this plugin's API.
+await host.refresh();
+host.title('My notes');
+host.navigate('/p/example/example-embed');
+host.sendPrompt('Help me organize these notes'); // opens an editable draft, never submits
+// host.disconnect() on unmount
+```
+
+The bridge uses `greenhouse:init` (theme, tokens/brand, locale, basic member, route, token),
+`greenhouse:ready`, `greenhouse:theme`, `greenhouse:token-refresh` (request),
+`greenhouse:token` (renewal response), `greenhouse:title`, `greenhouse:navigate` (a client route
+such as `/p/<plugin>/<page>`, or an object link such as `#/projects/<id>`) and
+`greenhouse:sendPrompt`. Both sides validate source window and exact origin. Themes update
+without replacing the frame. The helper keeps credentials in memory; refreshes deduplicate and
+time out after 15 seconds.
+
+`POST /api/ext-ui/token {plugin}` requires the full host session and issues a ten-minute
+credential bound to member, auth generation and plugin. It admits only that plugin's
+`/api/ext/<id>/*` routes and basic `GET /api/me` (id/name/role). Every request still checks
+account/plugin visibility and route permissions. It cannot mint renewal tokens or call unrelated
+core APIs. Do not inject full login tokens, store narrow tokens or put credentials in URLs.
+
+The trusted iframe permits scripts/same-origin/forms/popups. This is installed code trust, not an
+isolation boundary against a malicious same-origin plugin; ordinary user HTML previews retain
+opaque-origin sandboxes and receive no credentials. Static UI CSP permits frame ancestors
+`'self' tauri://localhost`. Desktop embeds have no native capabilities and must explicitly
+allowlist `host_origin=tauri://localhost` before passing it to `connectGreenhouse({hostOrigin})`.
+Never trust arbitrary origin hints. Remote-origin credentialed embeds/OAuth are not implemented.
+
+## Database ownership and migrations
+
+Keep schema/services in the package; core has no plugin service accessor. New tables use
+`ext_<id>_*`; retained official tables keep existing names. Core ids are opaque text; never parse
+them as numbers. Plugin tables may reference core; core must not acquire plugin FKs. Use
+`db.users`, `db.drive`, `db.platform` and kit facades for core data (organization `'default'`).
+
+Core schema owns 49 tables and a fresh install creates only those. Ten official data plugins own
+24 more: each plugin's `0001_adopt.sql` is its baseline, creates its tables only when the plugin
+is enabled, and guards every table/index/constraint so a database upgraded from 3.x adopts the
+tables its 3.x baseline created in place. Example's extra table is separate. See
+[DB ownership](packages/db/src/db-schema.md).
+
+Plugin lane files use `NNNN_name.sql` and `--> statement-breakpoint`. They run after the core
+chain in `pnpm db:migrate` and idempotently at boot, with checksums/advisory locking in
+`extension_migrations`. Never edit applied bytes or create core-owned tables in a lane. Use the
+plugin's own Drizzle config (`plugins/<id>/drizzle.config.ts`) that includes only its schema,
+and review generated SQL. Always set `DATABASE_URL` explicitly. Persistent and shared databases
+use migrations, never `push`.
+
+Files headed `-- greenhouse:core-generation 1x` never execute on 4.x: fresh databases record them
+as skipped; carried databases require the copied applied row or refuse startup. The marker is
+outside the checksum. `pnpm db:migrate` upgrades a 3.x database in place and leaves every plugin
+table and lane row (including private overlay lanes) untouched. `pnpm cli db baseline --dry-run`
+is only for adopting a database already on the 4.0 schema; compare DDL first. `--through` leaves
+later files to actually run.
+
+Disabling retains data and the applied ledger. `pnpm seed` loads core plus enabled-plugin seeds
+in dependency order; it does not populate disabled plugin modules.
+
+## CLI and administration
 
 ```bash
-git remote add upstream https://github.com/linjiejim/greenhouse.git && git fetch upstream
-node scripts/check-extension-overlay.mjs --base upstream/main   # or OVERLAY_UPSTREAM_REF=…
+pnpm cli plugins list --json
+pnpm cli plugins status --json
+pnpm cli plugins drop example          # preview; refuses enabled or unknown owners
+pnpm cli plugins drop example --yes    # deliberately deletes owned data and lane
+pnpm cli db status
 ```
 
-The same run reports extension imports past the stable surface (`file:line`). Start in report
-mode; once the list is empty add `--strict` so a new deep import fails CI.
+`list` needs no DB; status reports migration state and process-local boot facts. CLI inspection
+does not run boot hooks (`not-run`). Admin › Plugins (`GET /api/admin/plugins`, super) is
+read-only. Migration/boot failures stop startup; no historical error store or one-click
+activation is implied. Drop works transactionally under the migration lock, derives owned tables
+from current-generation DDL plus `resetTables`, and refuses core/shared/external dependencies with
+`RESTRICT`, never `CASCADE`. Review its preview and back up before running deletion.
 
-Upstream's workflows (`ci.yml`, `release.yml`, `release-please.yml`, `mobile.yml`, `deploy.yml`)
-are gated to `linjiejim/greenhouse` and stay inert in a fork — `ci.yml` included, because it
-neither migrates a fork's extension tables nor carries an organisation's gitleaks licence, so on
-a fork it could only fail. A fork puts its own gates and deployment in
-`.github/workflows/fork-*.yml`, which the overlay guard allows.
+## Testing a plugin
 
-The rule of thumb: **code that could exist without your business goes upstream; content,
-credentials and business-specific modules stay in the overlay.**
+- Put unit tests beside logic; they must not touch PostgreSQL.
+- Use `*.db.test.ts` for real transactional DB behavior, rollback per test.
+- Use `*.db-commit.test.ts` only for cross-connection commits/DDL/locks; state
+  `@db-commit-reason`, use isolated fixtures and clean up.
+- Test enabled and disabled contributions, permission denials, scopes/field masks, write
+  allowlists, audit, deletion preview/confirmation, compatibility endpoints and generated pages.
+- Browser coverage lives in `tests/client-e2e` and runs with `pnpm test:e2e:client`;
+  `plugins.e2e.ts` exercises declarative surfaces and a static embed fixture. Specs import
+  only `@playwright/test`. Enable your plugin for the browser stack.
 
-## Core extension points
+```bash
+pnpm typecheck
+pnpm lint
+pnpm plugins:sync --check
+TEST_DATABASE_URL=<loopback-test-url> VITEST_UNIT_MAX_WORKERS=4 VITEST_DB_MAX_WORKERS=3 pnpm test
+DATABASE_URL=<loopback-test-url> pnpm test:e2e:ci
+TEST_DATABASE_URL=<loopback-test-url> pnpm test:core
+pnpm test:e2e:client
+```
 
-Everything below is also what the extension seam feeds; use these directly when the change
-belongs to Greenhouse itself.
+`test:core` temporarily assembles zero packages, checks core types/tests and boots a real API,
+then restores normal registrations. Run it sequentially with other assembly/build commands. DB
+targets must be explicit loopback test/e2e databases. A populated 3.0.2 upgrade rehearsal in
+`tests/db/plugin-upgrade.db-commit.test.ts` verifies all 24 plugin tables by row count and
+full-row hashes, including Knowledge off/on; `tests/db/schema-equivalence.db-commit.test.ts`
+requires a fresh install with every official plugin to match an upgraded 3.x database. Browser
+tests require an environment that can launch Chromium; collection alone is not browser
+acceptance.
 
-| Add a… | Where | Mechanism |
-|---|---|---|
-| **Agent tool** (chat, plus `/api/agent` / `/api/mcp` as its `surface` allows) | `apps/api/src/tools/<name>.ts` + one line in `CORE_TOOL_MODULES` (`tools/registry.ts`); a lazy tool also gets a construction case in `buildLazyServerTools` (`agent-runtime/tool-resolution.ts`) | `defineTool({ meta, kind, create? })`: static tools get `create(db)`, lazy ones are built per request from the caller's `userId`; `meta.surface` decides proxy / MCP exposure and the workbench binding; `meta.is_global` decides default availability |
-| **Platform application** (module with entities, permissions, navigation) | `apps/api/src/platform/manifests/<app>.ts` + `apps/api/src/platform/<app>/application.ts`, registered in `index.ts` (`initializePlatformRuntime`) and `platform/bootstrap.ts` | Manifest v2 (JSON-serializable) + registration handlers; scaffold with `pnpm cli platform create-app <id>`; bump `manifest.version` whenever the serialized manifest changes |
-| **Feature flag** (per-user opt-in / opt-out) | `packages/types/src/features.ts` | `FEATURE_FLAGS` entry; guard routes with `requireFeature('<key>')`; the admin toggle appears automatically |
-| **Feature point** (what a flag / app owns) | `apps/api/src/platform/feature-points.ts` | Maps a flag or app to its tool ids and capability prefix so one switch controls app + REST + MCP + chat |
-| **API route** | `apps/api/src/routes/<resource>.ts`, mounted in `apps/api/src/index.ts` (`mountRoutes`) | Chained Hono routes (they become part of the typed `AppType` contract used by the web client) |
-| **Database table + service** | `packages/db/src/schema/<domain>.ts` + `services/<domain>.ts`, an id prefix in `ids.ts`, one line in `provider.ts` | Drizzle schema with the `_columns.ts` helpers → `pnpm drizzle-kit generate` (diffs against the 3.0 baseline) → review SQL → commit → `pnpm db:migrate`; services are typed factories, the provider type is inferred; update `db-schema.md` |
-| **Web page / navigation** | `apps/web/src/pages/**`, `apps/web/src/lib/nav-registry.ts`, hash routes in `apps/web/src/app.tsx` | Settings/Administration modules come from `nav-registry`; top-level pages are hash routes in `app.tsx`; platform apps surface through the permission-aware catalog (`apps/web/src/platform/`) |
-| **Chat card for a tool output** | `apps/web/src/components/tool-call/body-artifacts.tsx` + `tool-call-card.tsx` | Tool results render from the tool's `presentation` metadata; add a body renderer keyed by tool id |
-| **Translations** | `apps/web/src/lib/i18n/{en,zh}.ts` | Keys must exist in both locales; `visible-copy.test.ts` rejects hardcoded English in TSX |
-| **Workspace setting** (admin-editable runtime config) | `packages/types/src/workspace-settings.ts` | One `WORKSPACE_SETTINGS` entry (`key`, `group`, `type`, `secret?`, `env?`) — the Runtime Config page renders from it, no migration |
-| **Model** | `apps/api/src/config/models.yaml` | Catalog entry with a provider chain; `api_key_env` / `model_env` / `base_url_env` name the env vars; unset keys hide the model |
-| **Agent profile** | `apps/api/src/profiles/*.yaml` (or a `packs.profiles` directory) | Validated on load by `validateProfile()` in `apps/api/src/profiles/profile.ts`; keep prompts free of tool-specific rules (those belong in tool descriptions) |
-| **Skill pack** (first-party skill) | `skillhub/<group>/<name>/SKILL.md` (+ `CHANGELOG.md`, assets), or a `packs.skills` root | Synced into the Skill Center on boot; see `skillhub/README.md` |
-| **Automation-eligible write tool** | `packages/types/src/automation-tools.ts` | Opt-in catalog of tools an owner may grant to an unattended run |
-| **Upload storage backend** | `apps/api/src/storage/uploads.ts` | Local disk by default; Tencent COS when `TENCENT_CLOUD_COS_*` are set; Skill Center bundles use `SKILLS_S3_*` |
-| **Notification transport** | `apps/api/src/notifications/` | Durable delivery attempts per transport (email, WeCom, Feishu) |
-| **Integration (OAuth callback, bot)** | `apps/api/src/wecom/`, `apps/api/src/feishu/` as reference implementations | Public callback paths are listed in `auth/middleware.ts` (`PUBLIC_PATHS`) — keep that list minimal |
+## Downstream overlay workflow
 
-## Golden rules
+A fork keeps private packages in `plugins/`, content in `packs/`, deployment files in `deploy/`,
+structural choices in `greenhouse.config.ts` and its own CI in `.github/workflows/fork-*.yml`.
+Merge `upstream/main`, then run:
 
-1. **Registries, not forks of shared files.** If a change needs an edit to `registry.ts`,
-   `index.ts`, `provider.ts` beyond the one-line registration, add the missing seam to the
-   registry instead of special-casing your module.
-2. **Permissions are declared, not hand-rolled.** Tools declare `surface` and `is_global`, and
-   feature points map each flag or application to the tools it owns; applications declare
-   capabilities and entity/field policies in the manifest. Transport layers (HTTP, chat,
-   proxy, MCP) adapt protocol only — they never make a second permission decision.
-   Extensions inherit this: a guard on a route, a flag on a tool, never both halves
-   re-deciding.
-3. **Declared capabilities must be real.** A tool description, UI option or doc must not claim
-   something the code cannot do; unconfigured paths fail explicitly.
-4. **Delete with the same discipline as you add.** Removing a module means removing its
-   translations, nav entries, docs and tests in the same change.
-5. **Generic improvements go upstream.** Anything that could exist without your private
-   domain belongs in Greenhouse; keep only genuinely private modules on your branch.
+```bash
+node scripts/check-extension-overlay.mjs --base upstream/main --strict
+# OVERLAY_UPSTREAM_REF may supply the base instead; --allow '<glob>' adds an owned path.
+```
 
-## Recipe: a private module as an extension
-
-1. Copy `apps/api/src/extensions/example` → `apps/api/src/extensions/<id>` and
-   `apps/web/src/extensions/example` → `apps/web/src/extensions/<id>`; rename the id everywhere.
-2. Add the import + list entry in both `extensions/index.ts` files; enable the id in
-   `greenhouse.config.ts` (or `GREENHOUSE_EXTENSIONS`).
-3. Tables: write `migrations/0001_*.sql` (or generate it with a per-extension drizzle config),
-   declare `resetTables`, expose services through `services`.
-4. Tools: one file per tool with `defineTool`; own them through a feature point so the
-   permissions dialog shows one switch for the whole module. Declare `mcpGroups` if the module
-   should be separately consentable over MCP, and `entityKinds` + `searchSources` if it owns
-   records people will link to and search for.
-5. UI: a page under `#/<id>`, a "More" entry, translations under `ext.<id>.*`, a card for the
-   tool's result.
-6. Tests: a `*.db.test.ts` for the service, a route test, and a seam test that imports the
-   extension with `GREENHOUSE_EXTENSIONS=<id>` (see `apps/api/src/extensions/__tests__/seam.test.ts`).
-
-## Recipe: a list/edit page with `@greenhouse/crud`
-
-The low-code CRUD framework turns one declarative schema into a list + filters + add/edit
-form + detail + delete.
-
-- **Server:** `createTableCrudService(getDb(), myTable, opts)` (from `@greenhouse/db`) →
-  `createCrudRoutes(service, { filterable, sortable, guards, hooks, parseCreate, parseUpdate })`
-  (from `@greenhouse/crud/server`) → mount in `index.ts` (or in an extension's `routes`).
-  Filter/sort keys are whitelisted fail-loud (unknown key → 400).
-- **Client:** `defineCrud<Row>({ dataSource: createRestDataSource('/api/…', authFetch), columns,
-  filters, formFields, access, … })` then render `<CrudPage schema={…} />`. Reference
-  implementations: `apps/web/src/pages/administration/users.tsx`, `skills.tsx`, `mcp-keys.tsx`.
-- **Escape hatches, narrow → wide:** column/field `type: 'custom'` (render fn) → `slots` +
-  `tableActions` / `pageActions` → use `CrudPage` / `CrudForm` / `CrudDetail` standalone in a
-  bespoke page (`installCrudUi` wires the host's UI kit once, in `app.tsx`).
+The guard rejects changes outside those paths (plus `.env.example` and `README.fork.md`) and,
+with `--strict`, plugin imports that break the package boundaries. Add generic missing hooks
+upstream, with an Example consumer and seam tests; upstream workflows are repository-gated.
+In-process plugins can access the process/DB: trust comes from review, pinned dependencies and
+boundary checks, not from the kit being a sandbox. Never load plugin code from requests, DB rows
+or untrusted uploads.

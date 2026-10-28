@@ -24,9 +24,7 @@ describe('browser-channel tool face', () => {
   });
 
   it('keeps the reads and the output-only tools a browsing conversation needs', () => {
-    expect(kept).toEqual(
-      expect.arrayContaining(['knowledge_query', 'project_query', 'session_query', 'external_search', ...OUTPUT_ONLY]),
-    );
+    expect(kept).toEqual(expect.arrayContaining(['files_query', 'session_query', 'external_search', ...OUTPUT_ONLY]));
   });
 
   it('is fail-closed: all it keeps is a declared proxy read or an explicit output-only tool', () => {

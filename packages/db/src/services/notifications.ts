@@ -1,3 +1,4 @@
+import { isNotificationKind, isNotificationChannel } from '@greenhouse/types/notification';
 /**
  * Permanent platform notification and delivery-attempt service.
  *
@@ -124,6 +125,7 @@ export function createNotificationService(db: Db) {
     async createWithStatus(
       input: CreateNotificationInput,
     ): Promise<{ notification: NotificationRow; created: boolean }> {
+      if (!isNotificationKind(input.kind)) invalid(`Unknown notification kind: ${input.kind}`);
       const rowId = input.id ? identifier(input.id, 'id') : id('notification');
       const userId = identifier(input.user_id, 'user_id');
       const dedupeKey = identifier(input.dedupe_key, 'dedupe_key');
@@ -298,6 +300,7 @@ export function createNotificationService(db: Db) {
 
     async createDelivery(input: CreateNotificationDeliveryInput): Promise<NotificationDeliveryAttemptRow> {
       const notificationId = identifier(input.notification_id, 'notification_id');
+      if (!isNotificationChannel(input.channel)) invalid(`Unknown notification channel: ${input.channel}`);
       const recipient = identifier(input.recipient, 'recipient', 2048);
       const rowId = input.id ? identifier(input.id, 'id') : id('delivery');
       const availableAt = timestamp(input.available_at, 'available_at');
@@ -359,6 +362,7 @@ export function createNotificationService(db: Db) {
       const leaseMs = positiveInt(input.lease_ms, 'lease_ms');
       const leaseExpiresAt = new Date(Date.parse(at) + leaseMs).toISOString();
       const channels = input.channels ? [...new Set(input.channels)] : null;
+      if (channels?.length === 0) return [];
       const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
       return db.transaction(async (tx) => {
         await tx
@@ -374,6 +378,7 @@ export function createNotificationService(db: Db) {
           .where(
             and(
               eq(notificationDeliveryAttempts.status, 'claimed'),
+              ...(channels ? [inArray(notificationDeliveryAttempts.channel, channels)] : []),
               lte(notificationDeliveryAttempts.lease_expires_at, at),
               sql`${notificationDeliveryAttempts.attempts} >= ${notificationDeliveryAttempts.max_attempts}`,
             ),
@@ -391,6 +396,7 @@ export function createNotificationService(db: Db) {
           .where(
             and(
               eq(notificationDeliveryAttempts.status, 'claimed'),
+              ...(channels ? [inArray(notificationDeliveryAttempts.channel, channels)] : []),
               lte(notificationDeliveryAttempts.lease_expires_at, at),
               sql`${notificationDeliveryAttempts.attempts} < ${notificationDeliveryAttempts.max_attempts}`,
             ),

@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { GreenhouseConfig } from '@greenhouse/types/config';
-import { isExtensionEnabled, parseExtensionsEnv } from '@greenhouse/types/config';
+import { isExtensionEnabled, parseExtensionsEnv, parsePluginsEnv } from '@greenhouse/types/config';
 import { parseGreenhouseConfig } from '@greenhouse/types/config-schema';
 import { REPO_ROOT } from '../paths.js';
 
@@ -21,8 +21,12 @@ export const GREENHOUSE_CONFIG_FILE = process.env.GREENHOUSE_CONFIG
 /** Env overrides that let one image be trimmed per deployment without editing the file. */
 export function applyConfigEnv(config: GreenhouseConfig, env: NodeJS.ProcessEnv = process.env): GreenhouseConfig {
   const extensions = parseExtensionsEnv(env.GREENHOUSE_EXTENSIONS);
-  if (extensions === undefined) return config;
-  return { ...config, extensions: { ...config.extensions, enabled: extensions } };
+  const plugins = parsePluginsEnv(env.GREENHOUSE_PLUGINS);
+  return {
+    ...config,
+    plugins: plugins ?? config.plugins,
+    extensions: extensions === undefined ? config.extensions : { ...config.extensions, enabled: extensions },
+  };
 }
 
 async function load(): Promise<GreenhouseConfig> {

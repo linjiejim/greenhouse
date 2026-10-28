@@ -216,8 +216,7 @@ describe('GenerateImageTool', () => {
   });
 
   // The medium/high tiers cost ~8x/~33x low, and a model has no basis for spending
-  // that. The knob is gone from the schema; zod strips it, so an old caller still
-  // sending `quality: 'high'` is served `low` instead of erroring.
+  // that; the schema has no quality knob.
   it('always requests low quality, ignoring any quality the caller passes', async () => {
     const { spy, restore } = mockFetch(() => b64Response());
 

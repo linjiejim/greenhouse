@@ -5,43 +5,24 @@
  * are the per-request lazy server tools assembled". Used by both `/api/chat`
  * (session-authenticated) and `/api/agent/*` (API-key authenticated) so the two
  * never fork their permission logic.
- *
- * NOTE: browser client actions are not handled here — they carry route-specific
- * UX (NDJSON bridge writers) and stay in the chat route.
  */
 
 import type { DatabaseProvider } from '@greenhouse/db';
-import { fromExtensions } from '../extensions/index.js';
+import { fromExtensions } from '../plugin-host/index.js';
 import { normalizeAutomationOptInTools } from '@greenhouse/types/automation-tools';
 import { resolveUserTools } from '../agent.js';
 import type { ToolRegistry } from '../agent.js';
-import { createFeatureRequestTool } from '../tools/feature-request.js';
 import { createFilesQueryTool } from '../tools/files-query.js';
 import { createFilesMutationTool } from '../tools/files-mutation.js';
-import { createReportTemplatesTool } from '../tools/report-templates.js';
-import { createReportRenderTool } from '../tools/report-render.js';
-import { createFeedbackQueryTool } from '../tools/feedback-query.js';
 // Derived from the catalog (kind !== 'static' + route-constructed special metas) — see registry.
-import { BUILTIN_AGENT_TOOL_IDS, getToolMeta, LAZY_TOOL_IDS, RETIRED_TOOL_ALIASES } from '../tools/registry.js';
+import { BUILTIN_AGENT_TOOL_IDS, getToolMeta, LAZY_TOOL_IDS } from '../tools/registry.js';
 export { LAZY_TOOL_IDS };
 import { createCallLlmTool } from '../tools/call-llm.js';
-import { createProjectQueryTool } from '../tools/project-query.js';
-import { createProjectMutationTool } from '../tools/project-mutation.js';
 import { createSessionQueryTool } from '../tools/session-query.js';
-import { createKnowledgeQueryTool } from '../tools/knowledge-query.js';
-import { createKnowledgeMutationTool } from '../tools/knowledge-mutation.js';
-import { createSkillMutationTool } from '../tools/skills/skill-mutation.js';
 import { createAutomationQueryTool } from '../tools/automation-query.js';
 import { createAutomationMutationTool } from '../tools/automation-mutation.js';
-import { createEmailQueryTool } from '../tools/email-query.js';
-import { createEmailMutationTool } from '../tools/email-mutation.js';
-import { createMemoryTool } from '../tools/memory.js';
-import { createLogFrictionTool } from '../tools/log-friction.js';
 import { createGenerateImageTool } from '../tools/generate-image.js';
 import { createAnalyzeImageTool } from '../tools/analyze-image.js';
-import { createTablesQueryTool } from '../tools/tables-query.js';
-import { createTablesMutationTool } from '../tools/tables-mutation.js';
-import { createTablesSchemaPlanTool } from '../tools/tables-schema-plan.js';
 import { createExportDataTool } from '../tools/export-data.js';
 import { createTaskCaptureTool } from '../tools/task-capture.js';
 import { createReadAttachmentTool } from '../tools/read-attachment.js';
@@ -55,7 +36,8 @@ import type { AgentProfile } from '../profiles/profile.js';
  * Confirm, so a draft made there would just strand. They are stripped from every
  * unattended tool face (scheduled runs).
  */
-export const DISPATCH_TOOL_IDS: readonly string[] = ['tables_schema_plan', 'task_capture'];
+import { DISPATCH_TOOL_IDS } from './tool-policy.js';
+export { DISPATCH_TOOL_IDS };
 
 export interface ResolveEffectiveToolsArgs {
   userId: string;
@@ -87,17 +69,15 @@ export async function resolveEffectiveTools(args: ResolveEffectiveToolsArgs): Pr
   const isCustomProfile = profileId.startsWith('custom:');
   const userTools = await resolveUserTools(userId, userRole);
 
-  // Custom profiles persist tool id arrays in the DB; expand retired ids to
-  // their successors so a tool retirement never silently strips a saved agent.
+  // Custom profiles persist tool id arrays in the DB; retiring a tool id means
+  // rewriting those arrays in a core migration (0001, 0004), not aliasing here.
   //
   // The built-ins join the FILTER, not the result. Written the other way round
   // — unioned into `effectiveTools` below — this would hand out tools the user
   // does not have: `memory` to someone whose flag is off, or a super-only tool
   // to a team member. The intersection with `activeTools` is what keeps the
   // module's promise that a profile can only ever narrow.
-  const profileTools = isCustomProfile
-    ? new Set([...profile.tools.flatMap((t) => [t, ...(RETIRED_TOOL_ALIASES[t] ?? [])]), ...BUILTIN_AGENT_TOOL_IDS])
-    : null;
+  const profileTools = isCustomProfile ? new Set([...profile.tools, ...BUILTIN_AGENT_TOOL_IDS]) : null;
 
   const effectiveTools = profileTools
     ? userTools.activeTools.filter((t) => profileTools.has(t))
@@ -150,8 +130,7 @@ export interface LazyServerToolContext {
  * Assemble the per-request lazy *server* tools that both the chat route and the
  * agent proxy share (feature_request, knowledge_query, session_query, …).
  *
- * Returns a partial registry the caller merges into its tool set. Does NOT
- * include browser client actions (route-specific).
+ * Returns a partial registry the caller merges into its tool set.
  */
 /**
  * Tools denied in every UNATTENDED context — scheduled-task runs, where no
@@ -169,7 +148,8 @@ export interface LazyServerToolContext {
  * one-step send. Automation that needs to deliver by email uses the scheduler's
  * own channel (scheduler/notify.ts), which no model can aim.
  */
-export const UNATTENDED_TOOL_DENYLIST = new Set(['automation_mutation', 'email_mutation']);
+import { UNATTENDED_TOOL_DENYLIST } from './tool-policy.js';
+export { UNATTENDED_TOOL_DENYLIST };
 
 /**
  * The automatic baseline is fail-closed: an unattended execution receives only
@@ -271,39 +251,8 @@ export function buildLazyServerTools(
     });
   }
 
-  if (effectiveTools.includes('feature_request')) {
-    tools.feature_request = createFeatureRequestTool(db, {
-      userId,
-      userRole,
-      sessionId: sessionId ?? undefined,
-    });
-  }
-  if (effectiveTools.includes('feedback_query')) {
-    tools.feedback_query = createFeedbackQueryTool(db, { userId, userRole });
-  }
-  if (effectiveTools.includes('project_query')) {
-    tools.project_query = createProjectQueryTool(db, { userId });
-  }
-  if (effectiveTools.includes('project_mutation')) {
-    tools.project_mutation = createProjectMutationTool({ userId });
-  }
-  if (effectiveTools.includes('tables_query')) {
-    tools.tables_query = createTablesQueryTool({ userId });
-  }
-  if (effectiveTools.includes('tables_mutation')) {
-    tools.tables_mutation = createTablesMutationTool({ userId });
-  }
-  if (effectiveTools.includes('tables_schema_plan')) {
-    tools.tables_schema_plan = createTablesSchemaPlanTool({ userId });
-  }
   if (effectiveTools.includes('session_query')) {
     tools.session_query = createSessionQueryTool(db, { userId, userRole, sessionId });
-  }
-  if (effectiveTools.includes('knowledge_query')) {
-    tools.knowledge_query = createKnowledgeQueryTool(db, { userId });
-  }
-  if (effectiveTools.includes('knowledge_mutation')) {
-    tools.knowledge_mutation = createKnowledgeMutationTool(db, { userId });
   }
   // Files (the knowledge cabinet) — every node is authorized inside
   // drive/kb-cabinet.ts, and like automations they belong to a user, not to a
@@ -314,20 +263,7 @@ export function buildLazyServerTools(
   if (effectiveTools.includes('files_mutation')) {
     tools.files_mutation = createFilesMutationTool(db, { userId });
   }
-  // Report templates (v1.7) — visibility and edit rights live in
-  // reports/templates.ts; a rendered report is a new file in Files. Not
-  // session-scoped, so Chat, the Agent API and MCP all reach them.
-  if (effectiveTools.includes('report_templates')) {
-    tools.report_templates = createReportTemplatesTool(db, { userId, userRole });
-  }
-  if (effectiveTools.includes('report_render')) {
-    tools.report_render = createReportRenderTool(db, { userId, userRole });
-  }
-  // Skill Center writes — owner/super checks live in skills/center.ts; the
-  // read side (skill_query) is static and comes from the base registry.
-  if (effectiveTools.includes('skill_mutation')) {
-    tools.skill_mutation = createSkillMutationTool(db, { userId, userRole });
-  }
+
   // Automations (scheduled tasks) — owner-scoped inside the tools themselves, so
   // deliberately NOT session-scoped: an automation belongs to a user, not to a
   // conversation, and the stateless proxy/MCP surfaces must reach it too.
@@ -340,26 +276,6 @@ export function buildLazyServerTools(
       userRole,
       canGrantTools: ctx.humanChat === true && ctx.unattended !== true,
     });
-  }
-
-  // Email — mailbox ownership is checked inside the tools, so like automations
-  // these are not session-scoped. sessionId is passed only so attachments can
-  // resolve on the chat surface; without it the attachment path says so plainly.
-  if (effectiveTools.includes('email_query')) {
-    tools.email_query = createEmailQueryTool(db, { userId, userRole, sessionId });
-  }
-  if (effectiveTools.includes('email_mutation')) {
-    tools.email_mutation = createEmailMutationTool(db, { userId, userRole, sessionId });
-  }
-
-  // Memory + friction logging — owner-scoped inside the tools. sessionId is only
-  // provenance (which conversation produced this), never the access boundary, so
-  // both stay available on headless runs where there is no session.
-  if (effectiveTools.includes('memory')) {
-    tools.memory = createMemoryTool(db, { userId, sessionId });
-  }
-  if (effectiveTools.includes('log_friction')) {
-    tools.log_friction = createLogFrictionTool(db, { sessionId });
   }
 
   // ── Session-scoped tools ──
@@ -408,7 +324,13 @@ export function buildLazyServerTools(
 
   // Extension lazy tools take the generic path: no per-tool case needed in core.
   for (const mod of fromExtensions('tools')) {
-    if (mod.kind !== 'lazy' || !mod.createLazy || !effectiveTools.includes(mod.meta.id)) continue;
+    if (
+      mod.meta.surface?.externalOnly ||
+      mod.kind !== 'lazy' ||
+      !mod.createLazy ||
+      !effectiveTools.includes(mod.meta.id)
+    )
+      continue;
     tools[mod.meta.id] = mod.createLazy({
       db,
       userId,

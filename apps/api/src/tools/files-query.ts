@@ -21,7 +21,7 @@ import {
   readCabinetFile,
   searchCabinet,
 } from '../drive/kb-cabinet.js';
-import { delegatedAgentActor } from '../platform/actor.js';
+import { delegatedAgentActor } from '../plugin-host/actor.js';
 
 const filesQuerySchema = z.object({
   action: z

@@ -5,6 +5,167 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 4.0.0-rc.1 (2026-10-27)
+
+Release candidate for testing; publication is a maintainer step described in [RELEASING.md](RELEASING.md).
+Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
+
+### Breaking changes
+
+- Greenhouse now separates a governance core from twelve official plugins. Knowledge, Tables,
+  Skills, Feedback and Memory are enabled by default. Projects, Reports, Email, WeCom, Feishu,
+  Computer and Retro are compiled but disabled by default. Credentials do not enable a plugin.
+- Disabling a plugin removes its routes, tools, settings, navigation, MCP groups and adapters.
+  Data and applied migrations remain. Retro requires Knowledge; saved prompts remain core.
+- The classic web app is removed. The universal client (`apps/client`, renamed from
+  `apps/mobile`) is the only web client: the API serves it at `/`. `/classic` and browser `#/…`
+  addresses are not mapped: old bookmarks open Home, and the run sheet no longer links to a web
+  run log. Server-made links (including automation and Feishu conversation links) use client
+  routes. `clients.web` in `greenhouse.config.ts` is now a boot error.
+- Plugins are SDK 2 packages with an API half and a pure manifest; client UI comes from manifest
+  pages, navigation and an optional static `ui/`. `plugins:sync` refuses SDK 1 and a `web` half,
+  and a missing `sdk` or `core` declaration refuses activation. Plugin production code may import
+  only the API kit and the permitted shared exports; core cannot import plugin implementations.
+- SDK 2 entity writes reject unknown, immutable or member-forbidden fields atomically, including
+  for super. Ids, storage timestamps and internal/confidential/restricted fields are never caller
+  input. Owner/member input requires explicit writable metadata; creates stamp effective ownership.
+- Server client API level is 4 and every client requires it: 3.x apps must update to use a 4.0
+  station, and 4.0 clients ask a 3.x station to update. `GET /api/extensions` serves manifest v2
+  only (member-filtered plugins/surfaces/entities); the v1 `extensions` and `entityKinds` fields
+  and plugin page `fallback_url` are removed.
+- 4.0 starts a new core migration chain (`packages/db/migrations/0000_v4_baseline.sql`, 49 core
+  tables). Fresh installs no longer create plugin tables; each plugin creates its own when
+  enabled. 3.x databases upgrade in place and the API refuses a 3.x database until
+  `pnpm db:migrate` has bridged it. 1.x and 2.x databases are refused; `migrate-from-1x` is removed.
+  Core migration `0001_drop_legacy_data_shapes` rewrites data shapes 1.x wrote and 3.x carried
+  (numeric task ids, flat `notify_*` snapshots, JSON-text payloads and lists, `session_history` in
+  custom Agents), and the readers that tolerated them are gone.
+- Environment aliases `APP_BASE_URL`, `SYNC_WECOM_WEBHOOK_URL`, `PORT` (OAuth issuer) and
+  `SILICONFLOW_API_KEY` (doctor) are ignored. The agent proxy and MCP refuse retired tool names
+  (`session_history`, `team_knowledge`, …); connector catalog files use `"mode": "key"` instead of
+  `per_user`; avatar writers no longer dual-write the pre-plant `color` and `faceStyle` keys.
+- `TASK_CENTER_ENABLED` is removed: `/api/runtime` is always on and `/health` drops
+  `surfaces.task_center`; `RUNTIME_APPROVAL_INBOX_ENABLED` alone switches the Approval Inbox.
+- `POST /api/chat` no longer continues a stored transcript without a new message: a session turn
+  sends `messages` or `regenerate_assistant_message_id`, and a live reply is resumed through
+  `GET /api/chat/runs/:sessionId/stream`.
+- `GET /api/platform/apps`, `GET /api/platform/me/permissions`, `GET /api/data-catalog` and
+  `GET /api/admin/operations/cost-value` are removed; the MCP `data_catalog` tool remains.
+- `/api/ws` no longer sends supers online-presence events (`presence:*`).
+- Chat turns no longer take page context or browser Client Actions: `ambient_context`,
+  `client_actions`, `client_action_scope_id`, `POST /api/client-actions/tool-result`, the
+  `local-tool-request` event and `@greenhouse/types/agent-context` are removed.
+- Plugin frontends receive `--gh-*` theme variables only; the classic `--t-*` names and the
+  classic web stylesheet `@greenhouse/ui/tokens/tokens.css` are removed.
+- Core migration `0003_canonical_profile_ids` rewrites stored retired profile ids (`team`,
+  `default`, the retired presets, `eval-judge` → `sprouty`; `local-dev`/`local-pi` → `desktop`)
+  and makes `sprouty` the column default. Readers take stored ids as they are; only request
+  edges (`/api/chat`, `/api/sessions`, `/api/agent`, automations, custom-Agent base) still map
+  the old ids.
+- Core migration `0004_retired_tool_aliases` rewrites retired plugin tool ids in custom Agents and
+  saved prompts (`team_knowledge`/`personal_knowledge` → `knowledge_query`, `project_manager` →
+  `project_query` + `project_mutation`, `example_notes_legacy` → `example_notes_query`), and the
+  `retiredToolAliases` plugin seam that expanded them at run time is removed.
+- `GET /api/sessions` caps every page at 200 and no longer accepts `include_eval`.
+  `GET /api/feishu/login-available` (use `/api/auth/providers`), `GET /api/profiles/custom/:id/versions`,
+  the custom Agent `change_log` field and the team activity feed's plain ISO `before` are removed. Automations
+  take delivery only as the `notify` object; the flat `notify_*` fields are ignored.
+
+### Upgrading from 3.x
+
+Back up, choose the plugins to enable (several formerly built-in modules are now off), run
+`pnpm db:migrate` (Compose runs its `migrate` service first) and restart. The step-by-step
+procedure, rollback, removed screens, old addresses and the SDK 1 to SDK 2 port are in
+[docs/upgrading-to-4.0.md](docs/upgrading-to-4.0.md).
+
+### Added
+
+- Configuration-driven plugin packages under `plugins/<id>`, generated static registrations
+  via `plugins:sync`, package import guards, zero-package `test:core`, plugin CLI list/status/drop
+  and a read-only Admin › Plugins section.
+- SDK 2 `dataSources`: kernel app/actions/policies, governed query/mutation tools, CRUD REST,
+  catalog/search/export/peek and declarative entity pages from one definition.
+- Reach-filtered Agent prompt fragments, resources and prompts; five isolated asynchronous
+  observations; migration-locked persistent onInstall. Notification/identity/channel, retention,
+  pricing, catalog/entity/discriminator and other contribution registries serve official and
+  private plugins alike.
+- Universal client on web/iOS/Android: wide-screen rail with a More flyout for apps, secondary
+  column, inspectors, web sign-in, command palette, notifications, documents, grids, boards,
+  manifest pages and fixed-size centered dialogs.
+- The Admin place (`/admin`, super only): users and permissions, activity log with CSV export,
+  usage, services & pricing, team context, branding with a scoped preview, runtime config, MCP
+  access, team connectors and plugins, plus plugin sections (Issues & requests, Retro, Computer)
+  declared as manifest pages with `parent: 'administration'`.
+- Client entry pages for account activation, MCP OAuth consent, connector and identity-provider
+  returns, account bindings and Feishu sign-in; server links come from
+  `@greenhouse/types/client-routes` with secrets in the fragment, and old `#/…` links are mapped.
+- The automation editor and custom agents in the Automations place; the station manifest says
+  which notification transports accept a webhook.
+- Member names for plugin `user` fields (`POST /api/people/resolve`).
+- Local macOS Tauri 2 shell bundling the universal client, Keychain station sessions, menus,
+  notifications, Dock badge, Quick ask, deep links and opt-in signed updater wiring.
+- Manifest renderers for entity-list/detail, settings-form and trusted embed pages. Ten-minute
+  member/plugin tokens, renewal, theme/branding, locale, navigation, titles and editable
+  assistant drafts. `@greenhouse/ui-tokens` supplies generated themes and `connectGreenhouse`;
+  Example includes a buildable static UI using it.
+- Client browser suite `pnpm test:e2e:client` (`tests/client-e2e`) with env-overridable ports and
+  database.
+
+### Changed
+
+- Knowledge, Tables, Projects, Skills, Memory, Feedback, Reports, Computer, Email, WeCom,
+  Feishu and Retro own their implementations under plugins, including relevant schema/services,
+  routes/tools, copy, migrations and tests. Core schema owns 49 tables; official plugins own 24,
+  created by each plugin's own migration lane when it is enabled.
+- The plugin host lives in `apps/api/src/plugin-host` (formerly `extensions/` and `platform/`);
+  OAuth 2.1 helpers moved to `apps/api/src/agent-access/oauth.ts`. Scripts are `client:*`
+  (formerly `mobile:*`); `pnpm dev` runs the API with Expo web; Docker and CI build only the
+  universal client.
+- Conversation sharing is deployment-controlled by `conversations.sharing` (default true).
+  Core Markdown team context works without Knowledge. Optional integration controls and delivery
+  adapters come from active plugins; WeCom remains binding-only, Feishu supports login/binding.
+- Desktop CORS and framing allow exactly tauri://localhost; counters and paid usage attribute
+  desktop requests.
+- One product version is synchronized across all app/package/plugin metadata, Expo config and
+  desktop Cargo/Tauri files. Release automation is configured for rc increments and documented
+  stable promotion.
+
+### Removed
+
+- The classic web app (`apps/web`), SDK 1 and in-tree extension overlays, every plugin `web/`
+  half, `@greenhouse/web/extension-kit`, `packages/contract`, the `@greenhouse/crud` React client,
+  `tests/e2e-ui`, `tests/web`, `playwright.config.ts`, `pnpm web:*` and `pnpm test:e2e:ui`.
+- The 1.x carry path (`migrate-from-1x`, its fixtures and `archive-1x`) and the boot-time settle
+  of retired run kinds.
+- `scripts/skillhub-sync.mjs`, `scripts/capture-screens.mjs`, `scripts/clean-web-output.mjs`,
+  `scripts/apply-ext-migrations.mjs`, the `platform create-app` CLI and its scaffold.
+- Classic-only screens without a client equivalent yet: saved-prompt management and the `/`
+  picker, the member activity log page, member editing of email accounts, memories and the cloud
+  computer, skill upload and report-template editing, the agent-connection wizard, adding personal
+  connectors, member gateway-key creation, the knowledge share dialog, the project members panel
+  and Tables field editing/recycle bin/data catalog/audit. Their APIs and tools remain; see the
+  upgrade guide for alternatives.
+
+extension-kit: expose the DB primitives, shared CRUD/form/editor/preview helpers and governance
+facades needed by official plugins; add data entity/context types, scoped CRUD, recordWrite,
+notify, readable-field projection and observation types. Remove `WidgetRecipe`,
+`defineExtension.workbenchRecipes` and the tool surface `workbench` flag. Kit exports remain
+snapshot-locked; optional kernel `writable` metadata enforces declared SDK 2 writes.
+`resolveEntityPolicy` takes role policies only: the never-populated per-user capability and
+entity overrides are removed from the kernel and the platform snapshots.
+`defineExtension.retiredToolAliases` is removed: core migration `0004_retired_tool_aliases`
+rewrote the stored ids it expanded.
+
+### Fixed
+
+- Data entity field checks agree across REST, agent/MCP tools, direct runtime and member manifests;
+  persisted broad grants cannot bypass declaration-level immutability or owner stamping.
+- The station manifest checks each data source's own feature flag.
+- Client forms submit changed writable fields only; list refresh retains loaded rows/totals/paging
+  after saves and discards stale query/identity replies.
+- Browser controls expose usable ARIA state and keyboard/click behavior; enum chips do not steal
+  row activation, and wide inspectors keep the visible main route accessible.
+
 ## [3.0.2](https://github.com/linjiejim/greenhouse/compare/v3.0.1...v3.0.2) (2026-10-26)
 
 
@@ -355,35 +516,6 @@ to 3.0 with `pnpm cli migrate-from-1x`; 2.x databases are not supported.
 ### Added
 
 * **release:** standardize release pipeline with version automation, container images, browser packaging, and mobile EAS ([93c295a](https://github.com/linjiejim/greenhouse/commit/93c295a672501b4b7e04c0590f4dca71bbfda436))
-
-## [Unreleased]
-
-> From here on, this changelog is maintained by [release-please](https://github.com/googleapis/release-please)
-> from Conventional Commits. See [RELEASING.md](./RELEASING.md).
-
-### Added
-
-- Release engineering: automated versioning via release-please (Release PR → tag →
-  GitHub Release), and a tag-triggered `release.yml` that publishes the container
-  image to GHCR (`:X.Y.Z`/`:X.Y`/`:latest` for stable; `:edge`/`:main-<sha>` for
-  `main`) and attaches the browser extension zip to the Release.
-- `RELEASING.md` maintainer runbook; README "Releases & stability" section + latest-release
-  badge; `SECURITY.md` supported-versions table.
-- Build version stamp: `Dockerfile` takes `APP_VERSION`/`APP_REVISION` (+ OCI labels)
-  and `GET /health` now returns the running `version` + commit `revision`.
-- `apps/mobile/eas.json` (EAS Build profiles) + `runtimeVersion` policy for the Expo app.
-- Browser e2e suite (Playwright) in `tests/e2e-ui/` — `pnpm test:e2e:ui`. Deterministic
-  Chromium specs for login, chat (LLM stubbed), project create, and user create/delete.
-- `data-testid` anchors on the login / chat / projects / users surfaces and `role="dialog"`
-  on `<Dialog>` / `<ConfirmDialog>` for stable test/automation locators.
-- Open-source project files: `CODE_OF_CONDUCT.md`, issue & pull-request templates, this
-  changelog.
-
-### Fixed
-
-- `DELETE /api/admin/users/:id` returned 500 on a successful delete. `users.delete` checked
-  `result.rowCount`, which the postgres-js driver does not populate; switched to the
-  codebase-standard `.returning()` + length check.
 
 ## [0.1.0]
 

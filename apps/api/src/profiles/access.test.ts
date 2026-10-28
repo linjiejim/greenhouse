@@ -54,6 +54,13 @@ describe('custom profile access policy', () => {
     await expect(assertCustomProfileAccess(owner, 'custom:not a valid id')).rejects.toMatchObject({ status: 400 });
   });
 
+  it('maps a retired id a caller sends to the canonical one at the edge', async () => {
+    await expect(pinProfileIdForUser(owner, 'team')).resolves.toBe('sprouty');
+    await expect(pinProfileIdForUser(owner, 'local-dev')).resolves.toBe('desktop');
+    await expect(pinProfileIdForUser(owner, undefined)).resolves.toBe('sprouty');
+    expect(mocks.getById).not.toHaveBeenCalled();
+  });
+
   it('pins owners and shared readers alike to the current version', async () => {
     await expect(pinProfileIdForUser(owner, 'custom:7')).resolves.toBe('custom:7@3');
     await expect(pinProfileIdForUser(other, 'custom:7')).rejects.toMatchObject({ status: 403 });

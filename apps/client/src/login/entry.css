@@ -1,0 +1,268 @@
+/*
+ * Entry pages: activation, OAuth consent, connector sign-in return, account-binding result
+ * (app/activate, app/oauth-consent, app/connectors/oauth-finish, app/bindings) and the sign-in
+ * page's provider buttons. They stand alone on the brand canvas, like the sign-in page.
+ */
+.gh-entry {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 48px 16px;
+}
+.gh-entry-card {
+  width: 100%;
+  max-width: 440px;
+  margin: auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 28px;
+  border: 1px solid var(--gh-line);
+  border-radius: 16px;
+  background: var(--gh-raised);
+  color: var(--gh-text);
+  box-shadow: 0 16px 48px -24px var(--gh-scrim);
+}
+.gh-entry-card[data-size='wide'] {
+  max-width: 560px;
+}
+.gh-entry-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+.gh-entry-head h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 700;
+}
+.gh-entry-head p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--gh-secondary);
+}
+.gh-entry-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.gh-entry-row {
+  display: flex;
+  gap: 8px;
+}
+.gh-entry-row > * {
+  flex: 1;
+}
+/* Entry pages open from mail and other apps on phones too: full-width 44 px controls with 16 px
+   text (Safari never zooms a field). The controls themselves are the shared ones. */
+:is(.gh-entry-card, .gh-entry-form) :is(.gh-input, .gh-primary, .gh-secondary-button) {
+  width: 100%;
+  min-height: 44px;
+  font-size: 16px;
+}
+:is(.gh-entry-card, .gh-entry-form) .gh-input {
+  padding: 0 12px;
+}
+.gh-entry-card .gh-error {
+  text-align: center;
+}
+.gh-entry-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  text-align: center;
+}
+.gh-entry-state strong {
+  font-size: 16px;
+  line-height: 22px;
+}
+.gh-entry-state p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--gh-secondary);
+  overflow-wrap: anywhere;
+}
+.gh-entry-badge {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--gh-accent-fill);
+}
+.gh-entry-badge[data-tone='danger'] {
+  background: var(--gh-danger-fill);
+}
+.gh-entry-badge[data-tone='success'] {
+  background: var(--gh-success-fill);
+}
+.gh-entry-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--gh-tertiary);
+}
+.gh-entry-divider::before,
+.gh-entry-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--gh-line);
+}
+
+/* MCP OAuth consent */
+.gh-consent-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--gh-line);
+}
+.gh-consent-client {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.gh-consent-client h1 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 700;
+}
+.gh-consent-client p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--gh-secondary);
+}
+.gh-consent-scopes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gh-consent-scope {
+  padding: 12px;
+  border: 1px solid var(--gh-line);
+  border-radius: 12px;
+  background: var(--gh-card);
+}
+.gh-consent-scope header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.gh-consent-scope p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--gh-secondary);
+}
+.gh-consent-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gh-consent-section > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.gh-consent-section h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.gh-consent-section > header small,
+.gh-consent-section > p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--gh-secondary);
+}
+.gh-consent-groups {
+  border: 1px solid var(--gh-line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.gh-consent-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid var(--gh-line);
+  cursor: pointer;
+}
+.gh-consent-group:first-child {
+  border-top: 0;
+}
+.gh-consent-group:hover {
+  background: var(--gh-hover);
+}
+.gh-consent-group input {
+  margin: 3px 0 0;
+  accent-color: var(--gh-accent);
+}
+.gh-consent-group strong {
+  display: block;
+  font-size: 14px;
+  line-height: 20px;
+}
+.gh-consent-group small {
+  display: block;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--gh-secondary);
+}
+.gh-consent-warning {
+  margin: 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--gh-warning);
+}
+.gh-consent-return {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--gh-secondary);
+}
+.gh-consent-return strong {
+  color: var(--gh-text);
+}
+.gh-consent-return small {
+  display: block;
+  margin-top: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--gh-tertiary);
+  overflow-wrap: anywhere;
+}
+.gh-consent-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--gh-line);
+}
+.gh-consent-actions > :is(.gh-primary, .gh-secondary-button) {
+  width: auto;
+  min-width: 112px;
+}

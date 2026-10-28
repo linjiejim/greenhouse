@@ -1,0 +1,38 @@
+{
+  "name": "@greenhouse/plugin-knowledge",
+  "version": "4.0.0-rc.1",
+  "private": true,
+  "type": "module",
+  "greenhouse": {
+    "id": "knowledge",
+    "sdk": 2,
+    "api": "./api/index.ts"
+  },
+  "exports": {
+    "./api": "./api/index.ts",
+    "./manifest": "./manifest.ts"
+  },
+  "dependencies": {
+    "@greenhouse/api": "workspace:*",
+    "@greenhouse/types": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@tiptap/core": "^3.24.0",
+    "@tiptap/extension-placeholder": "^3.24.0",
+    "@tiptap/pm": "^3.24.0",
+    "@tiptap/react": "^3.24.0",
+    "@tiptap/suggestion": "^3.28.0",
+    "ai": "^6.0.176",
+    "chalk": "^5.6.2",
+    "drizzle-orm": "^0.45.2",
+    "fflate": "^0.8.3",
+    "hono": "^4.12.18",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.13",
+    "@greenhouse/knowledge-editor": "workspace:*"
+  },
+  "devDependencies": {
+    "@greenhouse/db": "workspace:*",
+    "drizzle-kit": "^0.31.10",
+    "@greenhouse/agent-core": "workspace:*"
+  }
+}

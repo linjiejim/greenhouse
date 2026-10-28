@@ -1,3 +1,5 @@
+import { cabinetDriveScope } from '../drive/access.js';
+import { activityField as field, activityIdText as idText, activityText as text } from './values.js';
 /**
  * Activity log (操作记录) — one stream of changes from the records Greenhouse
  * already keeps:
@@ -29,7 +31,6 @@
  * the kind of object (`describeToolWrite` for agent writes), so the same
  * change reads the same way in both places.
  */
-
 import { Buffer } from 'node:buffer';
 import type { ActivityAuditRow, ActivityCursor, ActivityRunRow, DatabaseProvider } from '@greenhouse/db';
 import type { ApplicationManifest } from '@greenhouse/platform-kernel';
@@ -44,31 +45,20 @@ import {
   type ActivityStatus,
   type ActivityVerb,
 } from '@greenhouse/types/activity';
-import { entityUrl } from '@greenhouse/types/entity-links';
 import { filesPageHref, shelfOfVisibility } from '@greenhouse/types/files';
-
 /** A JSON object column, or {} for anything else. */
 function jsonObject(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 import { toRowId } from '@greenhouse/utils/id';
-import { canRead as canReadKb, resolveKbAccess } from '../knowledge/access.js';
 import { DRIVE_AUDIT_APP_ID, type DriveChangeAction } from '../drive/audit.js';
-import {
-  REPORT_TEMPLATE_ADMIN_ACTIONS,
-  REPORT_TEMPLATE_PERSON_ACTIONS,
-  REPORTS_AUDIT_APP_ID,
-} from '../reports/audit.js';
-import { canViewTemplate } from '../reports/templates.js';
+import { fromExtensions } from '../plugin-host/index.js';
 import { MUTATING_PROXY_ALLOWLIST } from '../tools/registry.js';
-
 export interface ActivityViewer {
   id: string;
   role: string;
 }
-
 // ─── What counts as a change ─────────────────────────────
-
 const DRIVE_ACTIONS: readonly DriveChangeAction[] = [
   'createFolder',
   'updateFolder',
@@ -77,7 +67,6 @@ const DRIVE_ACTIONS: readonly DriveChangeAction[] = [
   'updateFile',
   'deleteFile',
 ];
-
 /** A member connecting or disconnecting one of their agents, or creating / revoking a model gateway key. */
 const PERSONAL_PLATFORM_ACTIONS = [
   'authorizeOAuthClient',
@@ -85,9 +74,8 @@ const PERSONAL_PLATFORM_ACTIONS = [
   'createGatewayKey',
   'revokeGatewayKey',
 ] as const;
-
 /** Administrator changes, by Activity module. */
-const ADMIN_ACTIONS: Record<'settings' | 'users' | 'mcp' | 'skills', readonly string[]> = {
+const ADMIN_ACTIONS: Record<string, readonly string[]> = {
   settings: [
     'updateWorkspaceSettings',
     // Services & pricing (v1.6): budget limits and price overrides.
@@ -95,8 +83,6 @@ const ADMIN_ACTIONS: Record<'settings' | 'users' | 'mcp' | 'skills', readonly st
     'removeBudgetLimit',
     'updateServicePrice',
     'removeServicePrice',
-    // Cloud computer (v1.6): an admin stopping a member's computer.
-    'stopMemberComputer',
   ],
   users: [
     'setUserFeature',
@@ -115,43 +101,32 @@ const ADMIN_ACTIONS: Record<'settings' | 'users' | 'mcp' | 'skills', readonly st
     // A super revoking a member's model gateway key (Services & pricing).
     'revokeMemberGatewayKey',
   ],
-  // Report templates (v1.7): a super changing or deleting a template someone
-  // else owns, or one shipped with Greenhouse (reports/audit.ts).
-  skills: REPORT_TEMPLATE_ADMIN_ACTIONS,
 };
-
+for (const entry of fromExtensions('activity')) {
+  for (const [module, actions] of Object.entries(entry.adminActions ?? {}))
+    ADMIN_ACTIONS[module] = [...(ADMIN_ACTIONS[module] ?? []), ...actions];
+}
 const ADMIN_MODULE_BY_ACTION = new Map(
   Object.entries(ADMIN_ACTIONS).flatMap(([module, actions]) => actions.map((action) => [action, module] as const)),
 );
-
 /** Module of a platform application's audit row. */
 function appModule(appId: string): string {
   if (appId === DRIVE_AUDIT_APP_ID) return 'files';
-  // Report templates live in SkillHub.
-  if (appId === REPORTS_AUDIT_APP_ID) return 'skills';
+  const contributed = fromExtensions('activity').find((entry) => entry.appModules?.[appId]);
+  if (contributed) return contributed.appModules![appId]!;
   return appId;
 }
-
 const TOOL_MODULES: Record<string, string> = {
-  knowledge_mutation: 'knowledge',
+  ...Object.assign({}, ...fromExtensions('activity').map((entry) => entry.toolModules ?? {})),
   files_mutation: 'files',
   // An agent's generated image is a new file on the member's personal shelf.
   generate_image: 'files',
-  // A rendered report (v1.7) is a new file in Files too.
-  report_render: 'files',
-  project_mutation: 'projects',
-  tables_mutation: 'tables',
-  skill_mutation: 'skills',
-  feature_request: 'feedback',
-  log_friction: 'feedback',
   automation_mutation: 'automations',
 };
-
 /** Module of an agent write, by the tool it called; an extension tool files under its id prefix. */
 export function moduleOfTool(toolId: string): string {
   return TOOL_MODULES[toolId] ?? toolId.split('_')[0] ?? 'other';
 }
-
 function commandActionsByApp(manifests: readonly ApplicationManifest[]): Map<string, string[]> {
   const byApp = new Map<string, string[]>();
   for (const manifest of manifests) {
@@ -162,7 +137,6 @@ function commandActionsByApp(manifests: readonly ApplicationManifest[]): Map<str
   }
   return byApp;
 }
-
 function actionTitles(manifests: readonly ApplicationManifest[]): Map<string, string> {
   const titles = new Map<string, string>();
   for (const manifest of manifests) {
@@ -170,7 +144,6 @@ function actionTitles(manifests: readonly ApplicationManifest[]): Map<string, st
   }
   return titles;
 }
-
 const VERB_PATTERNS: Array<[RegExp, ActivityVerb]> = [
   [/^(delete|remove|purge|destroy|drop|revoke|disable)/, 'delete'],
   [/^(unarchive|restore|enable)/, 'restore'],
@@ -182,7 +155,6 @@ const VERB_PATTERNS: Array<[RegExp, ActivityVerb]> = [
   [/^(update|edit|set|rename|patch|change|rotate|resend|upsert|replace|convert|manage)/, 'update'],
   [/^(run|trigger)/, 'run'],
 ];
-
 /** The kind of change, from an action id (`updateProject`) or a tool action (`records.update`, `files.delete`). */
 export function verbOf(action: string): ActivityVerb {
   const last = action.includes('.') ? action.slice(action.lastIndexOf('.') + 1) : action;
@@ -190,7 +162,6 @@ export function verbOf(action: string): ActivityVerb {
   for (const [pattern, verb] of VERB_PATTERNS) if (pattern.test(normalized)) return verb;
   return 'other';
 }
-
 /**
  * The verb of one write-tool action, by its first word (`update_doc`,
  * `batch_upsert`, `run_now`): what the change did to the object, not how.
@@ -223,57 +194,49 @@ const TOOL_VERBS: Record<string, ActivityVerb> = {
   run: 'run',
   send: 'send',
 };
-
 /** The object an action prefix (`folders.create`) names. */
 const ACTION_ENTITIES: Record<string, string> = {
-  knowledge: 'document',
-  project: 'project',
-  task: 'task',
-  comment: 'task',
+  ...Object.assign({}, ...fromExtensions('activity').map((entry) => entry.actionEntities ?? {})),
   records: 'record',
   folders: 'folder',
   files: 'file',
-  skills: 'skill',
 };
-
 /** The object a tool without an action prefix writes. */
 const TOOL_ENTITIES: Record<string, string> = {
-  knowledge_mutation: 'document',
-  tables_mutation: 'record',
-  skill_mutation: 'skill',
+  ...Object.assign(
+    {},
+    ...fromExtensions('activity').map((entry) =>
+      Object.fromEntries(Object.entries(entry.toolWrites ?? {}).map(([key, value]) => [key, value.entity])),
+    ),
+  ),
   automation_mutation: 'automation',
-  feature_request: 'featureRequest',
-  log_friction: 'friction',
-  email_mutation: 'email',
   generate_image: 'file',
-  report_render: 'file',
 };
-
 export interface WriteShape {
   verb: ActivityVerb;
   /** The kind of object (`document`, `file`, `task`…), or null for an unknown tool. */
   entity: string | null;
 }
-
 /** What one agent write did, in the Activity vocabulary: "updated document", "created folder". */
 export function describeToolWrite(toolId: string, action: string | null): WriteShape {
-  // log_friction's `action` is the kind of friction, not a verb: it always files a report.
-  if (toolId === 'log_friction') return { verb: 'create', entity: 'friction' };
+  const descriptor = fromExtensions('activity')
+    .map((entry) => entry.toolWrites?.[toolId])
+    .find(Boolean);
+  if (descriptor?.verb) return { verb: descriptor.verb as WriteShape['verb'], entity: descriptor.entity };
   // generate_image's `edit` makes a new image too; the original is untouched.
   if (toolId === 'generate_image') return { verb: 'create', entity: 'file' };
-  // report_render has no action: it always saves a new file.
-  if (toolId === 'report_render') return { verb: 'create', entity: 'file' };
   const dot = action ? action.lastIndexOf('.') : -1;
   const prefix = action && dot > 0 ? action.slice(0, dot) : null;
   const segment = action ? action.slice(dot + 1) : '';
-  if (toolId === 'project_mutation' && action === 'comment.add') return { verb: 'comment', entity: 'task' };
+  const contributedShape = fromExtensions('activity')
+    .map((entry) => entry.toolShapes?.[toolId]?.[action ?? ''])
+    .find(Boolean);
+  if (contributedShape) return contributedShape;
   const verb = TOOL_VERBS[segment.split('_')[0] ?? ''] ?? 'other';
   const entity = (prefix ? ACTION_ENTITIES[prefix] : undefined) ?? TOOL_ENTITIES[toolId] ?? null;
   return { verb, entity };
 }
-
 // ─── Filters ─────────────────────────────────────────────
-
 export interface ActivityQuery {
   source?: string | null;
   module?: string | null;
@@ -283,7 +246,6 @@ export interface ActivityQuery {
   cursor?: string | null;
   limit?: number | null;
 }
-
 interface ResolvedQuery {
   sources: ActivitySource[];
   module: string | null;
@@ -294,22 +256,17 @@ interface ResolvedQuery {
   cursor: ActivityCursor | null;
   limit: number;
 }
-
 export class ActivityQueryError extends Error {}
-
 const DAY_MS = 24 * 60 * 60 * 1000;
-
 function parseTime(raw: string | null | undefined, name: string): number | null {
   if (!raw) return null;
   const time = Date.parse(raw);
   if (Number.isNaN(time)) throw new ActivityQueryError(`${name} is not a valid date`);
   return time;
 }
-
 export function encodeActivityCursor(cursor: ActivityCursor): string {
   return Buffer.from(JSON.stringify(cursor)).toString('base64url');
 }
-
 function decodeCursor(raw: string | null | undefined): ActivityCursor | null {
   if (!raw) return null;
   try {
@@ -327,7 +284,6 @@ function decodeCursor(raw: string | null | undefined): ActivityCursor | null {
   }
   throw new ActivityQueryError('cursor is malformed');
 }
-
 export function resolveActivityQuery(viewer: ActivityViewer, query: ActivityQuery, now = Date.now()): ResolvedQuery {
   const isSuper = viewer.role === 'super';
   let sources: ActivitySource[] = [...ACTIVITY_SOURCES];
@@ -338,7 +294,6 @@ export function resolveActivityQuery(viewer: ActivityViewer, query: ActivityQuer
     sources = [query.source as ActivitySource];
   }
   if (!isSuper) sources = sources.filter((source) => source !== 'admin');
-
   const to = parseTime(query.to, 'to') ?? now;
   const from = parseTime(query.from, 'from') ?? to - ACTIVITY_DEFAULT_DAYS * DAY_MS;
   if (from >= to) throw new ActivityQueryError('from must be before to');
@@ -346,7 +301,6 @@ export function resolveActivityQuery(viewer: ActivityViewer, query: ActivityQuer
     throw new ActivityQueryError(`a window may span at most ${ACTIVITY_MAX_DAYS} days`);
   }
   const limit = Math.min(Math.max(Math.trunc(query.limit ?? ACTIVITY_PAGE_LIMIT) || ACTIVITY_PAGE_LIMIT, 1), 200);
-
   return {
     sources,
     module: query.module?.trim() || null,
@@ -358,13 +312,18 @@ export function resolveActivityQuery(viewer: ActivityViewer, query: ActivityQuer
     limit,
   };
 }
-
 // ─── Fetch + merge ───────────────────────────────────────
-
 type Pending =
-  | { kind: 'audit'; source: 'person' | 'admin'; row: ActivityAuditRow }
-  | { kind: 'run'; source: 'agent' | 'automation'; row: ActivityRunRow };
-
+  | {
+      kind: 'audit';
+      source: 'person' | 'admin';
+      row: ActivityAuditRow;
+    }
+  | {
+      kind: 'run';
+      source: 'agent' | 'automation';
+      row: ActivityRunRow;
+    };
 async function fetchPending(
   db: DatabaseProvider,
   q: ResolvedQuery,
@@ -373,33 +332,47 @@ async function fetchPending(
   const window = { from: q.from, to: q.to, cursor: q.cursor, limit: q.limit + 1 };
   const wants = (module: string) => !q.module || q.module === module;
   const jobs: Array<Promise<Pending[]>> = [];
-
   if (q.sources.includes('person')) {
-    const actions: Array<{ appId: string; actionIds: readonly string[]; moduleId?: string }> = [];
+    const actions: Array<{
+      appId: string;
+      actionIds: readonly string[];
+      moduleId?: string;
+    }> = [];
     for (const [appId, actionIds] of commandActionsByApp(manifests)) {
       if (wants(appModule(appId))) actions.push({ appId, actionIds });
     }
     if (wants('files')) actions.push({ appId: DRIVE_AUDIT_APP_ID, actionIds: DRIVE_ACTIONS });
-    if (wants('skills')) actions.push({ appId: REPORTS_AUDIT_APP_ID, actionIds: REPORT_TEMPLATE_PERSON_ACTIONS });
+    for (const entry of fromExtensions('activity'))
+      for (const item of entry.personActions ?? []) if (wants(item.module)) actions.push(item);
     if (wants('mcp')) actions.push({ appId: 'platform', actionIds: PERSONAL_PLATFORM_ACTIONS });
     jobs.push(
       db.activity
-        .listAuditChanges({ ...window, actions, actorType: 'human', userId: q.userId })
+        .listAuditChanges({
+          ...window,
+          actions,
+          excludeCapabilities: fromExtensions('activity').flatMap((entry) => entry.auditCapabilities ?? []),
+          actorType: 'human',
+          userId: q.userId,
+        })
         .then((rows) => rows.map((row) => ({ kind: 'audit', source: 'person', row }) as const)),
     );
   }
-
   if (q.sources.includes('admin')) {
     const actions = Object.entries(ADMIN_ACTIONS)
       .filter(([module]) => wants(module))
       .map(([, actionIds]) => ({ appId: 'platform', actionIds }));
     jobs.push(
       db.activity
-        .listAuditChanges({ ...window, actions, actorType: 'human', userId: q.userId })
+        .listAuditChanges({
+          ...window,
+          actions,
+          excludeCapabilities: fromExtensions('activity').flatMap((entry) => entry.auditCapabilities ?? []),
+          actorType: 'human',
+          userId: q.userId,
+        })
         .then((rows) => rows.map((row) => ({ kind: 'audit', source: 'admin', row }) as const)),
     );
   }
-
   if (q.sources.includes('agent')) {
     const toolIds = q.module ? [...MUTATING_PROXY_ALLOWLIST].filter((id) => moduleOfTool(id) === q.module) : null;
     if (q.module !== 'connectors') {
@@ -419,7 +392,6 @@ async function fetchPending(
       );
     }
   }
-
   if (q.sources.includes('automation') && wants('automations')) {
     jobs.push(
       db.activity
@@ -427,88 +399,43 @@ async function fetchPending(
         .then((rows) => rows.map((row) => ({ kind: 'run', source: 'automation', row }) as const)),
     );
   }
-
   const merged = (await Promise.all(jobs)).flat();
   // Newest first on the shared order: fixed-width UTC timestamps, then the key, byte-wise.
   merged.sort((a, b) => (a.row.at === b.row.at ? cmp(b.row.key, a.row.key) : cmp(b.row.at, a.row.at)));
   return merged;
 }
-
 function cmp(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
-
 // ─── Hydrate ─────────────────────────────────────────────
-
-interface HydrateContext {
+export interface HydrateContext {
   db: DatabaseProvider;
   viewer: ActivityViewer;
   titles: Map<string, string>;
   names: Map<string, string | null>;
 }
-
 async function userNames(db: DatabaseProvider, ids: Iterable<string>): Promise<Map<string, string | null>> {
   const unique = [...new Set(ids)].filter(Boolean);
   const users = await Promise.all(unique.map((id) => db.users.getById(id).catch(() => undefined)));
   return new Map(unique.map((id, index) => [id, users[index]?.nickname ?? null]));
 }
-
-async function knowledgeTarget(ctx: HydrateContext, recordId: string) {
-  try {
-    // The kernel records either the row id or the doc slug, depending on the caller.
-    const doc = (await ctx.db.knowledgeBase.getById(recordId)) ?? (await ctx.db.knowledgeBase.get(recordId, 'shared'));
-    if (!doc || !canReadKb(await resolveKbAccess(ctx.db, doc, ctx.viewer.id))) return null;
-    return { label: doc.title, url: entityUrl({ kind: 'kb_doc', id: doc.id, slug: doc.doc_id }) };
-  } catch {
-    return null;
-  }
-}
-
-async function projectReadable(ctx: HydrateContext, projectId: string) {
-  const project = await ctx.db.projects.getProjectById(projectId);
-  if (!project) return null;
-  if (ctx.viewer.role === 'super' || project.visibility === 'public') return project;
-  const members = await ctx.db.projects.getMembers(project.id);
-  return members.some((member) => member.user_id === ctx.viewer.id) ? project : null;
-}
-
-async function projectTarget(ctx: HydrateContext, entity: string | null, recordId: string) {
-  const id = toRowId(recordId);
-  if (!id) return null;
-  try {
-    if (entity === 'project') {
-      const project = await projectReadable(ctx, id);
-      return project ? { label: project.title, url: entityUrl({ kind: 'project', id: project.id }) } : null;
-    }
-    if (entity === 'task') {
-      const task = await ctx.db.projects.getTaskById(id);
-      const project = task ? await projectReadable(ctx, task.project_id) : null;
-      return task && project ? { label: task.title, url: entityUrl({ kind: 'project', id: project.id }) } : null;
-    }
-  } catch {
-    // A label is a convenience; the id is always shown.
-  }
-  return null;
-}
-
 interface DriveNode {
   scope?: unknown;
   visibility?: unknown;
   owner_user_id?: unknown;
   name?: unknown;
 }
-
 function driveTarget(ctx: HydrateContext, entity: string | null, recordId: string, node: DriveNode) {
   const visibility = node.visibility === 'private' ? 'private' : node.visibility === 'team' ? 'team' : null;
   const mine = typeof node.owner_user_id === 'string' && node.owner_user_id === ctx.viewer.id;
-  if (node.scope !== 'kb' || !(visibility === 'team' || mine) || typeof node.name !== 'string') return null;
+  if (node.scope !== cabinetDriveScope() || !(visibility === 'team' || mine) || typeof node.name !== 'string')
+    return null;
   const shelf = shelfOfVisibility(visibility);
   const id = recordId;
   const url =
     entity === 'folder' ? filesPageHref({ shelf, folderId: id }) : entity === 'file' ? filesPageHref({ shelf }) : null;
   return { label: node.name, url };
 }
-
 /** A file or folder as it is now, named under the same shelf rule as its audit rows. */
 async function liveDriveTarget(ctx: HydrateContext, entity: 'file' | 'folder', recordId: string) {
   const id = toRowId(recordId);
@@ -520,7 +447,6 @@ async function liveDriveTarget(ctx: HydrateContext, entity: 'file' | 'folder', r
     return null;
   }
 }
-
 async function oauthClientName(ctx: HydrateContext, clientId: string | null): Promise<string | null> {
   if (!clientId) return null;
   try {
@@ -529,38 +455,11 @@ async function oauthClientName(ctx: HydrateContext, clientId: string | null): Pr
     return null;
   }
 }
-
-/**
- * A report template, named only for a viewer who may read it: as it is now
- * (team templates for everyone, a draft for its owner), or — once deleted —
- * from the name its audit kept, for whoever made the change or anyone when
- * it was a team template. A member's draft is never named to anyone else,
- * a super included — the same rule as reading it.
- */
-async function reportTemplateTarget(ctx: HydrateContext, row: ActivityAuditRow, summary: Record<string, unknown>) {
-  const url = '#/skillhub?tab=reports';
-  try {
-    const live = row.record_id ? await ctx.db.reportTemplates.get(row.record_id) : null;
-    if (live)
-      return canViewTemplate(live, { userId: ctx.viewer.id, role: ctx.viewer.role }) ? { label: live.name, url } : null;
-  } catch {
-    // Fall back to the kept name.
-  }
-  if (typeof summary.name !== 'string' || !summary.name) return null;
-  const readable = summary.visibility === 'team' || ctx.viewer.id === row.actor_id;
-  return readable ? { label: summary.name, url: null } : null;
-}
-
 /**
  * The title an audit kept for a record that may be gone (projects record it on
  * create and delete). Shown to whoever made the change, and to a super, who
  * reads every project; never to anyone else.
  */
-function keptTitle(ctx: HydrateContext, row: ActivityAuditRow, summary: Record<string, unknown>): string | null {
-  if (typeof summary.title !== 'string' || !summary.title) return null;
-  return ctx.viewer.id === row.actor_id || ctx.viewer.role === 'super' ? summary.title : null;
-}
-
 function adminDetail(row: ActivityAuditRow, summary: Record<string, unknown>): string | null {
   const keys = (value: unknown) => (Array.isArray(value) ? value.filter((v) => typeof v === 'string') : []);
   if (row.action_id === 'updateWorkspaceSettings') {
@@ -579,7 +478,9 @@ function adminDetail(row: ActivityAuditRow, summary: Record<string, unknown>): s
   }
   if (row.action_id === 'revokeMemberGatewayKey' && typeof summary.detail === 'string') return summary.detail;
   if (
-    (REPORT_TEMPLATE_ADMIN_ACTIONS as readonly string[]).includes(row.action_id) &&
+    fromExtensions('activity').some((entry) =>
+      Object.values(entry.adminActions ?? {}).some((actions) => actions.includes(row.action_id)),
+    ) &&
     typeof summary.detail === 'string'
   ) {
     return summary.detail;
@@ -589,18 +490,20 @@ function adminDetail(row: ActivityAuditRow, summary: Record<string, unknown>): s
   }
   return null;
 }
-
 /** The verb and object of a person's or admin's audited change. */
 function auditShape(row: ActivityAuditRow, summary: Record<string, unknown>): WriteShape {
   const verb = verbOf(row.action_id);
-  if (row.app_id === 'knowledge') {
-    if (summary.change === 'reorder') return { verb: 'move', entity: 'document' };
-  }
+  const dynamic = fromExtensions('activity')
+    .map((entry) => entry.auditShape?.(row, summary))
+    .find(Boolean);
+  if (dynamic) return dynamic;
   // A comment is filed against its task: "commented on task <title>".
-  if (row.app_id === 'projects' && row.action_id === 'addComment') return { verb: 'comment', entity: 'task' };
+  const contributed = fromExtensions('activity')
+    .map((entry) => entry.auditShapes?.[`${row.app_id}:${row.action_id}`])
+    .find(Boolean);
+  if (contributed) return contributed;
   return { verb, entity: row.entity_id };
 }
-
 async function hydrateAudit(
   ctx: HydrateContext,
   source: 'person' | 'admin',
@@ -621,31 +524,23 @@ async function hydrateAudit(
     const name =
       (await oauthClientName(ctx, clientId)) ?? (typeof summary.client_name === 'string' ? summary.client_name : null);
     target = name ? { id: null, label: name, url: null } : null;
-  } else if (row.entity_id === 'reportTemplate' && row.record_id) {
-    const named = await reportTemplateTarget(ctx, row, summary);
+  } else if (row.record_id && fromExtensions('activity').some((entry) => entry.targets?.[row.entity_id ?? ''])) {
+    const resolve = fromExtensions('activity').find((entry) => entry.targets?.[row.entity_id ?? ''])!.targets![
+      row.entity_id!
+    ]!;
+    const named = await resolve(ctx, row, summary);
     target = { id: row.record_id, label: named?.label ?? null, url: named?.url ?? null };
   } else if (row.app_id === 'platform' && row.entity_id === 'gatewayKey') {
     // A gateway key is named by the name its owner gave it (never its secret).
     target = typeof summary.name === 'string' ? { id: row.record_id, label: summary.name, url: null } : null;
   } else if (row.record_id) {
     const resolved =
-      row.app_id === 'knowledge'
-        ? await knowledgeTarget(ctx, row.record_id)
-        : row.app_id === 'projects'
-          ? shape.entity === 'comment'
-            ? // A deleted comment is named by the task it was on, which its audit keeps.
-              await projectTarget(ctx, 'task', String(summary.task_id ?? ''))
-            : await projectTarget(ctx, shape.entity, row.record_id)
-          : row.app_id === DRIVE_AUDIT_APP_ID
-            ? driveTarget(ctx, row.entity_id, row.record_id, summary)
-            : row.app_id === 'platform' && row.entity_id === 'user'
-              ? { label: ctx.names.get(row.record_id) ?? null, url: null }
-              : null;
+      row.app_id === DRIVE_AUDIT_APP_ID
+        ? driveTarget(ctx, row.entity_id, row.record_id, summary)
+        : row.app_id === 'platform' && row.entity_id === 'user'
+          ? { label: ctx.names.get(row.record_id) ?? null, url: null }
+          : null;
     if (resolved) target = { id: row.record_id, ...resolved };
-    else if (row.app_id === 'projects') {
-      const kept = keptTitle(ctx, row, summary);
-      if (kept) target = { id: row.record_id, label: kept, url: null };
-    }
   }
   return {
     id: row.key,
@@ -664,7 +559,6 @@ async function hydrateAudit(
     detail: source === 'admin' ? adminDetail(row, summary) : null,
   };
 }
-
 function runStatus(row: ActivityRunRow): ActivityStatus {
   if (row.status === 'succeeded') return 'succeeded';
   if (row.status === 'failed') return 'failed';
@@ -674,27 +568,6 @@ function runStatus(row: ActivityRunRow): ActivityStatus {
   }
   return 'running';
 }
-
-function field(value: unknown, ...path: string[]): unknown {
-  let current = value;
-  for (const key of path) {
-    if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
-    current = (current as Record<string, unknown>)[key];
-  }
-  return current;
-}
-
-function idText(value: unknown): string | null {
-  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value);
-  if (typeof value === 'string' && value.length > 0) return value;
-  return null;
-}
-
-function text(...values: unknown[]): string | null {
-  for (const value of values) if (typeof value === 'string' && value.trim()) return value.trim();
-  return null;
-}
-
 /**
  * The object an agent write touched, named only for a viewer who may read it:
  * looked up as it is now under the module's own read rule (a created record by
@@ -711,52 +584,42 @@ async function agentWriteTarget(
 ): Promise<ActivityItem['target']> {
   const input = field(jsonObject(row.input), 'input');
   const result = field(row.output, 'result');
-  const creates = shape.verb === 'create';
   const own = ctx.viewer.id === row.owner_user_id;
   const superReads = ctx.viewer.role === 'super';
   let id: string | null = null;
-  let live: { label: string; url: string | null } | null = null;
+  let live: {
+    label: string;
+    url: string | null;
+  } | null = null;
   let kept: string | null = null;
   let keptVisible = own;
-
-  if (toolId === 'knowledge_mutation') {
-    id = creates ? idText(field(result, 'document', 'id')) : idText(field(input, 'doc_id'));
-    live = id ? await knowledgeTarget(ctx, id) : null;
-    kept = text(field(result, 'document', 'title'), creates ? field(input, 'title') : null);
-  } else if (toolId === 'project_mutation') {
-    const entity = shape.entity === 'project' ? 'project' : 'task';
-    id =
-      action === 'project.create'
-        ? idText(field(result, 'project', 'id'))
-        : action === 'task.create'
-          ? idText(field(result, 'task', 'id'))
-          : idText(field(input, entity === 'project' ? 'project_id' : 'task_id'));
-    live = id ? await projectTarget(ctx, entity, id) : null;
-    kept = text(field(result, entity, 'title'), creates ? field(input, 'title') : null);
-    keptVisible = own || superReads;
-  } else if (
+  const contributed = fromExtensions('activity')
+    .map((entry) => entry.toolTargets?.[toolId])
+    .find(Boolean);
+  if (contributed) return contributed(ctx, row, action, shape);
+  if (
     (toolId === 'files_mutation' && (shape.entity === 'file' || shape.entity === 'folder')) ||
-    toolId === 'report_render'
+    fromExtensions('activity').some((entry) => entry.fileTools?.includes(toolId))
   ) {
     const entity = shape.entity === 'folder' ? 'folder' : 'file';
     id = idText(field(result, entity, 'id')) ?? idText(field(input, entity === 'file' ? 'file_id' : 'folder_id'));
     live = id ? await liveDriveTarget(ctx, entity, id) : null;
     kept = text(field(result, entity, 'name'), field(input, 'name'));
-  } else if (toolId === 'skill_mutation') {
-    kept = text(field(result, 'skill', 'display_name'), field(input, 'display_name'), field(input, 'name'));
-    keptVisible = own || superReads;
   } else if (toolId === 'automation_mutation') {
     kept = text(field(result, 'automation', 'name'), field(input, 'name'));
-  } else if (toolId === 'feature_request') {
-    kept = text(field(result, 'request', 'title'), field(input, 'title'));
-    keptVisible = own || superReads;
+  } else {
+    const title = fromExtensions('activity')
+      .map((entry) => entry.toolWrites?.[toolId]?.title)
+      .find(Boolean);
+    if (title) {
+      kept = text(field(result, title.result, title.field), field(input, title.field));
+      keptVisible = own || superReads;
+    }
   }
-
   if (live) return { id, ...live };
   if (kept && keptVisible) return { id, label: kept, url: null };
   return null;
 }
-
 async function hydrateRun(
   ctx: HydrateContext,
   source: 'agent' | 'automation',
@@ -831,11 +694,9 @@ async function hydrateRun(
     target: name ? { id: null, label: name, url: '#/automations' } : null,
   };
 }
-
 export interface ActivityDeps {
   manifests: readonly ApplicationManifest[];
 }
-
 /** One page of the activity log for this viewer. */
 export async function listActivity(
   db: DatabaseProvider,
@@ -847,7 +708,6 @@ export async function listActivity(
   const pending = await fetchPending(db, q, deps.manifests);
   const page = pending.slice(0, q.limit);
   const last = page.at(-1);
-
   const people = page.flatMap((entry) =>
     entry.kind === 'audit'
       ? [entry.row.actor_id, ...(entry.row.app_id === 'platform' && entry.row.record_id ? [entry.row.record_id] : [])]
@@ -870,18 +730,14 @@ export async function listActivity(
     window: { from: q.from, to: q.to },
   };
 }
-
 // ─── CSV ─────────────────────────────────────────────────
-
 const CSV_COLUMNS = ['time', 'source', 'person', 'agent', 'module', 'action', 'target', 'status', 'detail'] as const;
-
 function csvCell(value: string | null | undefined): string {
   const text = value ?? '';
   // Neutralize spreadsheet formulas, then quote.
   const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
   return `"${safe.replace(/"/g, '""')}"`;
 }
-
 export function activityCsvRows(items: readonly ActivityItem[]): string[] {
   return items.map((item) =>
     [
@@ -899,5 +755,4 @@ export function activityCsvRows(items: readonly ActivityItem[]): string[] {
       .join(','),
   );
 }
-
 export const ACTIVITY_CSV_HEADER = CSV_COLUMNS.join(',');

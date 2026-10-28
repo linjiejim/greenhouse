@@ -16,6 +16,9 @@ pnpm db:migrate
 pnpm seed
 ```
 
+Plugin datasets load only for enabled plugins. Add `projects` to `extensions.enabled` to include
+the project/task examples and their activity; the default deployment omits them.
+
 Then log in at the app with any seeded user and the shared demo password:
 
 | Login | Role | Try |
@@ -66,9 +69,9 @@ published / draft / archived status, AI enrichment (`_summary` / `_questions` /
 `_topics`), tags, version history (roadmap + handbook), and private-doc sharing
 with two users (reader and editor).
 
-**Projects** — 3 projects (Website Relaunch, Q3 Product Launch, SOC 2), members,
+**Projects** — enabled-plugin seed rows now live in `plugins/projects/seeds/` (default off): 3 projects (Website Relaunch, Q3 Product Launch, SOC 2), members,
 14 tasks with subtasks / dependencies / mixed status, comments, and an activity
-log (`audit_events` rows with `app_id='projects'`).
+log (`audit_events` rows with `app_id='projects'`, also seeded by the plugin).
 
 **Chat** — 5 conversations (`conversations.json`) on the `web` channel, showing tool
 pipelines (`knowledge_query`, `external_search`, `project_query`, `analyze_image`)
@@ -86,3 +89,7 @@ and per-user feature flags (`user_grants` with `kind='feature'`).
 - `email_accounts` — values are encrypted with the instance secret;
   bind mailboxes in Settings → Email.
 - `usage_events`, `request_log`, `runs` — telemetry, produced by real usage.
+
+Memory and Feedback JSONL files now live in `plugins/memory/seeds` and `plugins/feedback/seeds`; seed loads only enabled plugin contributions after core rows.
+
+Knowledge 的 `kb_documents.json` / `kb_versions.json` 已随模块移到 `plugins/knowledge/seeds/`，只在该插件启用时加载；核心示例集不再持有知识表。Markdown 为规范内容，空编辑器状态合法。

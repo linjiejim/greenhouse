@@ -1,0 +1,76 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1792865494133,
+      "tag": "0000_v3_baseline",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792946180416,
+      "tag": "0001_drop_workbench_prefs",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792947018628,
+      "tag": "0002_mcp_connectors",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793035108256,
+      "tag": "0003_w2a_plugin_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793038932247,
+      "tag": "0004_w2b_plugin_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793038962541,
+      "tag": "0005_notification_registries",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793041810594,
+      "tag": "0006_skills-projects-ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793044499416,
+      "tag": "0007_tables_plugin_discriminators",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793045097691,
+      "tag": "0008_plugin_artifact_kinds",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793047080800,
+      "tag": "0009_knowledge_plugin_ownership",
+      "breakpoints": true
+    }
+  ]
+}

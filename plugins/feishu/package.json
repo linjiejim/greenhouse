@@ -1,0 +1,25 @@
+{
+  "name": "@greenhouse/plugin-feishu",
+  "version": "4.0.0-rc.1",
+  "private": true,
+  "type": "module",
+  "greenhouse": {
+    "id": "feishu",
+    "sdk": 2,
+    "api": "./api/index.ts"
+  },
+  "exports": {
+    "./api": "./api/index.ts",
+    "./manifest": "./manifest.ts"
+  },
+  "dependencies": {
+    "@greenhouse/api": "workspace:*",
+    "@greenhouse/types": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.18",
+    "@larksuiteoapi/node-sdk": "^1.73.0"
+  },
+  "devDependencies": {
+    "@greenhouse/db": "workspace:*"
+  }
+}

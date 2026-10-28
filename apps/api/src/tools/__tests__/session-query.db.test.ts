@@ -31,7 +31,7 @@ function uid(prefix: string): string {
 }
 
 async function sessionWith(userId: string, title: string, contents: string[]): Promise<string> {
-  const session = await db.sessions.create(title, 'team', userId);
+  const session = await db.sessions.create(title, 'sprouty', userId);
   for (const [i, content] of contents.entries()) {
     await db.sessions.addMessage({ session_id: session.id, role: i % 2 === 0 ? 'user' : 'assistant', content });
   }

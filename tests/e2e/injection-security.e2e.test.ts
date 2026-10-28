@@ -51,10 +51,18 @@ describe('E2E: Path Traversal Prevention', () => {
     ];
 
     for (const path of traversalPaths) {
-      const res = await fetch(`${BASE_URL}/api/upload/${path}`);
-      // Should be 400, 401, or 404, never 200 with file content
-      expect([400, 401, 404]).toContain(res.status);
+      const url = new URL(`${BASE_URL}/api/upload/${path}`);
+      const res = await fetch(url);
       const text = await res.text();
+      if (res.status === 200) {
+        // Fetch normalizes backslashes and dot segments before sending. A path
+        // normalized outside /api now receives the public SPA, never a file.
+        expect(url.pathname.startsWith('/api/')).toBe(false);
+        expect(res.headers.get('content-type')).toContain('text/html');
+        expect(text).toContain('id="root"');
+      } else {
+        expect([400, 401, 404]).toContain(res.status);
+      }
       // Should never contain env file content
       expect(text).not.toContain('LLM_API_KEY');
       expect(text).not.toContain('TOKEN_SIGNING_KEY');
@@ -160,7 +168,7 @@ describe('E2E: Prompt Injection Vectors', () => {
       const sessionRes = await fetch(`${BASE_URL}/api/sessions`, {
         method: 'POST',
         headers: headers(),
-        body: JSON.stringify({ profile_id: 'team' }),
+        body: JSON.stringify({ profile_id: 'sprouty' }),
       });
       const session = await sessionRes.json();
 

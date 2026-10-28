@@ -41,7 +41,7 @@ describe('Automation notify merge', () => {
     const task = await db.scheduledTasks.create({
       user_id: userId,
       name: 'Notify race',
-      profile_id: 'team',
+      profile_id: 'sprouty',
       task_prompt: 'x',
       schedule: '0 * * * *',
     });

@@ -24,8 +24,7 @@ import {
   type RuntimeRunStatus,
   type RuntimeStepStatus,
 } from '@greenhouse/types/runtime';
-import { toRowId } from '@greenhouse/utils/id';
-import { normalizeSnapshotTask } from './task-snapshot.js';
+import { isRowId } from '@greenhouse/utils/id';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { budgetRefusalReason } from '../usage/budget-errors.js';
 import { logger } from '@greenhouse/utils/logger';
@@ -229,24 +228,13 @@ function parseInput(run: RuntimeRunRow): AutomationRuntimeInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`Automation Runtime run ${run.id} has malformed input`);
   }
-  const raw = value as Partial<Omit<AutomationRuntimeInput, 'task_id' | 'task'>> & {
-    task_id?: unknown;
-    task?: unknown;
-  };
-  const taskId = toRowId(raw.task_id);
-  const input: Partial<AutomationRuntimeInput> = {
-    ...raw,
-    task_id: taskId ?? undefined,
-    task:
-      raw.task && typeof raw.task === 'object' && !Array.isArray(raw.task)
-        ? normalizeSnapshotTask(raw.task as Record<string, unknown>)
-        : undefined,
-  };
+  const input = value as Partial<AutomationRuntimeInput>;
   if (
     input.schema !== 1 ||
     !input.task ||
     typeof input.task !== 'object' ||
-    !input.task_id ||
+    Array.isArray(input.task) ||
+    !isRowId(input.task_id) ||
     (input.trigger !== 'scheduled' && input.trigger !== 'manual') ||
     typeof input.scheduled_for !== 'string' ||
     !Number.isFinite(Date.parse(input.scheduled_for)) ||

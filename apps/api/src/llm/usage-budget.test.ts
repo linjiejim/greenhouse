@@ -51,7 +51,7 @@ describe('provider usage-budget guard', () => {
     });
     lease.markProviderIoStarted();
     await settleAndRecordBudgetedUsage(f.db as never, lease, {
-      profile_id: 'team',
+      profile_id: 'sprouty',
       caller: 'test',
       user_id: 'user-1',
       model: 'flash',
@@ -211,7 +211,7 @@ describe('provider usage-budget guard', () => {
       db: f.db as never,
       userId: 'user-1',
       caller: 'chat',
-      profileId: 'team',
+      profileId: 'sprouty',
     });
     // Stands in for a real chat payload: tool schemas dominate and are ASCII
     // JSON, where one token covers roughly four bytes.
@@ -275,7 +275,7 @@ describe('provider usage-budget guard', () => {
       );
       lease.markProviderIoStarted();
       await settleAndRecordBudgetedUsage(f.db as never, lease, {
-        profile_id: 'team',
+        profile_id: 'sprouty',
         caller: 'chat',
         user_id: 'user-1',
         model: 'priced-model',
@@ -313,7 +313,7 @@ describe('provider usage-budget guard', () => {
     });
     expect(f.reserve).not.toHaveBeenCalled();
     await settleAndRecordBudgetedUsage(f.db as never, lease, {
-      profile_id: 'team',
+      profile_id: 'sprouty',
       caller: 'chat',
       user_id: 'user-1',
       model: 'flash',

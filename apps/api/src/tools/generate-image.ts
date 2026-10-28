@@ -43,7 +43,7 @@ import {
 } from '../usage/pricing.js';
 import { findBudgetRefusal } from '../usage/budget-errors.js';
 import { cabinetDownloadUrl, readCabinetFileBytes, uploadCabinetFile } from '../drive/kb-cabinet.js';
-import { delegatedAgentActor } from '../platform/actor.js';
+import { delegatedAgentActor } from '../plugin-host/actor.js';
 
 /** An image call that never reported back is charged at its estimate after this long. */
 const IMAGE_BUDGET_TTL_MS = 5 * 60_000;
@@ -225,9 +225,7 @@ const generateImageSchema = z.object({
         'Anything else (e.g. a platform spec like 1080x1080) is snapped to whichever of those three has the closest aspect ratio; ' +
         'pick by shape, not by a target pixel count.',
     ),
-  // No `quality` knob by design — see the module header. Zod strips unknown keys, so
-  // callers still passing `quality` from the old schema are silently served `low`
-  // rather than erroring.
+  // No `quality` knob by design — see the module header.
 
   // Reference assets. Usable with BOTH actions: on `edit` they are the images being
   // changed, on `generate` they are source material composited into a new image.

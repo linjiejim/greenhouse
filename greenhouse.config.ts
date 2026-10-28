@@ -11,11 +11,25 @@
 import { defineConfig } from '@greenhouse/types/config';
 
 export default defineConfig({
+  plugins: [
+    './plugins/example',
+    './plugins/memory',
+    './plugins/feedback',
+    './plugins/reports',
+    './plugins/computer',
+    './plugins/email',
+    './plugins/wecom',
+    './plugins/feishu',
+    './plugins/skills',
+    './plugins/projects',
+    './plugins/tables',
+    './plugins/knowledge',
+    './plugins/retro',
+  ],
   extensions: {
-    // Extensions listed in apps/api/src/extensions/index.ts and
-    // apps/web/src/extensions/index.ts are compiled in; this list switches them on.
+    // The packages above are compiled in; this switches them on.
     // 'all' enables every compiled extension. GREENHOUSE_EXTENSIONS overrides at boot.
-    enabled: [],
+    enabled: ['knowledge', 'tables', 'skills', 'feedback', 'memory'],
   },
   packs: {
     // Extra skill-pack roots (same layout as skillhub/) and profile directories.
@@ -25,8 +39,8 @@ export default defineConfig({
   },
   clients: {
     stations: {
-      // 'multi': users add and switch Greenhouse servers in the mobile app.
-      // 'single': lock a client build to the one station below. The mobile build
+      // 'multi': users add and switch Greenhouse servers in the client.
+      // 'single': lock a client build to the one station below. The client build
       // mirrors this through EXPO_PUBLIC_STATIONS_MODE / EXPO_PUBLIC_API_BASE_URL.
       mode: 'multi',
       defaults: [],

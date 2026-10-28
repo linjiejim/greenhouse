@@ -103,6 +103,9 @@ export interface ProjectScheduledTaskRuntimeOutcomeInput {
 export function normalizeNotify(value: Partial<AutomationNotify> | null | undefined): AutomationNotify {
   const webhook = typeof value?.webhook === 'string' && value.webhook.trim() ? value.webhook.trim() : null;
   return {
+    ...Object.fromEntries(
+      Object.entries(value ?? {}).filter(([key, value]) => key !== 'webhook' && typeof value === 'boolean'),
+    ),
     webhook,
     email: value?.email === true,
     wecom: value?.wecom === true,
@@ -113,7 +116,7 @@ export function normalizeNotify(value: Partial<AutomationNotify> | null | undefi
 function sameNotify(left: AutomationNotify, right: AutomationNotify): boolean {
   const a = normalizeNotify(left);
   const b = normalizeNotify(right);
-  return a.webhook === b.webhook && a.email === b.email && a.wecom === b.wecom && a.feishu === b.feishu;
+  return Object.keys({ ...a, ...b }).every((key) => a[key] === b[key]);
 }
 
 function sameToolList(
@@ -135,7 +138,7 @@ export function createScheduledTaskService(db: Db) {
           id: newId('automation'),
           user_id: input.user_id,
           name: input.name,
-          profile_id: input.profile_id ?? 'team',
+          profile_id: input.profile_id ?? 'sprouty',
           task_prompt: input.task_prompt,
           schedule: input.schedule,
           timezone: input.timezone ?? 'UTC',

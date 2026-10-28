@@ -167,29 +167,28 @@ export function prepareProxyToolCall(
   allowedToolIds: string[],
   input: unknown,
 ): PreparedProxyToolCall {
-  const normalized = normalizeLegacyToolCall(toolId, input);
-  if (!allowedToolIds.includes(toolId) && !allowedToolIds.includes(normalized.toolId)) {
+  if (!allowedToolIds.includes(toolId)) {
     throw new ProxyToolError(`Tool "${toolId}" is not available for this credential`, 403);
   }
-  const toolDef = registry[normalized.toolId] as
+  const toolDef = registry[toolId] as
     | {
         inputSchema?: { safeParse?: (v: unknown) => { success: boolean; data?: unknown; error?: unknown } };
         execute?: (input: unknown, options: unknown) => Promise<unknown>;
       }
     | undefined;
   if (!toolDef || typeof toolDef.execute !== 'function') {
-    throw new ProxyToolError(`Tool "${normalized.toolId}" has no executable implementation`, 404);
+    throw new ProxyToolError(`Tool "${toolId}" has no executable implementation`, 404);
   }
 
-  let validatedInput = normalized.input;
+  let validatedInput = input;
   if (toolDef.inputSchema && typeof toolDef.inputSchema.safeParse === 'function') {
-    const result = toolDef.inputSchema.safeParse(normalized.input ?? {});
+    const result = toolDef.inputSchema.safeParse(input ?? {});
     if (!result.success) {
-      throw new ProxyToolError(`Invalid input for tool "${normalized.toolId}": ${formatZodError(result.error)}`, 400);
+      throw new ProxyToolError(`Invalid input for tool "${toolId}": ${formatZodError(result.error)}`, 400);
     }
     validatedInput = result.data;
   }
-  return { toolId: normalized.toolId, input: validatedInput, execute: toolDef.execute };
+  return { toolId, input: validatedInput, execute: toolDef.execute };
 }
 
 /**
@@ -206,7 +205,7 @@ export function prepareProxyToolCall(
  * the client, the agent's OAuth client) — see usage/metering.ts.
  *
  * `usageClient` counts one `tool_call` (fire-and-forget) once every check has
- * passed, keyed by the canonical tool id; omit it for internal evaluations
+ * passed, keyed by the tool id; omit it for internal evaluations
  * that are not a client calling a tool.
  */
 export async function executeProxyTool(
@@ -216,67 +215,20 @@ export async function executeProxyTool(
   input: unknown,
   opts: { confirm?: boolean; usageClient?: ToolCallClient; metering?: MeteringScope } = {},
 ): Promise<unknown> {
-  const normalized = normalizeLegacyToolCall(toolId, input);
-  const actualToolId = normalized.toolId;
-  const actualInput = normalized.input;
-
-  if (!allowedToolIds.includes(toolId) && !allowedToolIds.includes(actualToolId)) {
+  if (!allowedToolIds.includes(toolId)) {
     throw new ProxyToolError(`Tool "${toolId}" is not available for this credential`, 403);
   }
 
   // Mutating tools require explicit per-call confirmation.
-  if (isMutatingProxyTool(actualToolId) && opts.confirm !== true) {
-    throw new ProxyToolError(`Tool "${actualToolId}" mutates state — pass confirm:true to execute`, 400);
+  if (isMutatingProxyTool(toolId) && opts.confirm !== true) {
+    throw new ProxyToolError(`Tool "${toolId}" mutates state — pass confirm:true to execute`, 400);
   }
 
-  const prepared = prepareProxyToolCall(registry, toolId, allowedToolIds, actualInput);
+  const prepared = prepareProxyToolCall(registry, toolId, allowedToolIds, input);
   if (opts.usageClient) countUsage('tool_call', prepared.toolId, opts.usageClient);
-  const run = () => prepared.execute(prepared.input, { toolCallId: `agent-proxy-${actualToolId}`, messages: [] });
+  const run = () => prepared.execute(prepared.input, { toolCallId: `agent-proxy-${toolId}`, messages: [] });
   // Paid calls inside (search, images, …) are charged to this member and client.
   return opts.metering ? runWithMeteringScope(opts.metering, run) : run();
-}
-
-/** The tool a (possibly legacy) name actually runs as. */
-export function canonicalProxyToolId(toolId: string): string {
-  return normalizeLegacyToolCall(toolId, {}).toolId;
-}
-
-function normalizeLegacyToolCall(toolId: string, input: unknown): { toolId: string; input: unknown } {
-  const inputObj = typeof input === 'object' && input !== null && !Array.isArray(input) ? input : {};
-  switch (toolId) {
-    // team_knowledge / personal_knowledge (retired 2026-08-14) were
-    // knowledge_query with the scope fixed. The input shapes are otherwise
-    // identical (action / query / doc_id / limit), so scope is the only thing
-    // added — and re-adding it is idempotent, which this function must be
-    // (the proxy normalizes twice; see the note below).
-    case 'search_team_knowledge':
-    case 'search_greenhouse_doc':
-      return { toolId: 'knowledge_query', input: { ...inputObj, scope: 'team', action: 'search' } };
-    case 'get_team_knowledge':
-    case 'get_greenhouse_doc':
-      return { toolId: 'knowledge_query', input: { ...inputObj, scope: 'team', action: 'get' } };
-    case 'team_knowledge':
-      return { toolId: 'knowledge_query', input: { scope: 'team', ...inputObj } };
-    case 'personal_knowledge':
-      return { toolId: 'knowledge_query', input: { scope: 'personal', ...inputObj } };
-    // session_history (retired 2026-08-07, once proxy/MCP-exposed) ⊂ session_query:
-    // search-with-query → search; search-without-query (recent list) → list of the
-    // user's web conversations; get (read messages) → messages. NOTE the proxy
-    // normalizes twice (executeProxyTool + prepareProxyToolCall), so every branch
-    // must be idempotent — already-translated actions pass through unchanged.
-    case 'session_history': {
-      const legacy = inputObj as { action?: unknown; query?: unknown };
-      if (legacy.action === 'get' || legacy.action === 'messages') {
-        return { toolId: 'session_query', input: { ...inputObj, action: 'messages' } };
-      }
-      if (typeof legacy.query === 'string' && legacy.query.length > 0) {
-        return { toolId: 'session_query', input: { ...inputObj, action: 'search' } };
-      }
-      return { toolId: 'session_query', input: { ...inputObj, action: 'list', channel: 'web' } };
-    }
-    default:
-      return { toolId, input };
-  }
 }
 
 function formatZodError(error: unknown): string {

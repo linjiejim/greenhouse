@@ -2,7 +2,7 @@
 
 系统 Profiles 共 2 个：**一个可选预设** Sprouty + 一个 `hidden` 的系统 profile。
 
-> **四预设已于 2026-08-01 收敛为一个**（见 [附件与预设收敛 spec](../../../../docs/specs/20260731-attachment-and-preset-convergence.md) M3）。quick / deep / K3 三份提示词逐字相同，区别只有模型；`sprouty-workflows` 与 `sprouty-mission` 是把「模式」伪装成「助手」。所有退役 id 由 `normalizeProfileId()` 归一到 `sprouty`，**不做数据迁移**。Missions 与 Workflows 在 v1.4 整体删除，存量 `channel='mission'` / `'workflow'` 会话只读。
+> **四预设已于 2026-08-01 收敛为一个**（见 [附件与预设收敛 spec](../../../../docs/specs/20260731-attachment-and-preset-convergence.md) M3）。quick / deep / K3 三份提示词逐字相同，区别只有模型；`sprouty-workflows` 与 `sprouty-mission` 是把「模式」伪装成「助手」。退役 id 已由核心迁移 0003 改写为 `sprouty`。Missions 与 Workflows 在 v1.4 整体删除，存量 `channel='mission'` / `'workflow'` 会话只读。
 
 **模型改由每轮选择**，所以「这个预设跑不跑得起来」的判断也从 profile 挪到了模型：`GET /api/profiles` 除 profiles 外返回 `models: listChatModels()`，该函数过掉在目录里没有任何可达 provider（`api_key_env` 未配）的模型——没配 `DEEPSEEK_API_KEY` 的部署就看不到 `deepseek-flash`，不会出现"选得到、一发消息就吃 No available providers"的虚假能力。**自定义 Agent 不参与任何过滤**：那是用户自己的数据，从他自己的列表里悄悄消失更像丢数据；它钉的模型不可达时改跑 base preset 的模型。
 
@@ -11,7 +11,7 @@
 | `sprouty` | Sprouty | Cloud `/api/chat` | internal | 唯一预设，也是默认 Agent。`model.id: flash` 只是起点——**每轮可切**（见下方「模型是每轮的选择」）。工具由用户权限/分配控制。 |
 | `desktop` | Agent Runtime | `/api/agent` + `/api/mcp` | hidden | 权威运行时 profile（全内部工具面）；不能通过普通 `/api/chat` 使用。 |
 
-**旧 id 不迁移、只映射**：`normalizeProfileId()` 把存量的 `team`/`default`/`researcher`/…、`workflow-planner`/`sprouty-agents` 以及四个退役预设（`sprouty-quick`/`-deep`/`-k3`/`-workflows`/`-mission`）和 v1.4 随评测系统退役的 `eval-judge` 全部映射到 `sprouty`。会话、定时任务、custom profile 的 base 里存的仍是旧值，读取时解析即可。
+**旧 id 已迁移，只在请求入口映射**：核心迁移 0003 把会话、定时任务、用量记录、运行快照和 custom profile base 里存的 `team`/`default`/`researcher`/…、`workflow-planner`/`sprouty-agents`、四个退役预设（`sprouty-quick`/`-deep`/`-k3`/`-workflows`/`-mission`）和 `eval-judge` 改写为 `sprouty`，`local-dev`/`local-pi` 改写为 `desktop`。读取方按存储值原样解析；外部调用方（`/api/chat`、`/api/sessions`、`/api/agent`、定时任务接口、自建 Agent 的 base）仍可传旧 id，由 `normalizeProfileId()` 在入口映射。
 
 > 约定：按用户权限动态装配的工具（`knowledge_mutation`、`tables_mutation` 等）的使用/确认/展示规则写在工具自身的 `description`（随 function definition 下发），profile prompt 不复述，避免工具未装配时留下死指令。
 
@@ -38,9 +38,8 @@ confirm / mermaid / html-preview，旧客户端的既有行为），新块（sta
 
 其中「富块写作纪律」是硬约束，来自一次真实事故（2026-07-30，dev 会话 c0b6bf83
 「Neil 的客户前十」）：模型开了一个 `datatable` fence、写完 title 和 7 个
-columns 就改主意，转头用 Markdown 表格重答，留下一个没有 rows 的块。渲染端已经不会再因此
-崩溃（缺失的 `rows` 归一成空表，见 `apps/web/src/AGENTS.md` 的富块校验一节），但用户仍会在
-真正的答案上方看到一张空表——所以规则必须写在源头：**行数据没齐不开 fence、开了必须一次
+columns 就改主意，转头用 Markdown 表格重答，留下一个没有 rows 的块。渲染端必须容忍缺失的
+`rows`，但用户仍会在真正的答案上方看到一张空表——所以规则必须写在源头：**行数据没齐不开 fence、开了必须一次
 写完并闭合、数据与预想不符就整块重写而不是打补丁。** 由 `tests/api/agent-profiles.test.ts`
 钉住（含「每个 rich-output profile 共用同一份、YAML 里不得自带副本」）。
 
@@ -58,8 +57,8 @@ description:
   或给空串会**直接抛错**导致 profile 加载失败 —— 宁可启动时炸，也不要静默把未翻译的中文发给英文用户。
 - 解析后**同时保留两份**：扁平字段 `name` / `description` 恒等于源语言值（日志、admin 视图、
   外部 API 行为完全不变），另加 `name_i18n` / `description_i18n` 语言映射。
-- `GET /api/profiles` 把两者一起下发；前端用 `pickLocalized()`（`apps/web/src/lib/i18n`）按当前
-  locale 取值，回退链是 **当前 locale → `zh` → 扁平字段**。选择「前端挑」而不是「后端按
+- `GET /api/profiles` 把两者一起下发；客户端用 `profileName()`（`apps/client/src/api/profiles.ts`）
+  按当前语言取 `name_i18n`，取不到就回退扁平字段。选择「前端挑」而不是「后端按
   Accept-Language 渲染」，是因为切换语言是纯客户端行为，后端渲染会要求切语言时重新拉一次 profile 列表。
 - **自定义 profile（DB，用户自己填的文案）不带语言映射**，永远落到扁平字段——这是刻意的，
   不强迫用户为每个 profile 写两套文案。
@@ -82,13 +81,10 @@ v3 曾把模型收进 Agent 身份：想更强的推理就选 deep、想百万�
 - **`POST /api/chat` 接受 `model`**（复活了 v3 删掉的 `model_override`，但形态不同：值域是模型目录的
   `chat.selectable`，由 `isChatModelAllowed()` 校验后作 `modelOverride` 传给引擎；校验不过就回落 Agent
   默认模型而不是 400——浏览器记着的上次选择可能是已下线的模型，而选择器已不再列它）。
-- **落库进 `messages.model`**，前端在助手消息的元信息行原样显示，与选择器同一套词汇（`flash` / `pro` /
-  `deepseek-flash`）。存的是 **registry id 而不是上游模型名**——`modelConfig.model` 是 provider 链里第一个的
+- **落库进 `messages.model`**，与模型目录同一套词汇（`flash` / `pro` / `deepseek-flash`）。存的是 **registry id 而不是上游模型名**——`modelConfig.model` 是 provider 链里第一个的
   名字，fallback 时并不改变，记它等于指认一个没跑过的 provider。
-- **选中的模型记在用户维度**（`greenhouse_last_model:<userId>`），不是会话维度：一次会话里前几轮用 flash
-  摸情况、发现要动脑再切 pro 是正常用法，把选择钉死在会话上反而拦住它。
-- **自定义 Agent 也能切**，但选中一个自定义 Agent 时选择器默认跳到它自己的 `run_profiles.model_id`
-  ——那是作者对"这个 Agent 该怎么跑"的决定，不该被用户上一次的随手选择静默盖掉。仍是默认，可覆盖。
+- **4.0 通用客户端没有逐轮模型选择器**：对话用 Agent 的默认模型，自定义 Agent 用自己的
+  `run_profiles.model_id`；`model` 字段留给其它 API 调用方。
 - **采样参数归模型目录**：`temperature` / `thinking` / `max_tokens` 等写进 `models.yaml` 的 `options`，由
   `resolveModelConfig()` 合并（profile 显式给的优先）。
 - **`extends` 已删除**：它只为「同一个 Agent、换个模型」而生，模型下放之后零消费者。
@@ -107,8 +103,8 @@ v3 曾把模型收进 Agent 身份：想更强的推理就选 deep、想百万�
 
 - `run_profiles` 一行就是 Agent 的完整当前配置（含 purpose、audience、risk、budget policy、backup owner）；
   `version` 是配置编辑计数，每次编辑 +1。3.0 起**不存历史版本、不记 change log**：`custom:<id>@<n>`
-  （n ≤ version，包括 1.x 留下的 pin）一律解析为**当前配置**；`getVersion` / `getCurrentVersion` /
-  `listVersions` 由当前行合成版本对象（`manifest_hash` 是当前配置的 SHA-256），`listVersions` 只返回一条。
+  （n ≤ version，包括 1.x 留下的 pin）一律解析为**当前配置**；`getVersion` / `getCurrentVersion`
+  由当前行合成版本对象（`manifest_hash` 是当前配置的 SHA-256）。没有版本列表接口。
 - **私有，除非团队可用**：Agent 默认只有 owner 能看、能用；`is_shared=true` 时所有内部用户都能选用。
   只有 super 能切换（`PUT /api/profiles/custom/:id/sharing`，Agents 页的开关）；owner 在 UI 里只看到一行
   「请联系管理员」的提示，create/update 带 `is_shared` 想改值会被 400 拒绝。可见性判断只有一处：
@@ -156,7 +152,7 @@ stateless Agent/MCP 不开放该文件工具。
 
 ### Email（邮箱）工具
 
-`email_query`（读）与 `email_mutation`（写）对全体内部用户开放（`is_global`，无 feature flag），
+`email_query`（读）与 `email_mutation`（写）由默认关闭的 `email` 官方插件提供；启用插件后，成员的 `email` feature flag 默认开启，
 对应 设置 → Email Accounts 里绑定的 IMAP/SMTP 邮箱。模型能读、搜、开信，并在用户确认后发信。
 
 - **两步发信，且 send 发的是服务端存的草稿**：`draft` 不发信，只把内容存在服务端并返回一个
@@ -168,8 +164,8 @@ stateless Agent/MCP 不开放该文件工具。
 - **owner-scoped**：只解析请求者自己绑的邮箱；「不是你的」与「不存在」返回同一句话，
   避免模型枚举别人的绑定。共享的 greenhouse@ 邮箱仅 super 可用，且只能发给发起人自己的
   账号邮箱或共享邮箱所在域（`SHARED_MAILBOX_ALLOWED_DOMAIN`）。
-- **无人值守禁用写工具**：`email_mutation` 在 `UNATTENDED_TOOL_DENYLIST`——没有人读那张卡，
-  两步确认就退化成一步发送。定时任务要送邮件走 scheduler 自己的 `notify_email` 通道。
+- **无人值守禁用写工具**：`email_mutation` 声明 `surface.unattendedDenied`，启用后进入 `UNATTENDED_TOOL_DENYLIST`——没有人读那张卡，
+  两步确认就退化成一步发送。定时任务要送邮件走 scheduler 自己的 `notify.email` 通道。
 - 附件从当前会话的文件取（chat 面独有；stateless 的 proxy 无 session，会明确报错而不是静默跳过）。
 - **两个工具都不在 MCP 上**（2026-08-16 摘除）：`email_mutation` 的安全性全靠有人读那张草稿卡，
   而 MCP 调用方自填 `user_confirmed` 与 `confirm`，两步确认坍缩成一步；`email_query` 一并摘掉——
@@ -252,11 +248,11 @@ stateless Agent/MCP 不开放该文件工具。
 - `local-dev`
 - `local-pi`
 
-兼容规则（`normalizeProfileId()`）：
+入口映射（`normalizeProfileId()`，只用于请求输入）：
 
-- `team` / `default` / `workflow-planner` / `sprouty-agents` 与四个退役预设等旧 preset ID 一律映射为 `sprouty`，用于历史 session / 定时任务 / custom profile base 的解析。
+- `team` / `default` / `workflow-planner` / `sprouty-agents` 与四个退役预设等旧 preset ID 一律映射为 `sprouty`。
 - `local-dev` / `local-pi` 映射为 `desktop`（agent-runtime profile）。
-- custom profile 的 `base_profile_id` 只能是预设之一（`CUSTOM_BASE_PROFILE_IDS = PRESET_PROFILE_IDS`）；存量旧值先归一再校验，归一后仍不合法的回落 `sprouty`。
+- custom profile 的 `base_profile_id` 只能是预设之一（`CUSTOM_BASE_PROFILE_IDS = PRESET_PROFILE_IDS`）；请求里的旧值先映射再校验。存储值已由迁移 0003 统一为 `sprouty`。
 
 ### 自建 Agent 的工具集 = 声明 ∪ 内置，再 ∩ 用户权限
 
@@ -264,3 +260,5 @@ stateless Agent/MCP 不开放该文件工具。
 - **自建 Agent 的 `tools` 是交集过滤器**，另有 10 个 `builtin: true` 的工具无条件并入该过滤器（`BUILTIN_AGENT_TOOL_IDS`），使作者不必知道它们存在也能得到一个会追问、会读附件、会定时的 Agent。判据、清单与「必须并进过滤集而非结果集」的理由写在 api AGENTS.md「内置 Agent 工具」一节。
 - 内置只影响自建 Agent；系统 profile 本就拿全量 allow-set，不受影响。无人值守面（定时任务）另有 fail-closed 白名单 `filterUnattendedToolIds` 收窄，内置不给它新增任何工具。
 
+
+内置 Sprouty 与 desktop 的 `tools` 都为空数组：运行时本来就使用成员当前允许的完整工具集（仅 custom profile 的 tools 是交集过滤器）。不在 YAML 留插件工具 id，避免关闭插件后 Profile 校验失败；不改变成员权限。

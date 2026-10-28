@@ -3,20 +3,20 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Greenhouse — the team's Agent hub</title>
-<meta name="description" content="The self-hosted Agent hub for your team. Members connect their own agents (Codex, Claude Code, Cursor, any MCP client) to the team's knowledge, files, projects and data; every write is recorded, every paid call metered. Sprouty is the built-in assistant." />
+<title>Greenhouse 4.0 — the team's Agent hub</title>
+<meta name="description" content="Greenhouse 4.0: a self-hosted governance core, official plugins and your own plugins. Team agents share member permissions, recorded writes and metered budgets with Sprouty." />
 <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
 <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
 <meta name="theme-color" content="#0d9488" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://greenhouse.linjiejim.com/" />
-<meta property="og:title" content="Greenhouse — the team's Agent hub" />
-<meta property="og:description" content="The self-hosted Agent hub for your team. Members connect their own agents (Codex, Claude Code, Cursor, any MCP client) to the team's knowledge, files, projects and data; every write is recorded, every paid call metered. Sprouty is the built-in assistant." />
+<meta property="og:title" content="Greenhouse 4.0 — the team's Agent hub" />
+<meta property="og:description" content="Greenhouse 4.0: a self-hosted governance core, official plugins and your own plugins. Team agents share member permissions, recorded writes and metered budgets with Sprouty." />
 <meta property="og:image" content="https://greenhouse.linjiejim.com/og.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Greenhouse — the team's Agent hub" />
+<meta name="twitter:title" content="Greenhouse 4.0 — the team's Agent hub" />
 <meta name="twitter:description" content="Open-source, self-hosted Agent hub: your members' own agents over MCP, one tool layer, every write on record." />
 <link rel="stylesheet" href="./tailwind.css" />
 <style>
@@ -66,7 +66,7 @@
       <a href="#tour" class="hover:text-brand-700" data-i18n="nav.tour">Tour</a>
       <a href="#tool-layer" class="hover:text-brand-700" data-i18n="nav.toolLayer">Tool layer</a>
       <a href="#features" class="hover:text-brand-700" data-i18n="nav.features">Features</a>
-      <a href="#extend" class="hover:text-brand-700" data-i18n="nav.extend">Extend</a>
+      <a href="#extend" class="hover:text-brand-700" data-i18n="nav.extend">Plugins</a>
       <a href="#selfhost" class="hover:text-brand-700" data-i18n="nav.selfhost">Self-host</a>
     </nav>
     <div class="flex items-center gap-3">
@@ -93,18 +93,12 @@
     <div class="mx-auto max-w-3xl text-center">
       <div class="mb-5 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700">
         <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
-        <span data-i18n="hero.badge">Open source · MIT · self-hosted</span>
+        <span data-i18n="hero.badge">4.0.0-rc.1 · MIT · self-hosted</span>
       </div>
       <h1 class="text-[2.7rem] font-extrabold leading-[1.05] tracking-tight text-ink sm:text-[3.4rem]" data-i18n="hero.h1">
         Every agent on your team,<br><span class="text-brand-600">one hub</span>.
       </h1>
-      <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft" data-i18n="hero.lede">
-        Members connect their own agents — Codex, Claude Code, Cursor or any MCP client — to the team's
-        knowledge, files, projects and data, cut to their own permissions. Every write is recorded in their
-        name, every paid call is metered, and Sprouty, the built-in assistant, uses the same tools —
-        <span class="font-semibold text-ink">self-hosted, one process.</span>
-      </span>
-      </p>
+      <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft" data-i18n="hero.lede">A governance core, official plugins and your own plugins. Members connect their agents to team resources within their permissions. Writes are recorded, paid calls are budgeted, and Sprouty uses the same tools — self-hosted in one API process.</p>
       <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
         <a href="https://github.com/linjiejim/greenhouse" class="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-700">
           <span data-i18n="hero.star">Star on GitHub</span>
@@ -128,7 +122,7 @@
           <span class="h-2.5 w-2.5 rounded-full bg-amber-300"></span>
           <span class="h-2.5 w-2.5 rounded-full bg-green-300"></span>
           <span class="ml-2 truncate font-mono text-[11px] text-ink-faint">greenhouse.example/#/chat</span>
-          <span class="ml-auto rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700" data-i18n="hero.liveBadge">real recording · no mock data</span>
+          <span class="ml-auto rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700" data-i18n="hero.liveBadge">earlier 3.x web recording · seeded demo</span>
         </div>
         <video class="block w-full" autoplay muted loop playsinline preload="metadata" poster="./assets/screens/chat-knowledge-answer.webp" width="1280" height="800" aria-label="A member asks about the home-office stipend; the agent searches the knowledge base and answers with citations">
           <source src="./assets/screens/chat-knowledge.mp4" type="video/mp4" />
@@ -162,16 +156,8 @@
   <h2 class="mx-auto mt-4 max-w-3xl text-3xl font-extrabold leading-tight tracking-tight text-ink sm:text-[2.6rem]" data-i18n="thesis.h2">
     The agent <span class="text-brand-600">is</span> the product — not a feature bolted on the side.
   </h2>
-  <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft" data-i18n="thesis.p">
-        Most AI tools stop at helping one person. The moment a team needs them, the hard parts are
-        missing: who may see what, who approved what, and a record of what happened. Greenhouse is that
-        missing part — the foundation an agent sits on, not another clever agent.
-      </span>
-  </p>
-  <blockquote class="mx-auto mt-10 max-w-2xl border-l-2 border-brand-400 pl-5 text-left text-lg italic leading-relaxed text-ink-soft" data-i18n="thesis.quote">
-        The tools your team uses in chat are the same tools you hand to Claude or Cursor.
-        Adding a capability is writing one file.
-      </blockquote>
+  <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft" data-i18n="thesis.p">A team needs identity, permissions, budgets and a record of what happened. Greenhouse keeps those responsibilities in the core; official and private plugins supply the resources and workflows your agents use.</p>
+  <blockquote class="mx-auto mt-10 max-w-2xl border-l-2 border-brand-400 pl-5 text-left text-lg italic leading-relaxed text-ink-soft" data-i18n="thesis.quote">The tools your team uses in chat are the same tools available to authorized external agents. Add a capability through the plugin contract.</blockquote>
 </section>
 
 <!-- PRODUCT TOUR -->
@@ -182,6 +168,7 @@
       <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="tour.h2">One place to work. The agent is in all of it.</h2>
     </div>
 
+    <p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft" data-i18n="tour.note">These images are earlier 3.x web captures from a seeded demo. In 4.0 the universal client serves the web, so its screens look different.</p>
     <div class="mt-12 grid gap-6 lg:grid-cols-[19rem_1fr]" data-tour>
       <!-- tabs -->
       <div class="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0" role="tablist" aria-label="Product tour">
@@ -195,15 +182,15 @@
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="knowledge">
           <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t3">Knowledge base</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d3">Team, personal and shared docs the agent can cite.</span>
+          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d3">Knowledge plugin · on by default.</span>
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="tables">
           <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t4">Tables</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d4">Typed fields, views and record links — structured data with an agent attached.</span>
+          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d4">Tables plugin · typed fields and views · on by default.</span>
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="projects">
           <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t5">Projects</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d5">Portfolio timeline, boards and task trees.</span>
+          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d5">Projects plugin · boards and timelines · off by default.</span>
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="executions">
           <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t6">Activity log</span>
@@ -211,7 +198,7 @@
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="skills">
           <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t7">SkillHub</span>
-          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d7">An org-wide library of versioned agent skills.</span>
+          <span class="mt-0.5 hidden text-[12.5px] leading-snug text-ink-mut lg:block" data-i18n="tour.d7">Skills plugin · versioned bundles · on by default.</span>
         </button>
         <button type="button" class="tour-tab shrink-0 rounded-xl border bg-white px-4 py-3 text-left transition hover:bg-brand-50/60 lg:w-full" role="tab" aria-selected="false" data-tour-tab="agents">
           <span class="tour-tab-title block text-sm font-semibold text-ink" data-i18n="tour.t8">Run profiles</span>
@@ -237,10 +224,7 @@
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
             <img src="./assets/screens/knowledge-search.webp" alt="Knowledge base with a search hit open next to the results" width="1440" height="900" class="block w-full" loading="lazy" />
           </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c3">
-        A proper editor, folders, links between pages, version history, and search that handles
-              Chinese — the same place the agent quotes from in chat.
-      </figcaption>
+          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c3">Knowledge plugin: Markdown documents, folders, sharing, versions and Chinese-aware search; these are the sources the agent cites.</figcaption>
         </figure>
         <figure class="tour-panel" data-tour-panel="tables" hidden>
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
@@ -255,7 +239,7 @@
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
             <img src="./assets/screens/projects-gantt.webp" alt="Projects portfolio timeline with a today marker" width="1440" height="900" class="block w-full" loading="lazy" />
           </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c5">Portfolio timeline, kanban boards and task trees with members, comments and an activity log — and the agent files tasks straight from a conversation.</figcaption>
+          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c5">Enable Projects for portfolio timelines, boards and task trees with members, comments and activity.</figcaption>
         </figure>
         <figure class="tour-panel" data-tour-panel="executions" hidden>
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
@@ -270,10 +254,7 @@
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
             <img src="./assets/screens/skillhub.webp" alt="SkillHub listing published skills" width="1440" height="900" class="block w-full" loading="lazy" />
           </div>
-          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c7">
-        Reusable know-how the agent can pick up, versioned so an update never rewrites history.
-              A starter set ships with the project.
-      </figcaption>
+          <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="tour.c7">Skills plugin: immutable versions and security scans for reusable agent know-how. Add your packs; the repository ships none.</figcaption>
         </figure>
         <figure class="tour-panel" data-tour-panel="agents" hidden>
           <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
@@ -286,6 +267,8 @@
   </div>
 </section>
 
+<p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft" data-i18n="platform.rings">Core: identity, chat/Agents, files, scheduling, notifications, budgets and audit. Default-on plugins: Knowledge, Tables, Skills, Feedback, Memory. Default-off: Projects, Reports, Email, Feishu, WeCom, Computer, Retro (requires Knowledge), plus the Example fixture. Add your own packages through the same host.</p>
+<p class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft" data-i18n="platform.docs"><a href="./capabilities.md">4.0 capabilities</a> · <a href="./architecture.md">Architecture</a> · <a href="./upgrading-to-4.0.md">Upgrade to 4.0</a></p>
 <!-- ONE FILE THREE SURFACES -->
 <section id="tool-layer" class="mx-auto max-w-6xl px-6 py-24">
   <div class="mx-auto max-w-2xl text-center">
@@ -407,13 +390,13 @@
     </div>
     <div class="rounded-2xl border border-edge bg-white p-6 soft-shadow">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="perm.c2t">Writes need a human</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="perm.c2b">Mutating actions are deny-by-default. Every write is confirm-gated and logged to an audit trail.</p>
+      <h3 class="text-base font-semibold text-ink" data-i18n="perm.c2t">Writes recorded, deletes previewed</h3>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="perm.c2b">MCP writes run as the member and keep evidence. Delete-like calls preview first and require confirmation; the Agent API requires confirmation for every write.</p>
     </div>
     <div class="rounded-2xl border border-edge bg-white p-6 soft-shadow">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6z" stroke-linejoin="round"/></svg></div>
       <h3 class="text-base font-semibold text-ink" data-i18n="perm.c3t">Fail-closed by design</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="perm.c3b">No signing key, no encryption key? The server refuses to start. No "forgot to configure it, now everything's open."</p>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="perm.c3b">The server requires a valid signing key; stored secrets need an explicit encryption key. Requests always bind to a current internal account.</p>
     </div>
     <div class="rounded-2xl border border-edge bg-white p-6 soft-shadow">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 3.5a3 3 0 0 1 0 7M21 20a6 6 0 0 0-4-5.6" stroke-linecap="round"/></svg></div>
@@ -473,7 +456,7 @@
 <section id="features" class="mx-auto max-w-6xl px-6 py-24">
   <div class="mx-auto max-w-2xl text-center">
     <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="feat.kicker">One platform</p>
-    <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="feat.h2">Everything shares the same tool layer.</h2>
+    <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="feat.h2">Core and plugins, one tool and permission layer.</h2>
   </div>
   <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
@@ -486,20 +469,17 @@
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke-linecap="round"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.kbT">Knowledge base</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.kbB">
-        Team, personal and shared documents — a proper editor, links between pages,
-          version history, and search that handles Chinese.
-      </p>
+      <h3 class="text-base font-semibold text-ink" data-i18n="feat.kbT">Knowledge · plugin, default on</h3>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.kbB">Markdown documents, sharing, versions and full-text search, contributed by the Knowledge package.</p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.projT">Projects</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.projB">Projects &amp; tasks with board, gantt and tree views, members, comments, and an activity log.</p>
+      <h3 class="text-base font-semibold text-ink" data-i18n="feat.projT">Projects · plugin, default off</h3>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.projB">Enable Projects for tasks, memberships, comments, boards and Gantt timelines. Data stays when disabled.</p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16" stroke-linecap="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.tablesT">Tables</h3>
+      <h3 class="text-base font-semibold text-ink" data-i18n="feat.tablesT">Tables · plugin, default on</h3>
       <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.tablesB">
         Spreadsheet-like tables with real field types, views and links between records —
           designed by talking to the agent.
@@ -517,23 +497,18 @@
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-7 7c0 3 2 4 2 7h10c0-3 2-4 2-7a7 7 0 0 0-7-7zM9 21h6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.memT">Memory</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.memB">
-        The agent remembers what each person told it to, and notes where the tooling got in its way.
-      </p>
+      <h3 class="text-base font-semibold text-ink" data-i18n="feat.memT">Memory &amp; Feedback · plugins, default on</h3>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.memB">Personal memory and the issues/requests queue are separate official plugins, using the same member permissions and runtime.</p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke-linejoin="round"/><path d="M3.3 7L12 12l8.7-5M12 22V12" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.skillT">SkillHub</h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.skillB">
-        A shared library of agent know-how: versioned, change-logged and security-scanned, with
-          a starter set in the box.
-      </p>
+      <h3 class="text-base font-semibold text-ink" data-i18n="feat.skillT">SkillHub · plugin, default on</h3>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.skillB">Versioned skill bundles with changelogs and security scanning. Saved prompts remain core; add your own packs.</p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <h3 class="text-base font-semibold text-ink" data-i18n="feat.emailT">Email &amp; integrations <span class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-mut">optional</span></h3>
-      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.emailB">IMAP/SMTP mailboxes with a server-side draft confirmation, WeCom and Feishu binding, and notifications delivered where people already are.</p>
+      <h3 class="text-base font-semibold text-ink" data-i18n="feat.emailT">Email, Feishu &amp; WeCom · default off</h3>
+      <p class="mt-1.5 text-sm leading-relaxed text-ink-mut" data-i18n="feat.emailB">Enable each plugin and configure credentials for mail, binding and delivery. Feishu also provides sign-in and an optional Sprouty bot; WeCom is binding-only.</p>
     </div>
     <div class="group rounded-2xl border border-edge bg-white p-6 soft-shadow transition hover:border-brand-300">
       <div class="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3" stroke-linecap="round"/></svg></div>
@@ -600,7 +575,7 @@ docker compose exec api pnpm admin:create
   <div class="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-ink-mut">
     <span class="font-medium text-ink-soft" data-i18n="self.stack">Stack</span>
     <span>Hono</span><span class="text-edge-strong">·</span>
-    <span>React 19 + Vite</span><span class="text-edge-strong">·</span>
+    <span>Expo + React Native Web</span><span class="text-edge-strong">·</span>
     <span>PostgreSQL 16 + Drizzle</span><span class="text-edge-strong">·</span>
     <span>Any OpenAI-compatible LLM</span><span class="text-edge-strong">·</span>
     <span>Node 22</span>
@@ -608,10 +583,7 @@ docker compose exec api pnpm admin:create
 
   <div class="mx-auto mt-16 max-w-2xl text-center">
     <h3 class="text-2xl font-bold tracking-tight text-ink" data-i18n="self.configT">Then configure it from the browser.</h3>
-    <p class="mt-3 text-base leading-relaxed text-ink-soft" data-i18n="self.configP">
-        API keys, the product name, the logo and the colours are all edited in Administration —
-      stored encrypted and applied immediately, right down to the login screen.
-      </p>
+    <p class="mt-3 text-base leading-relaxed text-ink-soft" data-i18n="self.configP">API keys, product name, logo and colours are edited in Administration and stored in the workspace database. Secret values are encrypted; branding applies immediately, including the login screen.</p>
   </div>
   <div class="mt-8 grid gap-6 md:grid-cols-2">
     <figure>
@@ -632,41 +604,33 @@ docker compose exec api pnpm admin:create
 <!-- EXTEND -->
 <section id="extend" class="mx-auto max-w-6xl px-6 py-24 scroll-mt-20">
   <div class="mx-auto max-w-2xl text-center">
-    <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="ext.kicker">Make it yours</p>
-    <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="ext.h2">Your own modules, without forking the core.</h2>
-    <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="ext.p">
-        An extension is two folders and one import line. It can bring its own pages, tools, tables,
-      permissions, search, files, scheduled jobs and commands. The core never learns your module exists, so
-      <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">git merge upstream</code> keeps working.
-      </code> stays boring.
-    </p>
+    <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="ext.kicker">Plugins</p>
+    <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="ext.h2">Your domain, through the same plugin contract.</h2>
+    <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="ext.p">A package holds a pure-data manifest, its API code, migrations and an optional embedded frontend. SDK 2 derives governed tools, REST and client pages from a data definition; the manifest declares navigation and pages.</p>
   </div>
 
   <div class="mt-12 grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
     <div>
-<pre class="overflow-x-auto rounded-2xl border border-edge bg-ink p-6 text-[13px] leading-relaxed text-gray-100 shot-shadow"><span class="text-gray-500">// apps/api/src/extensions/notes/index.ts</span>
+<pre class="overflow-x-auto rounded-2xl border border-edge bg-ink p-6 text-[13px] leading-relaxed text-gray-100 shot-shadow"><span class="text-gray-500">// plugins/notes/api/index.ts</span>
 <span class="text-teal-300">export const</span> notesExtension = <span class="text-teal-300">defineExtension</span>({
   id: <span class="text-amber-200">'notes'</span>,
+  sdk: 2, core: <span class="text-amber-200">'&gt;=4.0.0 &lt;5.0.0'</span>,
   tools: [notesQueryTool],
-  routes: [{ path: <span class="text-amber-200">'/api/ext/notes'</span>, app: notesRoutes }],
+  routes: [{ path: <span class="text-amber-200">'/api/ext/notes'</span>, app: notesRoutes, guards: [requireInternal()] }],
   featureFlags: [{ key: <span class="text-amber-200">'notes'</span>, defaultEnabled: <span class="text-teal-300">false</span> }],
   entityKinds: [{ kind: <span class="text-amber-200">'ext:notes:note'</span>, route: <span class="text-amber-200">'#/notes/:id'</span> }],
   searchSources: [notesSearchLane],
   driveScopes: [notesCabinet],
-  migrations: { dir: extensionPath(import.meta.url, <span class="text-amber-200">'migrations'</span>) },
+  migrations: { dir: extensionPath(import.meta.url, <span class="text-amber-200">'../migrations'</span>) },
   services: createNotesService,
 })</pre>
-      <p class="mt-5 text-[15px] leading-relaxed text-ink-soft" data-i18n="ext.list">
-        Switch it on per deployment in <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">greenhouse.config.ts</code>,
-        then per user with a permission toggle. A disabled extension contributes nothing at all — no tools, no routes,
-        no migrations.
-      </p>
+      <p class="mt-5 text-[15px] leading-relaxed text-ink-soft" data-i18n="ext.list">Compile packages through greenhouse.config.ts and plugins:sync; enable ids through config or GREENHOUSE_EXTENSIONS, then restart. Disabled plugins retain data. Administration → Plugins is a read-only status page.</p>
     </div>
     <figure>
       <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
         <img src="./assets/screens/extension-example-page.webp" alt="An extension's own page rendered in the app" width="1440" height="900" class="block w-full" loading="lazy" />
       </div>
-      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="ext.figA">The reference extension shipping with the repo: its own page, table, tool and API — the template you copy.</figcaption>
+      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="ext.figA">Example is the disabled SDK 2 reference package. This image is an earlier 3.x capture.</figcaption>
     </figure>
   </div>
 
@@ -687,7 +651,7 @@ docker compose exec api pnpm admin:create
       <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
         <img src="./assets/screens/extension-runtime-config.webp" alt="An extension's settings on the Runtime Config page" width="1440" height="900" class="block w-full" loading="lazy" />
       </div>
-      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="ext.figD">Its settings appear in Runtime Config like any built-in.</figcaption>
+      <figcaption class="mt-3 text-sm leading-relaxed text-ink-mut" data-i18n="ext.figD">Active plugin settings appear in Runtime Config. Declarative pages and embeds share host themes and scoped credentials.</figcaption>
     </figure>
   </div>
 </section>
@@ -698,10 +662,7 @@ docker compose exec api pnpm admin:create
     <div class="mx-auto max-w-2xl text-center">
       <p class="text-sm font-semibold uppercase tracking-widest text-brand-600" data-i18n="every.kicker">Everywhere your team is</p>
       <h2 class="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl" data-i18n="every.h2">Light, dark, desktop, phone.</h2>
-      <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="every.p">
-        Light, dark and system themes on a responsive web app, plus a native iOS app — both against the
-        same API.
-      </p>
+      <p class="mt-5 text-lg leading-relaxed text-ink-soft" data-i18n="every.p">One universal Expo client for web, iOS and Android, also bundled by the macOS Tauri shell; the server hosts its web build at /. Images below show the earlier 3.x responsive web, not 4.0 client screenshots.</p>
     </div>
     <div class="mt-12 grid items-start gap-6 md:grid-cols-[1fr_0.34fr]">
       <div class="overflow-hidden rounded-2xl border border-edge bg-white shot-shadow">
@@ -810,8 +771,11 @@ docker compose exec api pnpm admin:create
   var SUPPORTED = ['en', 'zh'];
 
   var ZH = {
-    'meta.title': 'Greenhouse — 团队的 Agent 中台',
-    'meta.desc': '团队自己部署的 Agent 中台。成员把自己的 Agent（Codex、Claude Code、Cursor 或任何 MCP 客户端）接进来，拿到团队的知识、文件、项目和数据；每次写入都留痕，每次付费调用都计量。Sprouty 是内置助手。',
+    'tour.note': "现有图片是 3.x 网页在示例数据上的旧截图。4.0 的网页由通用客户端提供，界面与图中不同。",
+    'platform.docs': "<a href=\"./capabilities.md\">4.0 能力</a> · <a href=\"./architecture.md\">架构</a> · <a href=\"./upgrading-to-4.0.md\">升级到 4.0</a>",
+    'platform.rings': "核心：身份、对话/Agent、文件、调度、通知、预算与审计。默认开：Knowledge、Tables、Skills、Feedback、Memory。默认关：Projects、Reports、Email、Feishu、WeCom、Computer、Retro（依赖 Knowledge）和 Example 参考包；自有插件使用同一宿主。",
+    'meta.title': 'Greenhouse 4.0 — 团队的 Agent 中台',
+    'meta.desc': 'Greenhouse 4.0：自托管治理核心、官方插件和自有插件。成员的 Agent 与 Sprouty 共享权限、操作记录与计价预算。',
 
     'nav.why': '理念',
     'nav.tour': '产品导览',
@@ -821,12 +785,12 @@ docker compose exec api pnpm admin:create
     'nav.star': 'Star',
     'nav.getStarted': '开始使用',
 
-    'hero.badge': '开源 · MIT · 自托管',
+    'hero.badge': "4.0.0-rc.1 · MIT · 自托管",
     'hero.h1': '团队的每个 Agent，<br><span class="text-brand-600">一个中台</span>。',
-    'hero.lede': '成员把自己的 Agent——Codex、Claude Code、Cursor 或任何 MCP 客户端——接到团队的知识、文件、项目和数据上，权限按本人裁剪。每次写入都以本人名义留痕，每次付费调用都计量；内置助手 Sprouty 用的也是同一套工具——<span class="font-semibold text-ink">自己部署，一个进程。</span>',
+    'hero.lede': "治理核心、官方插件和你自己的插件。成员的 Agent 按本人权限使用团队资源；写入留痕，付费调用受预算约束。Sprouty 共用同一套工具，由你自己部署。",
     'hero.star': '在 GitHub 上 Star',
     'hero.tour': '看看产品导览',
-    'hero.liveBadge': '真实录屏 · 无任何假数据',
+    'hero.liveBadge': "3.x 网页旧录屏 · 示例数据",
     'hero.caption': '一位成员问起居家办公补贴。Agent 检索团队知识库，给出<span class="font-medium text-ink">带引用</span>的回答，调用轨迹里能看到它做的每一次工具调用。',
 
     'trust.worksWith': '适配',
@@ -836,8 +800,8 @@ docker compose exec api pnpm admin:create
 
     'thesis.kicker': '核心理念',
     'thesis.h2': 'Agent <span class="text-brand-600">本身</span>就是产品，而不是硬生生拼在旁边的一个功能。',
-    'thesis.p': '大多数 AI 工具止步于帮一个人。一旦一个团队要用，最难的部分就空着：谁能看到什么、谁批准了什么、发生过什么有没有记录。Greenhouse 补的就是这一块——不是又一个聪明的 Agent，而是 Agent 站上去的地基。',
-    'thesis.quote': '团队在对话里用的工具，就是你交给 Claude 或 Cursor 的那套工具。加一样能力，写一个文件。',
+    'thesis.p': "团队需要身份、权限、预算和操作记录。Greenhouse 核心负责这些治理能力，官方与自有插件提供 Agent 使用的数据和业务流程。",
+    'thesis.quote': "对话里的团队工具，也能按授权开放给外部 Agent。通过同一插件契约增加能力。",
 
     'tour.kicker': '产品导览',
     'tour.h2': '一个地方干活，Agent 无处不在。',
@@ -846,24 +810,24 @@ docker compose exec api pnpm admin:create
     'tour.t2': '跨数据提问',
     'tour.d2': '答案直接以真正可排序的表格返回。',
     'tour.t3': '知识库',
-    'tour.d3': '团队、个人与共享文档，Agent 都能引用。',
+    'tour.d3': "Knowledge 插件 · 默认开。",
     'tour.t4': '多维表格',
-    'tour.d4': '类型化字段、视图与记录关联——自带 Agent 的结构化数据。',
+    'tour.d4': "Tables 插件 · 类型化字段与视图 · 默认开。",
     'tour.t5': '项目',
-    'tour.d5': '组合时间线、看板与任务树。',
+    'tour.d5': "Projects 插件 · 看板与时间线 · 默认关。",
     'tour.t6': '操作记录',
     'tour.d6': '自动化和你的 Agent 写入，都在一个地方。',
     'tour.t7': 'SkillHub',
-    'tour.d7': '全组织共享的带版本 Agent 技能库。',
+    'tour.d7': "Skills 插件 · 版本化技能包 · 默认开。",
     'tour.t8': '运行配置',
     'tour.d8': '一段提示词、一组工具、一张脸，给自动化用。',
     'tour.c1': '首页就是新对话：助手、等你处理的事、输入框和最近对话。团队动态在铃铛里。',
     'tour.c2': '“哪些反馈是负面的？各渠道平均分是多少？”——Agent 查询多维表格，用可排序、可导出的表格作答，并指出真正需要行动的缺口。',
-    'tour.c3': '像样的编辑器、文件夹、页面互链、版本历史，还有认得中文的搜索——Agent 在对话里引用的就是这里。',
+    'tour.c3': "Knowledge 插件：Markdown 文档、目录、分享、版本与中文检索，也是 Agent 引用的来源。",
     'tour.c4': '像表格一样的多维表：真正的字段类型、视图、记录关联。在对话里说清楚要什么，Agent 先起个草给你确认。',
-    'tour.c5': '组合时间线、看板与任务树，带成员、评论和活动日志——Agent 还能直接从对话里创建任务。',
+    'tour.c5': "启用 Projects 后获得项目时间线、看板与任务树，以及成员、评论和动态。",
     'tour.c6': '谁改了什么，一屏看完——成员、成员通过 MCP 接入的 Agent、自动化和管理员——每一步、每次工具调用和事件都有记录。',
-    'tour.c7': '可复用的经验，Agent 随手就能拿来用；版本化保存，更新不会改写历史。项目自带一套入门包。',
+    'tour.c7': "Skills 插件：可复用的 Agent 技能，版本不可变，经过安全扫描。自行添加内容包，仓库不附带技能包。",
     'tour.c8': '一个运行配置 = 一段系统提示词 + 一组挑选好的工具 + 一张脸。可以自己用，也可以共享给团队，并且定时运行。',
 
     'tool.kicker': '工具层',
@@ -891,10 +855,10 @@ docker compose exec api pnpm admin:create
     'perm.p': '权限只在一个地方定义，而且只会做减法，永远不会加。正因如此，把公司的工具开放给外部 Agent 才是安全的。',
     'perm.c1t': '只收窄，绝不放大',
     'perm.c1b': 'Agent 拿到的，只是它所属用户权限的一个子集，永远不可能获得用户自己都没有的能力。',
-    'perm.c2t': '写操作，得有人点头',
-    'perm.c2b': '任何改动默认一律拒绝。每一次写入都要人确认，并留下审计日志。',
+    'perm.c2t': "写入留痕，删除先预览",
+    'perm.c2b': "MCP 写入以成员身份执行并记录证据；删除先预览再确认。Agent API 的每次写入都要求确认。",
     'perm.c3t': '默认就是关的',
-    'perm.c3b': '没配签名密钥、没配加密密钥？服务器直接拒绝启动。绝不会出现“忘了配置、结果门户大开”的情况。',
+    'perm.c3b': "服务器必须配置有效签名密钥；保存的密钥需要明确的加密密钥。每次业务请求都绑定当前有效的内部账号。",
     'perm.c4t': '角色、策略，一个对话框',
     'perm.c4b': '角色、按人开关、细到单个字段的规则——写一次，无论请求从哪来都是同一套。',
     'perm.figA': '每位用户一个权限对话框：基础访问、应用访问、高级访问与用量上限，全局工具如实标明。',
@@ -907,25 +871,25 @@ docker compose exec api pnpm admin:create
     'prof.figcap': '定时运行的配置：每日站会摘要自己跑完，进入操作记录，并通知负责人。',
 
     'feat.kicker': '同一个平台',
-    'feat.h2': '所有功能，共享同一套工具层。',
+    'feat.h2': "核心与插件，共用工具和权限层。",
     'feat.chatT': '聊天',
     'feat.chatB': '流式回答，能看着它干活；任意类型的附件；每条消息都能换模型；还有分支、分享、置顶和 ⌘P 搜索。',
-    'feat.kbT': '知识库',
-    'feat.kbB': '团队、个人和共享文档——像样的编辑器、页面互链、版本历史，以及认得中文的搜索。',
-    'feat.projT': '项目',
-    'feat.projB': '项目和任务，支持看板、甘特图、树状三种视图，带成员、评论和活动日志。',
-    'feat.tablesT': '多维表格',
+    'feat.kbT': "知识库 · 插件，默认开",
+    'feat.kbB': "Knowledge 包提供 Markdown 文档、分享、版本与全文检索。",
+    'feat.projT': "项目 · 插件，默认关",
+    'feat.projB': "启用 Projects 后使用任务、成员、评论、看板和甘特图；停用保留数据。",
+    'feat.tablesT': "表格 · 插件，默认开",
     'feat.tablesB': '像表格一样的多维表：真正的字段类型、视图和记录关联——跟 Agent 聊着就设计好了。',
     'feat.wbT': '首页就是对话',
     'feat.wbB': '不用配置仪表盘：首页就是输入框，下面是最近对话，团队最新改动在铃铛里一点就到。',
     'feat.execT': '操作记录 + 自动化',
     'feat.execB': 'cron 定时的助手运行，以及成员的 Agent 做的每次写入，汇集在一处，每一步和每次工具调用都有记录。',
-    'feat.memT': '记忆',
-    'feat.memB': 'Agent 记住每个人让它记的事，也会记下工具在哪里绊住了它。',
-    'feat.skillT': 'SkillHub',
-    'feat.skillB': '团队共享的经验库：版本化、有变更记录、过安全扫描，开箱带一套入门包。',
-    'feat.emailT': '邮件与集成 <span class="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-mut">可选</span>',
-    'feat.emailB': 'IMAP/SMTP 邮箱（服务端草稿确认）、企业微信与飞书账号绑定，通知直接送到大家已经在用的地方。',
+    'feat.memT': "记忆与反馈 · 插件，默认开",
+    'feat.memB': "个人记忆与问题需求队列是独立官方插件，沿用成员权限和运行时。",
+    'feat.skillT': "SkillHub · 插件，默认开",
+    'feat.skillB': "版本化技能包、变更说明与安全扫描；保存的提示词仍属核心，内容包由你添加。",
+    'feat.emailT': "邮件、飞书与企微 · 默认关",
+    'feat.emailB': "各插件须先启用再配置凭证，提供邮件、绑定和投递。飞书另有登录与可选 Sprouty 机器人；企微只支持绑定。",
     'feat.mcpT': 'MCP 服务',
     'feat.mcpB': '接上 Claude、Cursor，或任何会说 MCP 的东西。它们拿到同一套工具，权限就是你给的那些。',
     'feat.kernelT': '权限与设置',
@@ -941,22 +905,22 @@ docker compose exec api pnpm admin:create
     'self.p': '一个容器同时跑应用和 API，Postgres 和数据库迁移都带着。你只需要 Docker，以及任意一个 OpenAI 兼容模型的 API key。成员用账号登录，什么都不用装。',
     'self.stack': '技术栈',
     'self.configT': '然后，在浏览器里把它配好。',
-    'self.configP': 'API key、产品名、Logo 和配色都在「管理」里改——加密存储，改完立刻生效，连登录页都跟着变。',
+    'self.configP': "API key、产品名、Logo 与配色在管理页编辑并存入工作区数据库。密钥加密，品牌立即生效，登录页也同步。",
     'self.figA': '运行时配置——每一项工作区设置都只在代码里声明一次，这里自动渲染；密钥落盘加密。',
     'self.figB': '品牌工作室——改名字、Logo 和配色，不用碰样式表。',
 
-    'nav.extend': '扩展',
-    'ext.kicker': '让它成为你的',
-    'ext.h2': '写你自己的模块，不用 fork 内核。',
-    'ext.p': '一个扩展就是两个目录加一行 import。它可以自带页面、工具、数据表、权限、搜索、文件、定时任务和命令。内核从不知道你的模块存在，所以 <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">git merge upstream</code> 一直都好使。',
-    'ext.list': '在 <code class="rounded bg-gray-100 px-1.5 py-0.5 text-[13px] text-ink">greenhouse.config.ts</code> 里按部署开关，再按用户用权限开关。关掉的扩展什么都不贡献——没有工具、没有路由、没有迁移。',
-    'ext.figA': '仓库自带的参考扩展：自己的页面、表、工具和 API——照着抄就行。',
+    'nav.extend': "插件",
+    'ext.kicker': "插件",
+    'ext.h2': "用同一插件契约接入自己的业务。",
+    'ext.p': "一个包包含纯数据清单、API 代码、迁移与可选的内嵌前端。SDK 2 从实体声明派生受治理的工具、REST 和客户端页面；清单声明导航与页面。",
+    'ext.list': "通过 greenhouse.config.ts 与 plugins:sync 编入包，以配置或 GREENHOUSE_EXTENSIONS 启用后重启。停用保留数据；管理 → 插件只读显示状态。",
+    'ext.figA': "Example 是默认关闭的 SDK 2 参考包；图为较早的 3.x 截图。",
     'ext.figB': '导航入口，按用户的功能开关显示。',
     'ext.figC': '它的工具结果在对话里就是一等公民卡片。',
-    'ext.figD': '它的设置和内置模块一样出现在 Runtime Config 里。',
+    'ext.figD': "启用插件的设置出现在 Runtime Config；声明式页面和内嵌页复用宿主主题与窄作用域凭证。",
     'every.kicker': '团队在哪，它就在哪',
     'every.h2': '浅色、深色、桌面、手机。',
-    'every.p': '响应式 Web 应用支持浅色、深色与跟随系统三种主题；另有原生 iOS 应用，两端对接同一套 API。',
+    'every.p': "一个 Expo 通用客户端覆盖 Web、iOS、Android，macOS Tauri 壳也打包它；服务端在 / 提供其网页版本。下图为较早的 3.x 响应式网页，并非 4.0 客户端截图。",
 
     'who.c1t': '正在转向 AI 原生的团队',
     'who.c1b': '拿它当内部平台的底座：自上而下开放你的工具和数据，给每位成员一个开箱即用、能真正干活的 Agent。',

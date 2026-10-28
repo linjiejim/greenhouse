@@ -18,7 +18,7 @@ function collectTestFiles(directory: string): string[] {
 }
 
 describe('test suite classification', () => {
-  const testFiles = ['apps', 'packages', 'tests'].flatMap(collectTestFiles);
+  const testFiles = ['apps', 'packages', 'plugins', 'tests'].flatMap(collectTestFiles);
 
   it('classifies tests that use the real test database as db tests', () => {
     const incorrectlyClassified = testFiles.filter((path) => {

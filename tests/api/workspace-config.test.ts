@@ -17,36 +17,11 @@ function def(key: string) {
 }
 
 describe('validateWorkspaceValue', () => {
-  it('accepts only well-formed cloud computer settings', () => {
-    expect(validateWorkspaceValue(def('computer.enabled'), true).ok).toBe(true);
-    expect(validateWorkspaceValue(def('computer.enabled'), 'maybe').ok).toBe(false);
-    expect(validateWorkspaceValue(def('computer.max_running'), '5').ok).toBe(true);
-    expect(validateWorkspaceValue(def('computer.max_running'), '0').ok).toBe(false);
-    expect(validateWorkspaceValue(def('computer.max_running'), '2.5').ok).toBe(false);
-    expect(validateWorkspaceValue(def('computer.domain'), 'cn-beijing-1.sandbox.ppio.com').ok).toBe(true);
-    expect(validateWorkspaceValue(def('computer.domain'), 'https://e2b.app').ok).toBe(false);
-    expect(validateWorkspaceValue(def('computer.template'), 'base').ok).toBe(true);
-    expect(validateWorkspaceValue(def('computer.template'), 'a b').ok).toBe(false);
-  });
-
-  it('takes team context picks as document ids and the zone as an IANA name', () => {
-    const conventions = validateWorkspaceValue(def('team_context.conventions'), [
-      ' how-we-work ',
-      'how-we-work',
-      '规范',
-    ]);
-    expect(conventions).toEqual({ ok: true, value: ['how-we-work', '规范'] });
-    expect(validateWorkspaceValue(def('team_context.conventions'), 'how-we-work').ok).toBe(false);
-    expect(validateWorkspaceValue(def('team_context.conventions'), ['a/b']).ok).toBe(false);
-    expect(
-      validateWorkspaceValue(
-        def('team_context.conventions'),
-        Array.from({ length: 11 }, (_, index) => `doc-${index}`),
-      ).ok,
-    ).toBe(false);
-    expect(validateWorkspaceValue(def('team_context.glossary'), 'terms').ok).toBe(true);
-    expect(validateWorkspaceValue(def('team_context.glossary'), 'two words').ok).toBe(false);
-    expect(validateWorkspaceValue(def('team_context.timezone'), 'Asia/Shanghai').ok).toBe(true);
+  it('accepts Markdown team context and validates workspace time zones', () => {
+    expect(validateWorkspaceValue(def('team_context.conventions_markdown'), '  # Team rules  ')).toEqual({
+      ok: true,
+      value: '# Team rules',
+    });
     expect(validateWorkspaceValue(def('team_context.timezone'), 'Mars/Base').ok).toBe(false);
   });
 
@@ -83,9 +58,9 @@ describe('validateWorkspaceValue', () => {
   it('sanitizes theme tokens and rejects payloads with nothing valid', () => {
     const good = validateWorkspaceValue(def('branding.theme_tokens'), {
       brand: '#4f46e5',
-      light: { '--t-surface': '#ffffff', 'bad key': 'x;y' },
+      light: { '--gh-background': '#ffffff', 'bad key': 'x;y' },
     });
-    expect(good).toEqual({ ok: true, value: { brand: '#4f46e5', light: { '--t-surface': '#ffffff' } } });
+    expect(good).toEqual({ ok: true, value: { brand: '#4f46e5', light: { '--gh-background': '#ffffff' } } });
     expect(validateWorkspaceValue(def('branding.theme_tokens'), { light: { 'bad key': ';' } }).ok).toBe(false);
   });
 });

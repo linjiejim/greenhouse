@@ -11,6 +11,7 @@
  * needs. Bump it when a release adds an endpoint the app starts calling.
  */
 
+import { CLIENT_API_LEVEL } from '@greenhouse/types/plugins';
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env.js';
 import { getWorkspaceBootstrap } from '../settings/workspace-config.js';
@@ -20,8 +21,9 @@ import { getWorkspaceBootstrap } from '../settings/workspace-config.js';
  * 2: Feishu sign-in returning to the app (`/api/feishu/oauth/start-login?app_redirect=`).
  * 3: projects and tasks, tables, my agent writes, my spend (`/api/usage/spend`), my gateway keys
  *    (`/api/agent-access/gateway`) and the assistant chat, as of 1.7.
+ * 4: station manifest v2 and plugin surfaces.
  */
-export const MOBILE_API_LEVEL = 3;
+export const MOBILE_API_LEVEL = CLIENT_API_LEVEL;
 
 const bootstrapRoutes = new Hono<AppEnv>().get('/', async (c) => {
   const payload = await getWorkspaceBootstrap();
