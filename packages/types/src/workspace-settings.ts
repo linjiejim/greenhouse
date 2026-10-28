@@ -379,7 +379,7 @@ export interface ThemeTokens {
   fontScale?: number;
   /** Multiplier applied to the Tailwind --radius-* sizes (0–2). */
   radiusScale?: number;
-  /** Per-mode --t-* / semantic variable overrides (hex values). */
+  /** Per-mode CSS variable overrides (hex values). */
   light?: Record<string, string>;
   dark?: Record<string, string>;
 }

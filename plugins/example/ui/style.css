@@ -4,8 +4,8 @@
 }
 body {
   margin: 2rem;
-  background: var(--t-surface-canvas, var(--gh-background, Canvas));
-  color: var(--t-fg, var(--gh-label, CanvasText));
+  background: var(--gh-background, Canvas);
+  color: var(--gh-label, CanvasText);
 }
 main {
   max-width: 40rem;
@@ -13,8 +13,8 @@ main {
 }
 
 button {
-  background: var(--t-accent, var(--gh-accent));
-  color: var(--t-on-accent, var(--gh-on-accent));
+  background: var(--gh-accent);
+  color: var(--gh-on-accent);
   padding: 0.75rem;
   border: 0;
   border-radius: 0.5rem;

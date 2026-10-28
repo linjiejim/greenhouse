@@ -55,6 +55,8 @@ Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
 - Chat turns no longer take page context or browser Client Actions: `ambient_context`,
   `client_actions`, `client_action_scope_id`, `POST /api/client-actions/tool-result`, the
   `local-tool-request` event and `@greenhouse/types/agent-context` are removed.
+- Plugin frontends receive `--gh-*` theme variables only; the classic `--t-*` names and the
+  classic web stylesheet `@greenhouse/ui/tokens/tokens.css` are removed.
 - `GET /api/sessions` caps every page at 200 and no longer accepts `include_eval`.
   `GET /api/feishu/login-available` (use `/api/auth/providers`), `GET /api/profiles/custom/:id/versions`,
   the custom Agent `change_log` field and the team activity feed's plain ISO `before` are removed. Automations
