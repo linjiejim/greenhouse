@@ -27,7 +27,6 @@ export default {
         kind: 'embed',
         title: 'Example UI',
         url: '/ext/example/ui/',
-        fallback_url: '#/example/notes',
       },
     ] satisfies PluginPage[],
   },

@@ -300,8 +300,7 @@ entries in the rail's More flyout, so keep `label` short (about ten Latin charac
 icon set and draw a generic app tile for unknown names. Labels and titles are `LocalizedText`
 (`{ en, zh }`). Role/feature requirements hide inaccessible surfaces. Pages open at
 `/p/<plugin>/<page>` (Admin sections at `/admin/p/<plugin>/<page>`). A kind the client does not
-know shows an unsupported-page notice, or opens `fallback_url` when it is an absolute http(s)
-URL; keep existing hash `fallback_url` values, which map old links to the new pages.
+know shows a notice asking the member to update the app.
 
 Declare `ui: './ui'` in the manifest. Assembly resolves paths inside the package.
 `/ext/<id>/ui/` serves `ui/dist` when present, otherwise source UI; disabled plugins return 404.
@@ -326,7 +325,8 @@ host.sendPrompt('Help me organize these notes'); // opens an editable draft, nev
 
 The bridge uses `greenhouse:init` (theme, tokens/brand, locale, basic member, route, token),
 `greenhouse:ready`, `greenhouse:theme`, `greenhouse:token-refresh` (request),
-`greenhouse:token` (renewal response), `greenhouse:title`, `greenhouse:navigate` and
+`greenhouse:token` (renewal response), `greenhouse:title`, `greenhouse:navigate` (a client route
+such as `/p/<plugin>/<page>`, or an object link such as `#/projects/<id>`) and
 `greenhouse:sendPrompt`. Both sides validate source window and exact origin. Themes update
 without replacing the frame. The helper keeps credentials in memory; refreshes deduplicate and
 time out after 15 seconds.

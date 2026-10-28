@@ -18,7 +18,6 @@ export default {
         screen: 'retro',
         title: { en: 'Monthly retro', zh: '每月复盘' },
         parent: 'administration',
-        fallback_url: '#/administration/retro',
         requireRole: 'super',
       },
     ] satisfies PluginPage[],

@@ -25,7 +25,6 @@ export default {
         kind: 'native',
         screen: 'feedback',
         title: { en: 'Feedback', zh: '问题与需求' },
-        fallback_url: '#/feedback',
       },
       {
         // Administration › Issues & requests (feature requests and frictions)
@@ -34,7 +33,6 @@ export default {
         screen: 'feedback-issues',
         title: { en: 'Issues & requests', zh: '问题与需求' },
         parent: 'administration',
-        fallback_url: '#/administration/issues',
       },
     ] satisfies PluginPage[],
   },

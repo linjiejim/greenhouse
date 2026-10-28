@@ -25,7 +25,6 @@ export default {
         kind: 'native',
         screen: 'knowledge',
         title: { en: 'Knowledge', zh: '知识库' },
-        fallback_url: '#/knowledge',
       },
     ] satisfies PluginPage[],
   },

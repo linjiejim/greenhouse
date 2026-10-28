@@ -6,9 +6,6 @@ import type { Hono } from 'hono';
 import type { AppEnv } from './app-env.js';
 
 export function mountClientHosting(app: Hono<AppEnv>, publicDir: string) {
-  // 4.0 removed the classic client; its old address lands on the universal client.
-  app.get('/classic', (c) => c.redirect('/', 308));
-  app.get('/classic/*', (c) => c.redirect('/', 308));
   app.get('*', async (c, next) => {
     const path = c.req.path;
     if (/^\/(api|ext|oauth|\.well-known)(\/|$)/.test(path) || path === '/health') return next();

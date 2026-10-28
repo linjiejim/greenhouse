@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { builtinVisible, fallbackUrl, fetchManifest, hasPlugin, parseManifest, PENDING_MANIFEST, pluginNavigation } from './manifest';
+import { builtinVisible, fetchManifest, hasPlugin, parseManifest, PENDING_MANIFEST, pluginNavigation } from './manifest';
 const v2 = (plugins: unknown[] = []) => ({
   manifest_version: 2,
   core: { version: '4.0.0', client_api: 4 },
@@ -36,7 +36,7 @@ describe('station manifest', () => {
         {
           id: 'crm',
           nav: [{ id: 'crm', page: 'future', placement: 'more', order: 101 }],
-          pages: [{ id: 'future', kind: 'future-kind', fallback_url: '/classic/#/crm' }],
+          pages: [{ id: 'future', kind: 'future-kind' }],
         },
       ]),
     );
@@ -58,12 +58,5 @@ describe('station manifest', () => {
     expect(builtinVisible(parseManifest(v2([{ id: 'tables', nav: [], pages: [] }])), 'tables')).toBe(false);
     expect(builtinVisible(state, 'tables')).toBe(true);
     expect(builtinVisible(parseManifest(v2()), 'tables')).toBe(false);
-  });
-  it('refuses active content URLs and sends classic hash fallbacks to classic', () => {
-    expect(fallbackUrl({ fallback_url: 'javascript:alert(1)' }, 'https://station.test')).toBeNull();
-    // the classic client's hash routes have no target after 4.0
-    expect(fallbackUrl({ fallback_url: '#/crm' }, 'https://station.test')).toBeNull();
-    expect(fallbackUrl({ fallback_url: '/classic/#/crm' }, 'https://station.test')).toBeNull();
-    expect(fallbackUrl({ fallback_url: 'https://crm.example.com/x' }, 'https://station.test')).toBe('https://crm.example.com/x');
   });
 });

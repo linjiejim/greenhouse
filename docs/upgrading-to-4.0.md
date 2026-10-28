@@ -137,7 +137,10 @@ database.
 
 | What changed | What to do |
 |---|---|
-| The classic web app (`apps/web`) is gone; the universal client serves `/` and `/classic` redirects there. | Nothing for members; update bookmarks and docs (see [links](#links-and-bookmarks)). |
+| The classic web app (`apps/web`) is gone; the universal client serves `/`. `/classic` and browser `#/…` addresses are not mapped any more. | Update bookmarks and docs (see [links](#links-and-bookmarks)). |
+| Clients require a 4.0 station (`mobile_api` 4). Installed iOS/Android apps from the 3.x line cannot use a 4.0 station, and 4.0 clients cannot use a 3.x station. | Upgrade stations and apps together; members update the app from the store or TestFlight. |
+| `GET /api/extensions` serves only manifest v2: the v1 `extensions` and `entityKinds` fields are gone. | Read `plugins[]` and each plugin's `entity_kinds`. |
+| Plugin page `fallback_url` is removed; a page kind the client does not know asks for an app update. | Delete `fallback_url` from your manifests. |
 | `clients.web` in `greenhouse.config.ts` is a boot error. | Delete it. |
 | Modules became plugins; Projects, Reports, Email, WeCom, Feishu, Computer and Retro are off by default. | Enable the ids you need (step 1). |
 | New core migration chain (`packages/db/migrations/0000_v4_baseline.sql`); fresh installs create only the 49 core tables. | Run `pnpm db:migrate` (or the Compose `migrate` service) before the API. |
@@ -150,13 +153,11 @@ database.
 | `@greenhouse/web/extension-kit`, `@greenhouse/ui/*` and `packages/contract` are no longer importable from plugins. | Use `@greenhouse/api/extension-kit`, `@greenhouse/types/*`, `@greenhouse/ui-tokens`. |
 | The Docker image contains only the universal client. | Nothing; the API serves it. |
 
-Kept on purpose: the station manifest still carries the v1 `extensions` and `entityKinds`
-fields, `/api/bootstrap` reports `mobile_api: 4` while the client accepts stations from level 3,
-and plugin `fallback_url` values remain so old links keep resolving. Browser sessions survive the
-switch: the hosted client reads the same `greenhouse_access_token` / `greenhouse_refresh_token`
-keys the classic app stored. Installed iOS/Android
-apps from the 3.x line keep working against a 4.0 server, and the 4.0 client works with 3.x
-stations through legacy navigation.
+What now breaks: installed iOS/Android apps from the 3.x line must be updated before they can use
+a 4.0 station; 4.0 clients (web, iOS, Android and desktop) cannot reach a 3.x station and ask for
+a station update instead; old classic `#/…` bookmarks and links in mail or IM sent before the
+upgrade land on Home. Browser sessions survive the switch: the hosted client reads the same
+`greenhouse_access_token` / `greenhouse_refresh_token` keys the classic app stored.
 
 ## Features removed from the UI
 
@@ -181,29 +182,28 @@ behind them mostly remain; use chat, an agent or the API, or wait for a later re
 ## Links and bookmarks
 
 Server-made links (activation mail, MCP consent, connector and identity-provider returns,
-plugin page fallbacks) now point at universal client routes from
+automation and Feishu conversation links) point at universal client routes from
 `@greenhouse/types/client-routes`. Secrets (activation token, sign-in code, provider code) ride
 in the URL fragment. Identity-provider callback URLs registered with WeCom and Feishu
 (`PUBLIC_BASE_URL` + `/api/<provider>/oauth/callback`) do not change.
 
-Old classic links keep working: `/classic/…` redirects to `/`, and the client maps `#/…` hash
-routes (`apps/client/src/shell/legacy-links.ts`) before routing:
+Classic addresses are not mapped: a `#/…` bookmark opens Home and `/classic` is no longer an
+address. Update bookmarks and documentation with this table:
 
-| Old link | Opens |
+| Old link | 4.0 address |
 |---|---|
-| `#/chat/<id>` | `/chat?session=<id>` |
-| `#/knowledge/…`, `#/kb/…` | `/knowledge` (shelf, folder or document) |
+| `#/chat/<id>`, `#/chat?session=<id>` | `/chat?session=<id>` |
+| `#/knowledge/…`, `#/kb/…` | `/knowledge` |
 | `#/tasks`, `#/automations` | `/automations` |
 | `#/settings`, `#/settings/notifications`, `#/settings/connectors` | `/me`, `/me/notifications`, `/me/connectors` |
-| `#/settings/provider-bindings?…` | `/bindings?…` (or `/me/connectors`) |
-| `#/administration/<key>` | `/admin/<key>`; plugin sections resolve through their `fallback_url` |
+| `#/administration/<key>` | `/admin/<key>`, or `/admin/p/<plugin>/<page>` for a plugin section |
 | `#/skillhub`, `#/skillhub?tab=reports` | `/p/skills/skills`, `/p/reports/reports` |
-| `#/ext/<plugin>/<page>` | `/p/<plugin>/<plugin>-<page>` |
-| `#/activity/<kind>/<id>` | the run sheet |
-| `#/notifications?id=<id>` | the notification sheet |
-| Document, file, folder, project, task and record links | the object's sheet or place |
-| `#/login`, `#/activate` | `/login`, `/activate` (parameters move to the fragment) |
-| Anything else | Home |
+| `#/ext/<plugin>/<entity>` | `/p/<plugin>/<plugin>-<entity>` |
+| `#/login`, `#/activate?token=` | `/login`, `/activate#token=` |
+
+Object links inside content (`#/knowledge/doc/<id>-<slug>`, `#/projects/<id>`,
+`#/tables/<base>/table/<table>?record=<id>`, `#/chat?session=<id>` and plugin record links) are
+not addresses: replies, documents and notifications keep opening them in the app.
 
 ## Plugin authors: SDK 1 to SDK 2
 
@@ -235,8 +235,8 @@ routes (`apps/client/src/shell/legacy-links.ts`) before routing:
 5. Remove `workbenchRecipes`, `WidgetRecipe` and `meta.surface.workbench`.
 6. Keep your migration lane byte-identical: same plugin id, same `migrations/` files. Applied
    checksums in `extension_migrations` must match or startup refuses.
-7. Keep tool ids, routes (`/api/ext/<id>/…` or legacy prefixes), entity kinds and
-   `fallback_url` values so stored links, grants and profiles keep working.
+7. Keep tool ids, routes (`/api/ext/<id>/…` or legacy prefixes) and entity kinds so stored
+   links, grants and profiles keep working. Delete page `fallback_url` values.
 8. Add the package to `plugins`, enable its id, then run `pnpm plugins:sync`, `pnpm typecheck`,
    `pnpm lint`, `pnpm test`, `pnpm test:core` and, for UI, `pnpm test:e2e:client`. Forks also run
    `node scripts/check-extension-overlay.mjs --base upstream/main --strict`.

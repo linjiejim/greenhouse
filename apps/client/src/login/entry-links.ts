@@ -41,15 +41,6 @@ export function releaseEntryParams(route: ClientRoute): void {
   if (held?.route === route) held = null;
 }
 
-/** The classic consent address (`/?oauth_authorize=1&…`) → the consent route with the same request. */
-export function legacyConsent(pathname: string, search: string): string | null {
-  if (pathname !== '/' && pathname !== '') return null;
-  const params = new URLSearchParams(search);
-  if (params.get('oauth_authorize') !== '1') return null;
-  params.delete('oauth_authorize');
-  return `${CLIENT_ROUTES.oauthConsent}?${params}`;
-}
-
 const STANDALONE: readonly string[] = [
   CLIENT_ROUTES.activate,
   CLIENT_ROUTES.oauthConsent,

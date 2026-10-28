@@ -18,8 +18,10 @@ Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
 - Disabling a plugin removes its routes, tools, settings, navigation, MCP groups and adapters.
   Data and applied migrations remain. Retro requires Knowledge; saved prompts remain core.
 - The classic web app is removed. The universal client (`apps/client`, renamed from
-  `apps/mobile`) is the only web client: the API serves it at `/` and `/classic` redirects there.
-  `clients.web` in `greenhouse.config.ts` is now a boot error.
+  `apps/mobile`) is the only web client: the API serves it at `/`. `/classic` and browser `#/…`
+  addresses are not mapped: old bookmarks open Home, and the run sheet no longer links to a web
+  run log. Server-made links (including automation and Feishu conversation links) use client
+  routes. `clients.web` in `greenhouse.config.ts` is now a boot error.
 - Plugins are SDK 2 packages with an API half and a pure manifest; client UI comes from manifest
   pages, navigation and an optional static `ui/`. `plugins:sync` refuses SDK 1 and a `web` half,
   and a missing `sdk` or `core` declaration refuses activation. Plugin production code may import
@@ -27,8 +29,10 @@ Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
 - SDK 2 entity writes reject unknown, immutable or member-forbidden fields atomically, including
   for super. Ids, storage timestamps and internal/confidential/restricted fields are never caller
   input. Owner/member input requires explicit writable metadata; creates stamp effective ownership.
-- Server client API level is 4. Station manifest v2 adds member-filtered plugins/surfaces/entities,
-  retaining the v1 fields; the client still accepts stations from level 3.
+- Server client API level is 4 and every client requires it: 3.x apps must update to use a 4.0
+  station, and 4.0 clients ask a 3.x station to update. `GET /api/extensions` serves manifest v2
+  only (member-filtered plugins/surfaces/entities); the v1 `extensions` and `entityKinds` fields
+  and plugin page `fallback_url` are removed.
 - 4.0 starts a new core migration chain (`packages/db/migrations/0000_v4_baseline.sql`, 49 core
   tables). Fresh installs no longer create plugin tables; each plugin creates its own when
   enabled. 3.x databases upgrade in place and the API refuses a 3.x database until
@@ -40,7 +44,7 @@ Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
 
 Back up, choose the plugins to enable (several formerly built-in modules are now off), run
 `pnpm db:migrate` (Compose runs its `migrate` service first) and restart. The step-by-step
-procedure, rollback, removed screens, link mapping and the SDK 1 to SDK 2 port are in
+procedure, rollback, removed screens, old addresses and the SDK 1 to SDK 2 port are in
 [docs/upgrading-to-4.0.md](docs/upgrading-to-4.0.md).
 
 ### Added

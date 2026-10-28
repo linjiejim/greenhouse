@@ -26,6 +26,7 @@
 
 import { logger } from '@greenhouse/utils/logger';
 import { toRowId } from '@greenhouse/utils/id';
+import { CLIENT_ROUTES, clientRouteUrl } from '@greenhouse/types/client-routes';
 import type { DatabaseProvider, ScheduledTaskRow } from '@greenhouse/db';
 import { flattenRichOutput, renderNotificationEmail } from '../notifications/render.js';
 import { notificationTransports } from '../notifications/transports.js';
@@ -232,17 +233,10 @@ export function parseAutomationResultNotificationPayload(value: unknown): Automa
   };
 }
 
-/**
- * The session lives at `#/chat?session=<id>`, NOT `#/chat/<id>`.
- *
- * The hash router reads the session from the query string; a path segment after
- * `#/chat` is simply ignored, so the old form opened an empty new conversation
- * and the run people were notified about was nowhere to be seen. A link that
- * lands on the wrong screen is worse than no link, because nobody suspects it.
- */
+/** The conversation the run wrote to, as a client route: `/chat?session=<id>`. */
 function sessionLink(sessionId: string): string | null {
   const base = process.env.PUBLIC_BASE_URL?.replace(/\/$/, '');
-  return base ? `${base}/#/chat?session=${encodeURIComponent(sessionId)}` : null;
+  return base ? clientRouteUrl(base, CLIENT_ROUTES.conversation, { query: { session: sessionId } }) : null;
 }
 
 function taskHeading(task: Pick<ScheduledTaskRow, 'name'>, outcome: TaskNotification): string {

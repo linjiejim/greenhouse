@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { compileApp, type ApplicationDefinition } from '@greenhouse/platform-kernel';
 import { createCrudRoutes, type ListResult, type ListParams } from '@greenhouse/crud/server';
 import { getDb } from '@greenhouse/db';
-import { pluginPagePath } from '@greenhouse/types/client-routes';
 import type { GreenhouseExtension } from './define.js';
 import type { AppEnv } from '../app-env.js';
 import { humanActor, delegatedAgentActor } from './actor.js';
@@ -192,15 +191,12 @@ export function deriveDataSources(input: GreenhouseExtension): GreenhouseExtensi
           kind: 'entity-list',
           title: entity.title,
           entity: `${source.app.id}.${entityId}`,
-          fallback_url: pluginPagePath(ext.id, pageId),
         },
         {
           id: `${pageId}-detail`,
           kind: 'entity-detail',
           title: entity.title,
           entity: `${source.app.id}.${entityId}`,
-          // a detail page has no address of its own without a record: its fallback is the list
-          fallback_url: pluginPagePath(ext.id, pageId),
         },
       );
       nav.push({ id: pageId, page: pageId, label: entity.title, icon: 'Database', placement: 'more' });

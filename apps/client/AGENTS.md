@@ -67,7 +67,7 @@
 - 知识库 opens on 最近, its first segment: the documents this member opened on this phone (the local list above; the station has no recent-documents endpoint), so they open offline on a cold launch (src/data/kb-rows.ts). Document rows are one line: title, then the date at the trailing edge.
 - Offset-paginated lists are read to the end with collectPages() (src/data/paging.ts), bound to the identity they started on; never stop at the first page.
 - Every multi-step write (a Files upload: init, bytes, complete, later batch items) checks the identity captured before its first step and stops on a change (src/api/drive.ts).
-- Links go through src/lib/deep-links.ts (pure), src/shell/object-ref.ts (pure) and src/shell/open-object.ts: documents (by id, or by slug when the link has none: the chip opens the id refs/resolve answered, else the sheet looks the slug up), files, folders, projects and tasks (`#/projects/<id>?task=`), records (`#/tables/<base>/table/<table>?record=`), runs (`#/activity/…`) open as sheets, conversations (`#/chat?session=`) as the page, tables and My Agents as places; other station pages in the in-app Safari view, other sites in Safari. A notification opens what it points at, else its sheet (src/shell/open-notification.ts).
+- Links go through src/lib/deep-links.ts (pure), src/shell/object-ref.ts (pure) and src/shell/open-object.ts: documents (by id, or by slug when the link has none: the chip opens the id refs/resolve answered, else the sheet looks the slug up), files, folders, projects and tasks (`#/projects/<id>?task=`), records (`#/tables/<base>/table/<table>?record=`) and a notification's run open as sheets, conversations (`#/chat?session=`) as the page, tables, automations and My Agents as places; plugin record links resolve through the manifest's `entity_kinds` (src/plugins/entity-links.ts), any other `#/…` opens home, other sites open in Safari. A notification opens what it points at, else its sheet (src/shell/open-notification.ts).
 - Links in Markdown are chips (src/lib/link-chip.ts): an object shows type and title, a file name and size, anything else its domain; never a raw URL.
 
 ## Widgets and iPad
@@ -171,8 +171,8 @@
 - Browser station ids include the API origin; hosted builds keep the unsuffixed `greenhouse_access_token`/`greenhouse_refresh_token` localStorage keys (src/stations/browser-origin.ts), while development overrides keep origin-scoped keys.
 - The `/api/extensions` v2 manifest gates built-in plugin places and supplies app navigation (primary and `more` entries); src/plugins/store.ts keeps a copy per station + member for cold starts; anything but v2 is an error.
 - `src/shared/plugins.ts` is a verbatim copy of `packages/types/src/plugins.ts`, checked by the React-free manifest tests.
-- `/p/[plugin]/[page]` renders entity-list/detail, settings-form and trusted embed surfaces; unknown pages use a validated browser fallback.
-- Browser legacy `#/…` links are mapped (src/shell/legacy-links.ts) before auth routing and retained across sign-in; unmapped hashes open home.
+- `/p/[plugin]/[page]` renders entity-list/detail, settings-form and trusted embed surfaces; an unknown page kind asks for an app update.
+- An embed's `greenhouse:navigate` takes a client route or an in-app object link (`#/…`, opened like a chip).
 - `pnpm test:e2e:client` owns ports 18920 and 18921 and the isolated `gh4_client` database on port 55450; its screenshots and auth state are ignored.
 - Run Expo dev servers with `CI=1` in restricted environments to disable file watchers; keep native configuration and fingerprint changes deliberate.
 - Metro redirects native route-context entries only for web; verify source maps with `node scripts/check-web-bundle.mjs <export-dir>` after an export with `--source-maps`.
@@ -229,7 +229,7 @@
 
 - `/admin` (src/admin) is super only and wide only: the rail foot, ⌘K and the desktop Go menu open it through `usePlaces().admin`; phones and other roles get a notice, native routes a phone screen.
 - The secondary column lists core sections (src/admin/sections.ts) and the station manifest's pages with `parent: 'administration'`: settings forms and native screens a plugin owns in `src/plugins/<id>/admin.web.tsx`, indexed by `src/plugins/admin-screens.web.ts`. Core admin code never names a plugin.
-- Sections are routes (`/admin/<section>`, `/admin/p/<plugin>/<page>`); legacy `#/administration/<key>` links map to `/admin/<key>`, and an unknown key opens the plugin section whose `fallback_url` names it.
+- Sections are routes (`/admin/<section>`, `/admin/p/<plugin>/<page>`); an unknown key shows the missing-section notice.
 - Sections use src/admin/kit.web.tsx (AdminPage on Place, Tabs, Card, Badge, Switch, FlagSwitch, Field, Callout, fixed-size AdminDialog), `useWrite` for identity-bound writes, the shared Controls classes in src/shell/client.css (src/admin/admin.css holds admin layout only), and copy only in the `admin` catalog block. Rules that can be pure live in `*-model.ts` with tests.
 
 ## Client polish

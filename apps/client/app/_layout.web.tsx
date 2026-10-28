@@ -36,8 +36,7 @@ import { clearHandoffs } from '../src/lib/handoff';
 import 'react-native-gesture-handler';
 import '../src/shell/client.css';
 import { ClientShell } from '../src/desktop/client-shell';
-import { mapLegacyLink } from '../src/shell/legacy-links';
-import { captureEntry, legacyConsent, takeActivated } from '../src/login/entry-links';
+import { captureEntry, takeActivated } from '../src/login/entry-links';
 
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Keyboard, Platform, View } from 'react-native';
@@ -78,9 +77,9 @@ const SIGNED_OUT_ROUTES = new Set(['login', 'sheets/stations', 'sheets/station-a
 
 const pathOf = (route: string) => route.split(/[?#]/, 1)[0]!;
 
-// Before routing: an old classic link (`#/…`, `/?oauth_authorize=1`) becomes its client route, an
-// entry route's secret fragment is held back (src/login/entry-links.ts), and the route is kept to
-// open after sign-in (or right away, when it is open to everyone and the router started elsewhere).
+// Before routing: an entry route's secret fragment is held back (src/login/entry-links.ts), and the
+// route is kept to open after sign-in (or right away, when it is open to everyone and the router
+// started elsewhere).
 let pendingRoute: string | null = null;
 // The router parsed the address before this module ran; it keeps the fragment as the `#` param.
 let fragmentToForget = false;
@@ -89,7 +88,7 @@ let opening: string | null = null;
 if (typeof window !== 'undefined') {
   const { pathname, search, hash } = window.location;
   const current = pathname + search + hash;
-  const visible = captureEntry(mapLegacyLink(hash) ?? legacyConsent(pathname, search) ?? current);
+  const visible = captureEntry(current);
   if (visible !== current) {
     window.history.replaceState(null, '', visible);
     fragmentToForget = hash !== '';

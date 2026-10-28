@@ -70,7 +70,7 @@ supply selected team documents.
 ## Clients
 
 There is one client, the universal client in `apps/client`, built with Expo for the browser,
-iOS and Android. The API serves its hosted web export at `/`; `/classic` redirects to `/`.
+iOS and Android. The API serves its hosted web export at `/`.
 
 | Client | What ships in this repository |
 |---|---|
@@ -82,7 +82,7 @@ iOS and Android. The API serves its hosted web export at `/`; `/classic` redirec
 `GET /api/extensions` is an authenticated station manifest v2: visible plugins, navigation,
 pages, entities, fields and actions. `/api/bootstrap` reports `mobile_api: 4`, and the client
 requires it: a 3.x station asks to be updated. Server-made links target client
-routes (`packages/types/src/client-routes.ts`), and old classic `#/…` links are mapped to them.
+routes (`packages/types/src/client-routes.ts`).
 There is no browser extension.
 
 ## Quick start (Docker)

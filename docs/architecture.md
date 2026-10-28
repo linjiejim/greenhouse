@@ -70,9 +70,8 @@ native 页面或设置表单是 Admin 分区，只发给 super。清单只决定
 
 唯一的客户端是 `apps/client`（Expo：Web、iOS、Android），不在 pnpm 工作区内，用
 `pnpm client:install` 单独安装，共享协议以 vendored 副本保存并有一致性测试。`pnpm dev` 启动
-API 与 Expo Web；`pnpm app:build` 把 Web 导出到 `public/app`，API 在 `/` 托管，`/classic` 与
-`/classic/*` 308 跳到 `/`（`apps/api/src/hosting.ts`），`/api`、`/ext`、`/oauth`、`/.well-known`
-与 `/health` 不回落到页面。Docker 镜像只带这一套客户端；配置里写 `clients.web` 会启动报错。
+API 与 Expo Web；`pnpm app:build` 把 Web 导出到 `public/app`，API 在 `/` 托管
+（`apps/api/src/hosting.ts`），`/api`、`/ext`、`/oauth`、`/.well-known` 与 `/health` 不回落到页面。Docker 镜像只带这一套客户端；配置里写 `clients.web` 会启动报错。
 
 宽屏 Web 的 rail 依次是内置位置（对话、知识库、云盘、表格、项目、自动化，其中三项随插件与权限
 出现）、「更多」浮层里的插件入口，super 在底部多一个 Admin；⌘K 与桌面 Go 菜单共用这份列表。
@@ -83,8 +82,9 @@ Admin 位置 `/admin` 只给 super，只在浏览器与桌面端的宽窗口可�
 插件分区来自清单：Feedback 的问题与需求、Retro 的月度复盘、Computer 的云电脑管理，全开时共 13 个。
 
 服务端链接来自 `@greenhouse/types/client-routes`，一次性凭证只放在 URL 片段。入口页有 `/activate`、
-`/oauth-consent`、`/connectors/oauth-finish`、`/bindings`，飞书登录回到 `/login`。旧 `#/…` 地址由
-`apps/client/src/shell/legacy-links.ts` 映射到客户端路由，无对应页面时回首页。
+`/oauth-consent`、`/connectors/oauth-finish`、`/bindings`，飞书登录回到 `/login`，会话通知链到
+`/chat?session=`。浏览器地址栏里的旧 `#/…` 地址不再映射，打开即回首页；内容里的 `#/…` 对象链接
+仍在应用内打开。
 
 官方 `native` 页面有编入客户端的适配器（`apps/client/src/plugins/<id>/`）：知识库、表格、项目是完整
 位置，其余是只读列表或专用页面。数据插件复用实体列表、详情和表单渲染器，`user` 字段经

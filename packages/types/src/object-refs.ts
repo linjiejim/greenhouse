@@ -96,21 +96,10 @@ function splitQuery(rest: string): { segments: string[]; params: URLSearchParams
   return { segments, params: new URLSearchParams(query) };
 }
 
-/**
- * A doc slug from the route segments after the scope part, joined the way the web's
- * knowledge page joins them (a slug may hold `/`); a trailing `edit` opens the editor
- * there and is not part of the slug.
- */
-function docSlug(parts: string[]): string | null {
-  const trimmed = parts.length > 1 && parts[parts.length - 1] === 'edit' ? parts.slice(0, -1) : parts;
-  const slug = trimmed.join('/');
+/** A doc named by its slug alone (`#/knowledge/doc/runbook`), or null for an unusable slug. */
+function slugRef(slug: string): ObjectRef | null {
   // eslint-disable-next-line no-control-regex
-  return slug && slug.length <= 512 && !/[\u0000-\u001f]/.test(slug) ? slug : null;
-}
-
-function slugRef(parts: string[]): ObjectRef | null {
-  const slug = docSlug(parts);
-  return slug === null ? null : { type: 'doc', slug };
+  return slug && slug.length <= 512 && !/[\u0000-\u001f]/.test(slug) ? { type: 'doc', slug } : null;
 }
 
 /** The web app's hash routes, given what follows `#/`. */
@@ -121,22 +110,12 @@ function parseHashRoute(route: string): ObjectRef | null {
   if (head === 'knowledge') {
     // #/knowledge/doc/<id>-<slug> (or a bare id): the canonical, rename-proof link.
     // A segment that does not start with an id is a slug alone (`#/knowledge/doc/runbook`),
-    // which models sometimes write; it names the doc like the address-bar routes do.
+    // which models sometimes write.
     if (a === 'doc' && segments.length === 3) {
       const dash = b!.indexOf('-');
       const id = rowId(dash === -1 ? b : b!.slice(0, dash));
-      return id === null ? slugRef([b!]) : { type: 'doc', id };
+      return id === null ? slugRef(b!) : { type: 'doc', id };
     }
-    // #/knowledge/folder/<id> · #/knowledge/folder/<id>/<slug> (legacy in-folder doc link)
-    if (a === 'folder') {
-      const id = rowId(b);
-      if (id === null) return null;
-      return segments.length === 3 ? { type: 'folder', id } : slugRef(segments.slice(3));
-    }
-    // What the address bar shows on a doc: #/knowledge/internal/<space>/<slug>,
-    // #/knowledge/personal/<slug>, #/knowledge/shared/<slug>. Without a slug they are lists.
-    if (a === 'internal' && segments.length >= 4) return slugRef(segments.slice(3));
-    if ((a === 'personal' || a === 'shared') && segments.length >= 3) return slugRef(segments.slice(2));
     return null;
   }
 

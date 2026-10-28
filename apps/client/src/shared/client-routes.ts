@@ -26,6 +26,8 @@ export const CLIENT_ROUTES = {
   bindings: '/bindings',
   /** Me → Connections: account bindings and connectors. */
   connections: '/me/connectors',
+  /** A conversation: `?session=<id>`. */
+  conversation: '/chat',
 } as const;
 
 export type ClientRoute = (typeof CLIENT_ROUTES)[keyof typeof CLIENT_ROUTES];

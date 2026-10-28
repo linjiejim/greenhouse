@@ -56,19 +56,3 @@ export function pluginNavigation(state: ManifestState, placement: 'primary' | 'm
     )
     .sort((a, b) => (a.nav.order ?? 100) - (b.nav.order ?? 100));
 }
-/**
- * Only http(s) destinations may leave the client. A station hash route (`#/…`) named a page of
- * the classic web client, which 4.0 removed: there is nothing to open for it.
- */
-export function fallbackUrl(page: { fallback_url?: string }, base: string): string | null {
-  if (!page.fallback_url) return null;
-  try {
-    const url = new URL(page.fallback_url, base);
-    if (!['http:', 'https:'].includes(url.protocol)) return null;
-    if (url.origin === new URL(base).origin && (url.hash.startsWith('#/') || url.pathname.startsWith('/classic')))
-      return null;
-    return url.href;
-  } catch {
-    return null;
-  }
-}

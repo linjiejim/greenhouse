@@ -2,15 +2,11 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import { Redirect, useLocalSearchParams } from 'expo-router';
 import { useStationManifest } from './store';
-import { fallbackUrl } from './manifest';
 import { nativeScreens } from './native-registry';
 import { localize } from '../shared/plugins';
 import { usePrefs } from '../store/prefs';
-import { getApiBase } from '../store/stations';
-import { openLink } from '../lib/links';
 import { useT } from '../lib/i18n';
 import { Screen } from '../ui/screen';
-import { NativeButton } from '../ui/button';
 import { space, typo, useTheme } from '../theme';
 import { EntityList, EntityDetail } from './entity-screen';
 import { SettingsForm } from './settings-screen';
@@ -59,7 +55,6 @@ export default function PluginPageScreen({ detail = false }: { detail?: boolean 
     if (entry.kind === 'embed')
       return <EmbedScreen key={`${plugin}:${page}`} plugin={plugin} page={entry} title={title} />;
   }
-  const url = entry ? fallbackUrl(entry, getApiBase()) : null;
   return (
     <>
       <Screen title={title} />
@@ -67,7 +62,6 @@ export default function PluginPageScreen({ detail = false }: { detail?: boolean 
         <Text style={{ ...typo.body, color: c.label }}>
           {entry ? t('client.unsupportedPage') : t('client.pluginUnavailable')}
         </Text>
-        {url ? <NativeButton label={t('client.openBrowser')} icon="open" onPress={() => void openLink(url)} /> : null}
       </View>
     </>
   );

@@ -24,9 +24,6 @@ it('serves the universal client and its assets without swallowing API or plugin 
     expect(await response.text()).toContain('universal');
     expect(response.headers.get('Cache-Control')).toBe('no-cache');
   }
-  // the classic client's old address lands on the universal client
-  for (const path of ['/classic', '/classic/', '/classic/deep/path'])
-    expect((await app.request(path)).headers.get('location'), path).toBe('/');
   expect((await app.request('/favicon.svg')).status).toBe(200);
   expect((await app.request('/favicon.ico')).status).toBe(204);
   const script = await app.request('/_expo/static/js/web/entry-12345678.js');

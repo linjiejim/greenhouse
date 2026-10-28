@@ -84,7 +84,7 @@ MCP 始终额外提供 `team_context`、`data_catalog`、`tool_output_read`。
 
 | 客户端 | 界面与限制 |
 |---|---|
-| 通用客户端 Web | API 在 `/` 托管（`/classic` 跳到 `/`）。宽屏：rail（内置位置、「更多」插件入口、super 的 Admin）、次级栏、主区、检查器，⌘K，居中对话框与设置窗口；窄窗口用手机布局。 |
+| 通用客户端 Web | API 在 `/` 托管。宽屏：rail（内置位置、「更多」插件入口、super 的 Admin）、次级栏、主区、检查器，⌘K，居中对话框与设置窗口；窄窗口用手机布局。 |
 | iOS / Android | 原生 Expo，同一 API；对话、附件/离线待发、最近内容离线读、启用插件入口、通知、多站点；iOS 小组件/iPad。没有 Admin（只在浏览器与桌面端的宽窗口）。Android 原生适配存在，商店发布与推送仍需配置。 |
 | macOS | Tauri 2 打包通用客户端；Keychain、多站点、菜单/快捷键、通知与 Quick ask。支持本地未签名构建，正式签名/更新源需运维配置。 |
 | CLI | 用户、数据库迁移/基线、工具/Agent/会话、自检、插件 list/status/drop；知识导入/重索引、表格恢复由对应插件提供。 |

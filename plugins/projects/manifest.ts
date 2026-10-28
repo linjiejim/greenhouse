@@ -25,7 +25,6 @@ export default {
         kind: 'native',
         screen: 'projects',
         title: { en: 'Projects', zh: '项目' },
-        fallback_url: '#/projects',
       },
     ] satisfies PluginPage[],
   },

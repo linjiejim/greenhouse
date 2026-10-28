@@ -5,7 +5,7 @@
  * (src/shell/surface.ts). A notification not in the list yet (a push for something newer) is
  * fetched by marking it read — the server answers with it. If the read cannot reach the server,
  * the member is told and the banner stays. When it points somewhere (a document, a file, a
- * run in the Activity log), a button opens it — natively, or in the web app.
+ * run, a plugin record), a button opens it.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -16,6 +16,8 @@ import { relativeTimeNow } from '../lib/time-words';
 import { readOnOpen } from '../data/read-on-open';
 import { notificationTarget, type AppTarget } from '../lib/deep-links';
 import { useOpenTarget } from '../shell/open-object';
+import { opensHere } from '../shell/open-notification';
+import { useStationManifest } from '../plugins/store';
 import { getApiBase } from '../store/stations';
 import { NativeButton } from '../ui/button';
 import { clearReadBanners } from '../push/handler';
@@ -36,9 +38,12 @@ const OPEN_LABEL: Record<AppTarget['kind'], TranslationKey> = {
   tables: 'notifications.openTables',
   chat: 'notifications.openChat',
   agent: 'notifications.openAgent',
-  web: 'notifications.openWeb',
+  run: 'notifications.openRun',
+  automations: 'notifications.openAutomations',
+  route: 'entry.openPage',
   page: 'entry.openPage',
-  external: 'notifications.openWeb',
+  // never shown: a notification does not point outside the station (src/shell/open-notification.ts)
+  external: 'entry.openPage',
 };
 
 const KIND: Record<string, { icon: IconName; label: TranslationKey }> = {
@@ -96,7 +101,10 @@ export function NotificationView({ id }: { id: string }) {
   const kind = item ? (KIND[item.kind] ?? { icon: 'bell' as const, label: 'notifications.kindOther' as const }) : null;
   const tint = item?.kind === 'runtime_failed' ? c.redTile : item?.kind.endsWith('_attention') ? c.orangeTile : undefined;
   const body = item ? plainText(item.body) : '';
-  const target = item ? notificationTarget(item, getApiBase()) : null;
+  // re-read when the manifest arrives: a plugin record link opens only once its kind is known
+  useStationManifest((s) => s.data);
+  const pointed = item ? notificationTarget(item, getApiBase()) : null;
+  const target = pointed && opensHere(pointed) ? pointed : null;
   const openLabel = target ? t(OPEN_LABEL[target.kind]) : null;
 
   return (
@@ -130,7 +138,7 @@ export function NotificationView({ id }: { id: string }) {
           {target && openLabel ? (
             <NativeButton
               label={openLabel}
-              icon={target.kind === 'web' || target.kind === 'external' ? 'open' : 'chevR'}
+              icon="chevR"
               variant="prominent"
               fullWidth
               onPress={() => openTarget(target)}

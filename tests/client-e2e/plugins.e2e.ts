@@ -84,7 +84,7 @@ async function pluginStation(page: Page) {
         title: { zh: '客户设置' },
       },
       { id: 'embed', kind: 'embed', url: `${API_BASE}/ext/crm/ui/`, title: { zh: '客户工作台' } },
-      { id: 'future', kind: 'future-kind', title: 'Future', fallback_url: 'https://crm.example.com/app' },
+      { id: 'future', kind: 'future-kind', title: 'Future' },
     ],
   });
   let tokenCount = 0;
@@ -272,10 +272,10 @@ test('Plugins embed init, trusted origin, theme, token refresh, navigate and dra
   expect(f.station.calls).toHaveLength(0);
   await screenshot(page, 'embed-draft');
 });
-test('Plugins future page preserves fallback', async ({ page }) => {
+test('Plugins future page asks for an app update', async ({ page }) => {
   await pluginStation(page);
   await ready(page, '/p/crm/future');
-  await expect(page.getByText('此客户端不支持，在浏览器打开')).toBeVisible();
+  await expect(page.getByText('当前版本的 App 还不能显示此页面，请更新 App 后打开。')).toBeVisible();
   await screenshot(page, 'unknown-kind');
 });
 test('Plugins native navigation requires a declared nav entry, known screen ids render', async ({ page }) => {

@@ -134,7 +134,7 @@ describe('declarative surfaces', () => {
     );
     expect(embedUrl('javascript:x', 'https://station.test', 'light', 'en')).toBeNull();
     expect(safeEndpoint('//evil.test')).toBe(false);
-    expect(normalizeNavigate('https://station.test/#/knowledge', 'https://station.test')).toBe('#/knowledge');
+    expect(normalizeNavigate('https://station.test/#/projects/3', 'https://station.test')).toBe('#/projects/3');
     expect(normalizeNavigate('https://evil.test/knowledge', 'https://station.test')).toBeNull();
     expect(safeEndpoint('/api/ext/crm/entities/company')).toBe(true);
   });

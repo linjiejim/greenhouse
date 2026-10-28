@@ -1,12 +1,12 @@
 /**
- * Where a link or a notification goes on the phone. React-free (./deep-links.test.ts).
+ * Where a link or a notification goes. React-free (./deep-links.test.ts).
  *
- * The web app's hash routes are the addresses (`#/knowledge/doc/<id>-<slug>` or a doc's slug, `#/files?…`,
- * `#/projects/<id>`, `#/tables/<base>/table/<table>?record=`, `#/chat?session=`,
- * `#/activity/<kind>/<run>`); the same links appear in documents, comments and notifications
- * (a notification's `payload.url`, like the monthly retro document's). A route the phone has a screen for opens natively; any other route of the
- * same station opens in the in-app Safari view at that station's web app; other http(s) links
- * open in Safari as they are.
+ * Object links are the station's `#/…` addresses (`#/knowledge/doc/<id>-<slug>` or a doc's slug,
+ * `#/files?…`, `#/projects/<id>`, `#/tables/<base>/table/<table>?record=`, `#/chat?session=`,
+ * `#/automations`, and plugin record kinds); they appear in replies, documents, comments and
+ * notifications (a notification's `payload.url`, like the monthly retro document's). Plugin
+ * record links (`route`) are resolved against the station manifest when opened
+ * (src/plugins/entity-links.ts); other http(s) links open in Safari as they are.
  */
 
 import { objectId, type ObjectId } from './object-id';
@@ -26,8 +26,12 @@ export type AppTarget =
   | { kind: 'chat'; sessionId: string | null }
   /** My Agents: the writes of the agents I connected, this month's spend, my gateway keys. */
   | { kind: 'agent' }
-  /** A page of this station's web app (no screen here yet): `hash` starts with `#/`. */
-  | { kind: 'web'; hash: string }
+  /** One run (its sheet). */
+  | { kind: 'run'; id: string }
+  /** The Automations place. */
+  | { kind: 'automations' }
+  /** Any other station address (`#/…`): a plugin record kind the station manifest names, or nothing. */
+  | { kind: 'route'; hash: string }
   /** A plugin page of this client (`/p/<plugin>/<page>`), as station links name them now. */
   | { kind: 'page'; href: string }
   | { kind: 'external'; url: string };
@@ -47,28 +51,20 @@ function slugOf(parts: string[]): string | null {
 
 /**
  * A document link after `#/knowledge/` (the rule of packages/types/src/object-refs.ts):
- * `doc/<id>-<slug>` or `doc/<id>` by id; `doc/<slug>` without an id (models write these) and the
- * address-bar routes `internal/<space>/<slug>`, `personal/<slug>`, `shared/<slug>`,
- * `folder/<id>/<slug>` by slug. Null for lists and folders.
+ * `doc/<id>-<slug>` or `doc/<id>` by id; `doc/<slug>` without an id (models write these) by slug.
+ * Null for anything else.
  */
 function docTarget(parts: string[]): AppTarget | null {
   const [area, first] = parts;
-  if (area === 'doc' && first) {
-    // ULIDs carry `_`, never `-`
-    const id = objectId(first.split('-', 1)[0]);
-    if (id) return { kind: 'doc', id };
-    const slug = parts.length === 2 ? slugOf([first]) : null;
-    return slug ? { kind: 'doc', slug } : null;
-  }
-  let rest: string[] = [];
-  if (area === 'internal' && parts.length >= 3) rest = parts.slice(2);
-  else if ((area === 'personal' || area === 'shared') && parts.length >= 2) rest = parts.slice(1);
-  else if (area === 'folder' && parts.length >= 3 && objectId(first)) rest = parts.slice(2);
-  const slug = rest.length ? slugOf(rest) : null;
+  if (area !== 'doc' || !first) return null;
+  // ULIDs carry `_`, never `-`
+  const id = objectId(first.split('-', 1)[0]);
+  if (id) return { kind: 'doc', id };
+  const slug = parts.length === 2 ? slugOf([first]) : null;
   return slug ? { kind: 'doc', slug } : null;
 }
 
-/** A `#/…` route of the web app → the phone's target for it, or null when it is not a route. */
+/** A station `#/…` address → its target, or null when it is not one. */
 export function parseHashRoute(hash: string): AppTarget | null {
   if (!hash.startsWith('#/')) return null;
   const [path, query = ''] = hash.slice(2).split('?', 2) as [string, string?];
@@ -93,7 +89,6 @@ export function parseHashRoute(hash: string): AppTarget | null {
     const session = params.get('session');
     return { kind: 'chat', sessionId: session && /^[A-Za-z0-9_-]{1,128}$/.test(session) ? session : null };
   }
-  if (segments.join('/') === 'settings/agent-connections/activity') return { kind: 'agent' };
   if (segments[0] === 'files' && segments.length === 1) {
     return {
       kind: 'files',
@@ -102,7 +97,8 @@ export function parseHashRoute(hash: string): AppTarget | null {
       fileId: objectId(params.get('file')),
     };
   }
-  return { kind: 'web', hash };
+  if (segments[0] === 'automations' && segments.length === 1) return { kind: 'automations' };
+  return { kind: 'route', hash };
 }
 
 /**
@@ -136,12 +132,10 @@ export function linkTarget(href: string, stationBase: string): AppTarget | null 
 /** `/p/<plugin>/<page>` with an optional query: the only station paths read as client pages. */
 const PLUGIN_PAGE = /^\/p\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+(?:\?[^#]*)?$/;
 
-/** The web address of a station page (`#/…`), for the in-app Safari view. */
+/** The absolute address of a station link (`#/…`), the key `POST /api/refs/resolve` reads. */
 export function webUrl(stationBase: string, hash: string): string {
   return `${stationBase.replace(/\/+$/, '')}/${hash.startsWith('#') ? hash : `#/${hash}`}`;
 }
-
-const RUN_KINDS = new Set(['mission', 'workflow', 'automation', 'subagent', 'eval', 'agent_write']);
 
 /** The fields of a notification that say where it points. */
 export interface NotificationLink {
@@ -156,8 +150,7 @@ function record(value: unknown): Record<string, unknown> | null {
 /**
  * Where opening a notification leads, beyond its own page: a link the payload names
  * (`href` / `url`, a hash route or a same-station link), else the scheduled task's conversation,
- * else My Agents for an agent write, else its run in the Activity log (web). Null when it points
- * nowhere else.
+ * else My Agents for an agent write, else its run. Null when it points nowhere else.
  */
 export function notificationTarget(n: NotificationLink, stationBase: string): AppTarget | null {
   const payload = record(n.payload);
@@ -171,11 +164,6 @@ export function notificationTarget(n: NotificationLink, stationBase: string): Ap
   if (typeof payload?.session_id === 'string' && payload.session_id) {
     return parseHashRoute(`#/chat?session=${encodeURIComponent(payload.session_id)}`);
   }
-  if (n.run_id) {
-    if (payload?.runtime_kind === 'agent_write') return { kind: 'agent' };
-    const kind = typeof payload?.runtime_kind === 'string' && RUN_KINDS.has(payload.runtime_kind) ? payload.runtime_kind : null;
-    const run = encodeURIComponent(n.run_id);
-    return { kind: 'web', hash: kind ? `#/activity/${kind}/${run}` : `#/activity/${run}` };
-  }
+  if (n.run_id) return payload?.runtime_kind === 'agent_write' ? { kind: 'agent' } : { kind: 'run', id: n.run_id };
   return null;
 }

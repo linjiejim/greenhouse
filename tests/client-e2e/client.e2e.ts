@@ -143,7 +143,7 @@ test('v2 manifest hides inactive places and keeps future pages reachable', async
             entities: [],
             entity_kinds: [],
             nav: [{ id: 'crm', label: '客户', icon: 'Building2', page: 'future', placement: 'more' }],
-            pages: [{ id: 'future', title: '客户', kind: 'future', fallback_url: 'https://crm.example.com/app' }],
+            pages: [{ id: 'future', title: '客户', kind: 'future' }],
           },
         ],
       },
@@ -159,6 +159,5 @@ test('v2 manifest hides inactive places and keeps future pages reachable', async
   await expect(page.getByTestId('rail-more-menu')).toBeVisible();
   await page.getByTestId('rail-crm').click();
   await expect(page.getByTestId('rail-more-menu')).toHaveCount(0);
-  await expect(page.getByText('此客户端不支持，在浏览器打开', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '在浏览器打开', exact: true })).toBeVisible();
+  await expect(page.getByText('当前版本的 App 还不能显示此页面，请更新 App 后打开。', { exact: true })).toBeVisible();
 });

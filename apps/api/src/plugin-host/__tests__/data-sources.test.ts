@@ -24,11 +24,7 @@ describe('SDK 2 data plugins', () => {
     expect(ext.surfaces?.pages).toEqual(
       expect.arrayContaining([expect.objectContaining({ kind: 'entity-list', entity: 'fixture.note' })]),
     );
-    // browser fallbacks are the universal client's plugin pages, never classic hash routes
-    expect(ext.surfaces?.pages?.map((page) => page.fallback_url)).toEqual([
-      '/p/fixture/fixture-note',
-      '/p/fixture/fixture-note',
-    ]);
+    expect(ext.surfaces?.pages?.map((page) => page.id)).toEqual(['fixture-note', 'fixture-note-detail']);
   });
 });
 

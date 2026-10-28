@@ -25,7 +25,6 @@ export default {
         kind: 'native',
         screen: 'skills',
         title: { en: 'Skills', zh: '技能' },
-        fallback_url: '#/skillhub',
       },
     ] satisfies PluginPage[],
   },

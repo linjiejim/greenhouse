@@ -10,7 +10,7 @@
  * still enforces every call.
  *
  * Compatibility rule: fields are only ever added. A client that meets a page
- * `kind` it does not know renders "open in browser" (`fallback_url`).
+ * `kind` it does not know says it cannot show that page.
  */
 
 /** A string in the source language, or a per-locale map (`en` / `zh`). */
@@ -89,8 +89,6 @@ interface PluginPageBase {
   requireRole?: 'super' | 'team';
   id: string;
   title: LocalizedText;
-  /** Legacy hash route for the same page (`#/knowledge`); old links and 3.x apps resolve the page through it. */
-  fallback_url?: string;
 }
 
 /** A screen compiled into the client (official plugins). `screen` is a client-known id. */
@@ -200,7 +198,7 @@ export interface PluginEntitySchema {
  *               `greenhouse:theme` { theme, tokens }      (theme switched)
  *               `greenhouse:token` { token, expires_at }  (answer to a refresh request)
  * page → host:  `greenhouse:ready`                         (page loaded; host replies with init)
- *               `greenhouse:navigate` { href }             (in-app hash route or entity URL)
+ *               `greenhouse:navigate` { href }             (client route or in-app object link)
  *               `greenhouse:title` { title }
  *               `greenhouse:sendPrompt` { text }           (fill the composer, never send)
  *               `greenhouse:token-refresh`

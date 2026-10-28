@@ -4,12 +4,10 @@ import {
   captureEntry,
   heldEntryParams,
   isStandaloneEntry,
-  legacyConsent,
   markActivated,
   releaseEntryParams,
   takeActivated,
 } from './entry-links';
-import { mapLegacyLink } from '../shell/legacy-links';
 
 afterEach(() => {
   for (const route of Object.values(CLIENT_ROUTES)) releaseEntryParams(route);
@@ -46,22 +44,6 @@ describe('entry fragments', () => {
     expect(held.get('scope')).toBe('mcp:read mcp:files');
     expect(held.get('state')).toBe('s+1');
     expect(held.get('code_challenge')).toBe('Ab_-9');
-  });
-
-  it('turns an old classic entry link into the same held parameters', () => {
-    const mapped = mapLegacyLink('#/activate?token=tok_1')!;
-    expect(captureEntry(mapped)).toBe('/activate');
-    expect(heldEntryParams(CLIENT_ROUTES.activate)?.get('token')).toBe('tok_1');
-  });
-});
-
-describe('the classic consent address', () => {
-  it('moves to the consent route with the request unchanged', () => {
-    expect(legacyConsent('/', '?oauth_authorize=1&client_id=c1&redirect_uri=http%3A%2F%2F127.0.0.1%2Fcb&state=s')).toBe(
-      '/oauth-consent?client_id=c1&redirect_uri=http%3A%2F%2F127.0.0.1%2Fcb&state=s',
-    );
-    expect(legacyConsent('/', '?client_id=c1')).toBeNull();
-    expect(legacyConsent('/chat', '?oauth_authorize=1')).toBeNull();
   });
 });
 
