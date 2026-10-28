@@ -173,6 +173,7 @@ vi.mock('../shell/mismatch', () => ({ MismatchScreen: () => null }));
 vi.mock('../ui/nav', () => ({
   detailScreen: () => ({}),
   modalScreen: () => ({}),
+  opaqueBar: () => ({}),
   pageScreen: () => ({}),
   sheetScreen: () => ({}),
   stackDefaults: () => ({}),

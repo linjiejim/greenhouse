@@ -37,6 +37,20 @@ function androidBar(background: ThemeColors[keyof ThemeColors]): NativeStackNavi
   return { headerTransparent: false, headerStyle: { backgroundColor: background as string } };
 }
 
+/**
+ * An opaque bar in the grouped page background, for pages whose content starts below the bar. The
+ * navigator is given no theme, so an opaque bar left unstyled takes React Navigation's light card
+ * (a white bar in dark mode).
+ */
+export function opaqueBar(hex: HexPalette): NativeStackNavigationOptions {
+  return {
+    headerShown: true,
+    headerTransparent: false,
+    headerStyle: { backgroundColor: hex.groupedBackground },
+    contentStyle: { backgroundColor: hex.groupedBackground },
+  };
+}
+
 /** Shared defaults for every native stack in the app. */
 export function stackDefaults(c: ThemeColors, hex: HexPalette, isDark: boolean): NativeStackNavigationOptions {
   return {
