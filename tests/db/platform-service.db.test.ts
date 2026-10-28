@@ -47,13 +47,13 @@ describe('Platform control-plane service', () => {
     _resetProvider();
   });
 
-  it('resolves capabilities from role grants alone (no per-user overrides)', async () => {
+  it('resolves capabilities from role grants alone', async () => {
     const user = await createUser();
     const role = await createRole(user.id);
     await db.platform.replaceRoleCapabilities(role.id, ['projects.project.*'], user.id);
 
     const snapshot = await db.platform.getAuthorizationSnapshot(user.id, 'default');
-    expect(snapshot.userOverrides).toEqual([]);
+    expect(snapshot).toEqual({ roleGrants: [expect.objectContaining({ roleId: role.id })] });
     expect(resolveCapability({ capability: 'projects.project.read', ...snapshot })).toMatchObject({
       allowed: true,
       reason: 'role-allow',
@@ -132,7 +132,7 @@ describe('Platform control-plane service', () => {
       appId: 'projects',
       entityId: 'project',
     });
-    const rolePolicy = resolveEntityPolicy(roleSnapshot.rolePolicies, roleSnapshot.userOverride);
+    const rolePolicy = resolveEntityPolicy(roleSnapshot.rolePolicies);
     const actor: ActorContext = {
       actorId: user.id,
       actorType: 'human',
@@ -142,7 +142,6 @@ describe('Platform control-plane service', () => {
     };
     expect(canAccessRecord(actor, { ownerId: user.id }, rolePolicy)).toBe(true);
 
-    expect(roleSnapshot.userOverride).toBeUndefined();
     expect((await db.platform.listRoleEntityPolicies([role.id]))[0]).toMatchObject({
       scopes: [{ kind: 'own' }],
       field_policies: { title: { read: 'full', write: true, export: false } },

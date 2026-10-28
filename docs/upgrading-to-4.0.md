@@ -155,6 +155,7 @@ database.
 | `GET /api/feishu/login-available`, `GET /api/profiles/custom/:id/versions` and the plain ISO `before` of the team activity feed are removed; custom Agents no longer report `change_log`. | Read `/api/auth/providers`; page the feed with its opaque `next_before`. |
 | Automations accept delivery only as the `notify` object; the flat `notify_webhook`, `notify_email`, `notify_wecom` and `notify_feishu` fields are ignored. | Send `notify: { webhook, email, wecom, feishu }`. |
 | Kit `WidgetRecipe`, `defineExtension.workbenchRecipes` and tool `surface.workbench` are removed. | Delete them; they had no effect since 3.0. |
+| Kit `resolveEntityPolicy(rolePolicies)` no longer takes a per-user override, and platform snapshots drop `userOverrides`/`userOverride` (they were always empty). | Call `resolveEntityPolicy(snapshot.rolePolicies)`. |
 | `@greenhouse/web/extension-kit`, `@greenhouse/ui/*` and `packages/contract` are no longer importable from plugins. | Use `@greenhouse/api/extension-kit`, `@greenhouse/types/*`, `@greenhouse/ui-tokens`. |
 | The Docker image contains only the universal client. | Nothing; the API serves it. |
 | Old environment aliases are ignored: `APP_BASE_URL` (skill alerts read `PUBLIC_BASE_URL`), `SYNC_WECOM_WEBHOOK_URL` (use `SKILLS_WECOM_WEBHOOK_URL`), `PORT` for the OAuth issuer (use `API_PORT` or `API_BASE_URL`) and `SILICONFLOW_API_KEY` in `pnpm cli doctor`. | Rename them in `.env`. |

@@ -97,7 +97,7 @@ async function entityPolicy(
     appId: tablesManifest.id,
     entityId,
   });
-  return resolveEntityPolicy(snapshot.rolePolicies, snapshot.userOverride);
+  return resolveEntityPolicy(snapshot.rolePolicies);
 }
 
 async function baseRole(

@@ -109,7 +109,7 @@ async function loadEntityPolicy(
     appId: projectsManifest.id,
     entityId,
   });
-  return resolveEntityPolicy(snapshot.rolePolicies, snapshot.userOverride);
+  return resolveEntityPolicy(snapshot.rolePolicies);
 }
 
 async function projectAccess(

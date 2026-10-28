@@ -136,6 +136,8 @@ facades needed by official plugins; add data entity/context types, scoped CRUD, 
 notify, readable-field projection and observation types. Remove `WidgetRecipe`,
 `defineExtension.workbenchRecipes` and the tool surface `workbench` flag. Kit exports remain
 snapshot-locked; optional kernel `writable` metadata enforces declared SDK 2 writes.
+`resolveEntityPolicy` takes role policies only: the never-populated per-user capability and
+entity overrides are removed from the kernel and the platform snapshots.
 
 ### Fixed
 
