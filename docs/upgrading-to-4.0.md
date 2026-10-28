@@ -177,12 +177,8 @@ behind them mostly remain; use chat, an agent or the API, or wait for a later re
 |---|---|
 | Saved prompts management (SkillHub › My prompts) and the composer's `/` picker | Save prompts from chat's task-capture card; `/api/prompts` and MCP `prompt-*` prompts remain. |
 | The composer's per-turn model picker | Chat uses the Agent's default model; custom agents pin their own model; `POST /api/chat` still accepts `model`. |
-| A member's own activity log page with CSV export | Supers: Admin › Activity log (filters and CSV export). Members: team activity in the notification center; agent writes in Me › My Agents. |
 | Creating or editing email accounts, memories and the cloud computer | Read-only lists in the client. Memories: ask Sprouty (`memory` tool). Computer: a member's MCP agent (`computer_*` tools). Email accounts: `/api/email/accounts`. |
-| Skill upload, version history and report-template editing | Read-only lists; publish skills with `skill_mutation` (chat or MCP); templates through `/api/report-templates`. |
-| The agent-connection wizard (Settings › Agent access › Connect) | Point the MCP client at `<origin>/api/mcp`; OAuth discovery and the consent page (`/oauth-consent`) work as before. |
-| Adding personal connectors | Supers add team connectors in Admin › Team connectors; members connect them in Me › Connections. |
-| Creating model-gateway keys | `POST /api/agent-access/gateway/keys` remains; supers list and revoke keys in Admin. |
+| Skill upload, version history and report-template editing on a phone, and uploading a skill as a `.zip` | Use a browser window (Skills and Report templates pages); phones show read-only lists. Unpack a `.zip` and pick its folder; agents can still publish with `skill_mutation`. |
 | Tables field editing, recycle bin, data catalog page and audit dialog | Structure changes through chat (`tables_schema_plan` card); restore with `pnpm cli tables restore-base` / `restore-table`; agents use `data_catalog`. |
 | SDK 1 React plugin pages | Port to manifest pages ([below](#plugin-authors-sdk-1-to-sdk-2)). |
 

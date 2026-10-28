@@ -25,12 +25,19 @@ export function parseConnectorReturn(url: string | null | undefined): ConnectorR
   return error ? { kind: 'error', reason: error.slice(0, 64) } : { kind: 'cancel' };
 }
 
-/** Connectors that need something from me (my key or sign-in), team ones first, then the rest ready to use. */
-export function connectorSections(list: MyConnectors): { mine: MyConnector[]; ready: MyConnector[] } {
-  const all = [...list.team, ...list.personal];
+/**
+ * The team's connectors that need something from me (my key or sign-in), the team's that are ready
+ * to use, and my own (personal) ones, which I also edit, refresh and delete.
+ */
+export function connectorSections(list: MyConnectors): {
+  mine: MyConnector[];
+  ready: MyConnector[];
+  own: MyConnectors['personal'];
+} {
   return {
-    mine: all.filter((c) => c.auth_mode === 'per_member'),
-    ready: all.filter((c) => c.auth_mode !== 'per_member'),
+    mine: list.team.filter((c) => c.auth_mode === 'per_member'),
+    ready: list.team.filter((c) => c.auth_mode !== 'per_member'),
+    own: list.personal,
   };
 }
 

@@ -6,6 +6,7 @@
 
 - A template is a team-required report or deck format: ordered sections (key, title, guidance, required, content kind markdown/bullets/table/figures), cover fields and allowed formats (first = default).
 - Template definitions are validated only by `checkReportTemplateDefinition` (`@greenhouse/types/reports`, shared so a client editor uses the same limits) on create, update, preview and seeding.
+- The client's `reports` page edits templates in a browser (apps/client/src/plugins/reports/screen.web.tsx) and is a read-only list on phones; it vendors `@greenhouse/types/reports` verbatim (parity-tested).
 - Access rules live only in `api/templates.ts`: any internal member publishes team templates or keeps personal drafts; the owner or a super edits/deletes team templates.
 - Drafts are visible to their owner only (super included); built-in templates (`owner_user_id = NULL`) are super-edited and never become drafts; only the owner may turn a team template into a draft.
 - Deletes are soft (`deleted_at`).

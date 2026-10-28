@@ -10,12 +10,21 @@
  *    else started);
  *  - `testConnection` — "N tools", or why not;
  *  - `disconnect` — confirmed; the key or sign-in is forgotten (an OAuth
- *    grant is revoked too).
+ *    grant is revoked too);
+ *  - `refreshOwnConnector` / `deleteOwnConnector` — my personal connectors:
+ *    list their tools again; delete (confirmed) with my connection to it.
  *
  * Each resolves true when something changed and the caller should re-read.
  */
 
-import { disconnectConnector, saveConnectorKey, testConnector, type ConnectorAuthKind } from '../api/connectors';
+import {
+  deletePersonalConnector,
+  disconnectConnector,
+  refreshPersonalConnector,
+  saveConnectorKey,
+  testConnector,
+  type ConnectorAuthKind,
+} from '../api/connectors';
 import { captureIdentity } from '../data/identity';
 import { t } from '../lib/i18n';
 import { alertError, confirmAction, promptText } from '../ui/dialogs';
@@ -98,5 +107,37 @@ export async function disconnect(connector: Pick<ConnectTarget, 'id' | 'name'>):
     alertError(t('connectors.disconnectFailed'), result.message || undefined);
     return false;
   }
+  return true;
+}
+
+export async function refreshOwnConnector(connector: Pick<ConnectTarget, 'id' | 'name'>): Promise<boolean> {
+  const current = captureIdentity();
+  const result = await refreshPersonalConnector(connector.id);
+  if (!current()) return false;
+  if (!result.ok) {
+    alertError(t('connectors.refreshFailed'), result.message || undefined);
+    return false;
+  }
+  if (result.data.ok) toast(t('connectors.refreshed', { n: result.data.connector.tools.length }), 'check');
+  else alertError(t('connectors.refreshFailed'), undefined, result.data.error ?? undefined);
+  return true;
+}
+
+export async function deleteOwnConnector(connector: Pick<ConnectTarget, 'id' | 'name'>): Promise<boolean> {
+  const ok = await confirmAction({
+    title: t('connectors.deleteTitle', { name: connector.name }),
+    message: t('connectors.deleteMessage'),
+    confirmLabel: t('connectors.delete'),
+    destructive: true,
+  });
+  if (!ok) return false;
+  const current = captureIdentity();
+  const result = await deletePersonalConnector(connector.id);
+  if (!current()) return false;
+  if (!result.ok) {
+    alertError(t('connectors.deleteFailed'), result.message || undefined);
+    return false;
+  }
+  toast(t('connectors.deleted', { name: connector.name }), 'check');
   return true;
 }

@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { Stack } from 'expo-router';
 import { useIsFocused } from 'expo-router/react-navigation';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import { NativeMenu } from './menu.web';
 import type { MenuItem } from './menu-items';
 import { Icon } from './core.web';
+import { SettingsWindowContext } from './settings-frame';
 import { useShortcut } from './use-shortcut.web';
 import { Tooltip } from './popover.web';
 import type { ScreenAction, ScreenActionsProps } from './screen-action-types';
@@ -92,6 +93,8 @@ export function useScreenActions(
   actions: readonly ScreenAction[],
   { placement = 'right' }: Omit<ScreenActionsProps, 'actions'> = {},
 ) {
+  // The settings window's close button sits at the header's right edge (app/me/_layout.web.tsx).
+  const inSettingsWindow = useContext(SettingsWindowContext);
   return (
     <>
       {actions.map((a) => (
@@ -101,7 +104,13 @@ export function useScreenActions(
         options={
           placement === 'left'
             ? { headerLeft: () => <Controls actions={actions} /> }
-            : { headerRight: () => <Controls actions={actions} /> }
+            : {
+                headerRight: () => (
+                  <View style={inSettingsWindow ? { marginRight: 40 } : undefined}>
+                    <Controls actions={actions} />
+                  </View>
+                ),
+              }
         }
       />
     </>

@@ -1364,6 +1364,13 @@ html[data-desktop-window="settings"] .gh-settings { padding-top: 52px; box-sizin
 .gh-resource-list li:last-child {
   border-bottom: 0;
 }
+/* Rows an official plugin screen opens (src/plugins/<id>/screen.web.tsx). */
+.gh-resource-list li[data-open] {
+  cursor: pointer;
+}
+.gh-resource-list li[data-open]:hover {
+  background: var(--gh-hover);
+}
 .gh-resource-icon {
   width: 34px;
   height: 34px;

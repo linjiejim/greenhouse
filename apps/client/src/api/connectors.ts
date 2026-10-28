@@ -3,14 +3,15 @@
  * `mcp_call` (`/api/me/connectors`, apps/api/src/routes/connectors.ts). A
  * connector that runs on each member's own account needs my key or my
  * sign-in first; keys travel inward only — no answer carries a credential.
- * The phone connects, tests and disconnects; adding connectors (team or
- * personal) happens on the web.
+ * Every client connects, tests and disconnects, and deletes or refreshes my own
+ * (personal, `me/<slug>`) connectors; the browser also adds and edits them.
+ * Team connectors are a super's (Admin › Team connectors).
  *
  * The shapes are the fields the app reads of `ConnectorMemberView` /
  * `ConnectorView` in packages/types/src/connectors.ts.
  */
 
-import { del, get, post, put, seg } from './client';
+import { del, get, patch, post, put, seg } from './client';
 
 export type ConnectorStatus = 'not_needed' | 'not_connected' | 'connected' | 'needs_reauth' | 'error';
 export type ConnectorAuthMode = 'none' | 'shared' | 'per_member';
@@ -32,9 +33,21 @@ export interface MyConnector {
   last_error?: string | null;
 }
 
+/** A personal connector as its owner reads it (`ConnectorView`): what its edit form starts from. */
+export interface PersonalConnector extends MyConnector {
+  url: string;
+  transport: 'streamable_http' | 'sse';
+  auth_header: string | null;
+  auth_query_param: string | null;
+  auth_value_prefix: string | null;
+  oauth_client: { source: string; client_id: string; has_secret: boolean } | null;
+  oauth_scope: string | null;
+  tools: { name: string }[];
+}
+
 export interface MyConnectors {
   team: MyConnector[];
-  personal: MyConnector[];
+  personal: PersonalConnector[];
 }
 
 /** 403 = my account has no `mcp_call`. */
@@ -59,3 +72,18 @@ export const testConnector = (id: string) =>
   post<{ ok: boolean; error: string | null; tool_count: number }>(`/api/me/connectors/${seg(id)}/test`);
 
 export const disconnectConnector = (id: string) => del<{ ok: boolean }>(`/api/me/connectors/${seg(id)}/connection`);
+
+/** My own connector (`ConnectorInput` minus team-only fields); the server refuses shared keys and private networks. */
+export const createPersonalConnector = (input: Record<string, unknown>) =>
+  post<PersonalConnector>('/api/me/connectors/personal', input);
+
+export const updatePersonalConnector = (id: string, update: Record<string, unknown>) =>
+  patch<PersonalConnector>(`/api/me/connectors/personal/${seg(id)}`, update);
+
+export const deletePersonalConnector = (id: string) => del<{ ok: boolean }>(`/api/me/connectors/personal/${seg(id)}`);
+
+/** List its tools again; `ok: false` keeps the old list and says why. */
+export const refreshPersonalConnector = (id: string) =>
+  post<{ connector: PersonalConnector; ok: boolean; error: string | null }>(
+    `/api/me/connectors/personal/${seg(id)}/refresh`,
+  );
