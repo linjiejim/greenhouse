@@ -5,4 +5,5 @@ export const screen: NativeScreenEntry = {
   endpoint: '/api/skills',
   wideNote: 'skillHub.wideNote',
   collection: 'skills',
+  statuses: { active: null, archived: 'skillHub.archived' },
 };

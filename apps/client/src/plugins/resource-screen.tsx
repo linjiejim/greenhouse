@@ -10,7 +10,7 @@ import { useT } from '../lib/i18n';
 import { relativeTimeNow } from '../lib/time-words';
 import { useTheme, space } from '../theme';
 import type { NativeScreenEntry } from './native-types';
-import { resourceOf } from './resource-model';
+import { resourceOf, statusWords } from './resource-model';
 export function ResourceScreen({ entry, title }: { entry: NativeScreenEntry; title: string }) {
   const t = useT(),
     { colors: c } = useTheme();
@@ -27,7 +27,7 @@ export function ResourceScreen({ entry, title }: { entry: NativeScreenEntry; tit
       : (data?.rows ?? []).map((r) => ({
           id: r.id,
           title: r.title,
-          subtitle: [r.subtitle, r.status, r.time ? relativeTimeNow(r.time) : undefined].filter(Boolean).join(' · '),
+          subtitle: [r.subtitle, statusWords(r.status, entry.statuses, t), r.time ? relativeTimeNow(r.time) : undefined].filter(Boolean).join(' · '),
         }));
   return (
     <>

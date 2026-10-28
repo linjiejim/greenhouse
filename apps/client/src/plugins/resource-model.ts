@@ -50,6 +50,23 @@ export function humanizeKey(key: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+/**
+ * A row's status in words: the surface's own words for it, nothing for its usual state (`null`), or
+ * the humanized value rather than a raw field value.
+ */
+export function statusWords<K extends string>(
+  status: string | undefined,
+  words: Readonly<Record<string, K | null>> | undefined,
+  say: (key: K) => string,
+): string | undefined {
+  if (!status) return undefined;
+  if (words && Object.prototype.hasOwnProperty.call(words, status)) {
+    const key = words[status];
+    return key ? say(key) : undefined;
+  }
+  return humanizeKey(status);
+}
+
 function factsOf(value: Record<string, unknown>): ResourceFact[] {
   return Object.entries(value)
     .filter(([, v]) => v === null || ['string', 'number', 'boolean'].includes(typeof v))
