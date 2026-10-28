@@ -48,9 +48,9 @@ enum Shelf: String, CaseIterable, Identifiable {
 }
 
 struct Folder: Decodable, Identifiable, Hashable {
-  let id: Int
+  let id: String
   let name: String
-  let parent_id: Int?
+  let parent_id: String?
 }
 
 /// One shared item, copied into this extension's temporary directory.
@@ -92,7 +92,7 @@ struct ShareAPI {
     }
   }
 
-  func folders(shelf: Shelf, parent: Int?) async throws -> [Folder] {
+  func folders(shelf: Shelf, parent: String?) async throws -> [Folder] {
     var path = "/api/drive/folders?scope=kb&visibility=\(shelf.visibility)"
     if let parent { path += "&parent_id=\(parent)" }
     let (data, response) = try await URLSession.shared.data(for: request(path))
@@ -102,7 +102,7 @@ struct ShareAPI {
   }
 
   /// init → bytes (to the presigned URL, or through the API) → complete.
-  func upload(_ file: SharedFile, shelf: Shelf, folder: Int?) async throws {
+  func upload(_ file: SharedFile, shelf: Shelf, folder: String?) async throws {
     var body: [String: Any] = [
       "scope": "kb", "visibility": shelf.visibility, "name": file.name, "size": file.size, "content_type": file.mimeType,
     ]
@@ -110,7 +110,7 @@ struct ShareAPI {
     let (initData, initResponse) = try await URLSession.shared.data(for: request("/api/drive/files/init", method: "POST", json: body))
     try check(initResponse, initData)
     guard let started = try JSONSerialization.jsonObject(with: initData) as? [String: Any],
-      let fileId = started["file_id"] as? Int,
+      let fileId = started["file_id"] as? String,
       let mode = started["mode"] as? String,
       let uploadUrl = started["upload_url"] as? String
     else { throw ShareError.network }

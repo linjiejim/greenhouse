@@ -42,7 +42,7 @@ final class ShareViewModel: ObservableObject {
   /// Survives a failure: a retry uploads only the files that can still succeed.
   @Published private(set) var progress = UploadProgress(total: 0)
   /// Where the last attempt went, for "retry the rest".
-  private(set) var lastFolder: Int?
+  private(set) var lastFolder: String?
   private let items: [NSExtensionItem]
   let finish: (Bool) -> Void
 
@@ -56,7 +56,7 @@ final class ShareViewModel: ObservableObject {
 
   func name(_ index: Int) -> String { files?[index].name ?? "" }
 
-  func save(to folder: Int?) {
+  func save(to folder: String?) {
     guard let api, let files, !files.isEmpty, !progress.pending.isEmpty else { return }
     lastFolder = folder
     phase = .uploading
@@ -229,7 +229,7 @@ struct FailureView: View {
 
 struct FolderList: View {
   @ObservedObject var model: ShareViewModel
-  let parent: Int?
+  let parent: String?
   let title: String?
   @State private var folders: [Folder]? = nil
   @State private var failed = false
@@ -284,7 +284,7 @@ struct FolderList: View {
       .padding()
       .background(.bar)
     }
-    .task(id: "\(model.shelf.rawValue)-\(parent ?? 0)") {
+    .task(id: "\(model.shelf.rawValue)-\(parent ?? "")") {
       folders = nil
       failed = false
       do {
