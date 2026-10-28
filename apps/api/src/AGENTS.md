@@ -211,7 +211,7 @@
 ## Runtime and kill switches
 
 - `trusted-execution/kill-switches.ts` is the only parser: default on, invalid values fail closed, `/health.trusted_execution.invalid_env` names them; no switch edits `user_grants` or stops Chat.
-- Switches stay independent: `RUNTIME_CHAT_ADAPTER_ENABLED`, `RUNTIME_WORKER_ENABLED`, `RUNTIME_AUTOMATION_DRIVER_ENABLED`, `RUNTIME_NOTIFICATION_PROJECTOR_ENABLED`, `TASK_CENTER_ENABLED`, `RUNTIME_APPROVAL_INBOX_ENABLED`.
+- Switches stay independent: `RUNTIME_CHAT_ADAPTER_ENABLED`, `RUNTIME_WORKER_ENABLED`, `RUNTIME_AUTOMATION_DRIVER_ENABLED`, `RUNTIME_NOTIFICATION_PROJECTOR_ENABLED`, `RUNTIME_APPROVAL_INBOX_ENABLED`.
 - `/api/runtime` is a read model, not authorization: chat runs super-only, others by owner, every read and command fails closed by source domain; retired kinds are read-only; payloads are stored whole.
 - Chat is trace-only: create the run and `chat_turn` step before provider I/O, persist the transcript first; workers never claim chat; boot runs `reconcileInterruptedChatRuntimeRuns()` without replay.
 - Chat run sources prefer the persisted user message id (stateless turns: the ChatRun UUID); a terminal source is never reused.

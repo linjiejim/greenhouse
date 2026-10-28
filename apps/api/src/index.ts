@@ -118,11 +118,7 @@ import { createRuntimeNotificationProjector } from './notifications/runtime-proj
 import { automationDeliveryChannels, startNotificationDeliveryWorker } from './notifications/delivery-worker.js';
 import { mobilePushEnabled } from './notifications/push/config.js';
 import { createRuntimeDomainProjector } from './runtime/domain-projector.js';
-import {
-  requireTrustedExecutionSurface,
-  resolveTrustedExecutionSwitches,
-  trustedExecutionBootPlan,
-} from './trusted-execution/kill-switches.js';
+import { resolveTrustedExecutionSwitches, trustedExecutionBootPlan } from './trusted-execution/kill-switches.js';
 import { initServiceCatalog } from './config/services.js';
 import { initModelCatalog } from './config/models.js';
 // ws CJS/ESM interop — use namespace import for reliable access
@@ -272,8 +268,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/agent-access', createAgentAccessRoutes())
       .use('/api/runtime', requireInternal())
       .use('/api/runtime/*', requireInternal())
-      .use('/api/runtime', requireTrustedExecutionSurface(trustedExecutionPlan.taskCenter, 'task-center'))
-      .use('/api/runtime/*', requireTrustedExecutionSurface(trustedExecutionPlan.taskCenter, 'task-center'))
       .route('/api/runtime', runtimeRoutes)
       // Agent tool proxy (login access-token auth, revalidated against the internal user)
       .route('/api/agent', createAgentRoutes(toolRegistry))

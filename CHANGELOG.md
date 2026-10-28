@@ -37,6 +37,8 @@ Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
   tables). Fresh installs no longer create plugin tables; each plugin creates its own when
   enabled. 3.x databases upgrade in place and the API refuses a 3.x database until
   `pnpm db:migrate` has bridged it. 1.x and 2.x databases are refused; `migrate-from-1x` is removed.
+- `TASK_CENTER_ENABLED` is removed: `/api/runtime` is always on and `/health` drops
+  `surfaces.task_center`; `RUNTIME_APPROVAL_INBOX_ENABLED` alone switches the Approval Inbox.
 - `GET /api/sessions` caps every page at 200 and no longer accepts `include_eval`. Automations
   take delivery only as the `notify` object; the flat `notify_*` fields are ignored.
 

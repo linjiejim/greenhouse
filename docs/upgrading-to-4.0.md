@@ -152,6 +152,7 @@ database.
 | Kit `WidgetRecipe`, `defineExtension.workbenchRecipes` and tool `surface.workbench` are removed. | Delete them; they had no effect since 3.0. |
 | `@greenhouse/web/extension-kit`, `@greenhouse/ui/*` and `packages/contract` are no longer importable from plugins. | Use `@greenhouse/api/extension-kit`, `@greenhouse/types/*`, `@greenhouse/ui-tokens`. |
 | The Docker image contains only the universal client. | Nothing; the API serves it. |
+| `TASK_CENTER_ENABLED` is ignored: run details (`/api/runtime`) are always on, `/health` no longer reports `surfaces.task_center`, and the Approval Inbox depends only on `RUNTIME_APPROVAL_INBOX_ENABLED`. | Remove the variable; use `RUNTIME_APPROVAL_INBOX_ENABLED=0` to stop approvals. |
 
 What now breaks: installed iOS/Android apps from the 3.x line must be updated before they can use
 a 4.0 station; 4.0 clients (web, iOS, Android and desktop) cannot reach a 3.x station and ask for
