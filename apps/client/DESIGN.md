@@ -19,7 +19,7 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 - Centered route sheets (`sheet-edge.web.tsx`) use the same sizes; add a route to `LARGE_SHEETS` when it needs `lg`.
 - The command palette is the one top-anchored dialog: 640×480, 120 from the top.
 - Anchored menus and context menus are one surface: `MenuPanel` (`src/ui/menu.web.tsx`) through `NativeMenu` or `PlaceContext`. Rows are 32 tall with optional icon, check and shortcut; destructive items are red.
-- Edits happen in a sheet or dialog; the page underneath never changes behind them. A form dialog has one title bar, a scrolling body and a footer with Cancel and the primary action; Cmd/Ctrl+Enter submits.
+- Edits happen in a sheet or dialog; the page underneath never changes behind them. A form dialog has one title bar, a scrolling body and a footer with Cancel and the primary action; Cmd/Ctrl+Enter submits. Sheet forms (`FormChrome` + `NativeForm`) draw it on a wide window (`DialogFrameContext`, src/ui/dialog-frame.ts), with Enter in a field submitting and Esc cancelling through the discard check; below WIDE_MIN they stay phone sheets.
 - Every overlay restores focus when dismissed; Escape closes the top one.
 - Entry pages (activation, OAuth consent, a connector's sign-in return, a binding result) are one card on the brand canvas like sign-in, without the rail; the primary action is the accent button, the way back secondary.
 

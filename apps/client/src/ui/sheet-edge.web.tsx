@@ -9,6 +9,7 @@ import { DIALOG_SIZES, Overlay, hasInteractiveOverlay } from './overlay.web';
 import { INSPECTOR_MAX, INSPECTOR_MIN, INSPECTOR_WIDTH, wideLayout } from '../shell/wide-model';
 import { boundedInspectorWidth, inspectorRoute, inspectorCount } from '../shell/inspector-model';
 import { useInspector } from '../shell/inspector.web';
+import { DialogFrameContext } from './dialog-frame';
 
 type Route = { name: string; key: string; params?: object };
 /** Centered sheets that hold a document or a preview get the large dialog size. */
@@ -221,7 +222,9 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
             }}
           />
         ) : null}
-        <SheetFrame>{children}</SheetFrame>
+        <DialogFrameContext.Provider value={!inspector && layout.wide}>
+          <SheetFrame>{children}</SheetFrame>
+        </DialogFrameContext.Provider>
       </View>
     </View>
   );
