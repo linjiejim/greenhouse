@@ -378,3 +378,42 @@ test('automation design captures at 1440', async ({ page }) => {
     await agentEditor(page).getByRole('button', { name: '取消', exact: true }).click();
   }
 });
+
+test('an automation linked in a conversation opens over it; closing returns to the conversation', async ({ page }) => {
+  const LINKED = 'tsk_01JB2Y8Z9QW3E4R5T6Y7V8H9T1';
+  const base = await installPlaces(page);
+  const message = (id: string, role: string, content: string, seq: number) => ({
+    id,
+    role,
+    content,
+    seq,
+    pipeline: 'null',
+    images: null,
+    references_: null,
+    created_at: at,
+    parts: {},
+  });
+  // what automation_mutation's result links (`url`)
+  base.station.messages.set('policy-chat', [
+    message('ask-water', 'user', '每周一早上提醒我浇花', 1),
+    message('made-water', 'assistant', `已创建 [浇花提醒](#/automations?id=${LINKED})。`, 2),
+  ]);
+  await page.route('**/api/tasks/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === `/api/tasks/${LINKED}`)
+      return route.fulfill({ json: { task: { ...base.automation, id: LINKED, name: '浇花提醒' } } });
+    if (path === `/api/tasks/${LINKED}/runs`) return route.fulfill({ json: { entries: [] } });
+    return route.fallback();
+  });
+  // settle on the fixture's member first, so the conversation is read for it
+  await ready(page, '/');
+  await expect(page.getByRole('heading', { name: /Jim Lin/ })).toBeVisible();
+  await ready(page, '/chat?session=policy-chat');
+  await page.getByTestId('client-main').getByText('浇花提醒').first().click();
+  const sheet = page.getByTestId('client-inspector').filter({ visible: true });
+  await expect(sheet).toContainText('浇花提醒');
+  await expect(page).toHaveURL(new RegExp(`/sheet/automation\\?id=${LINKED}`));
+  await page.keyboard.press('Escape');
+  await expect(sheet).toHaveCount(0);
+  await expect(page).toHaveURL(/\/chat\?session=policy-chat/);
+});
