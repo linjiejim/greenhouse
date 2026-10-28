@@ -191,13 +191,6 @@ export const LAZY_TOOL_IDS = new Set<string>([
 
 const toolMetaMap = new Map(TOOL_DEFINITIONS.map((t) => [t.id, t]));
 
-/** Get tool description for use in AI SDK tool({ description }). Single source of truth. */
-export function getToolDescription(id: string): string {
-  const meta = toolMetaMap.get(id);
-  if (!meta) throw new Error(`Unknown tool ID: ${id}`);
-  return meta.description;
-}
-
 /** Get metadata for a single tool by ID. */
 export function getToolMeta(id: string): ToolMeta | undefined {
   return toolMetaMap.get(id);

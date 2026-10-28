@@ -41,8 +41,3 @@ export function registerSearchSources(defs: readonly SearchSource[]): void {
 export function extensionSearchSources(): readonly SearchSource[] {
   return sources;
 }
-
-/** Test hook — forget sources registered by a suite. */
-export function _resetExtensionSearchSources(): void {
-  sources.length = 0;
-}

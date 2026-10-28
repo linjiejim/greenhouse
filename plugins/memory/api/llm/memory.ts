@@ -7,7 +7,7 @@ import { type UserMemoryRow } from '../schema.js';
  * - buildMemoryIndexBlock(): the block injected into a system prompt. Titles
  *   only, within a hard budget — bodies are pulled on demand by the `memory`
  *   tool. Injection is NOT a use: it never touches last_used_at.
- * - validateMemoryText(): shared write-side guard for the tool and the REST API.
+ * - validateMemoryText() (in memory-limits.ts): the write-side guard for the tool and the REST API.
  * - runMemoryConsolidation(): weekly upkeep — merge duplicates, supersede
  *   contradictions, demote stale rows. It never invents new memories.
  *
@@ -30,18 +30,6 @@ import { MEMORY_INDEX_BUDGET_CHARS, validateMemoryText } from './memory-limits.j
 import { userHasFeature } from '@greenhouse/api/extension-kit';
 import type { UserRole } from '@greenhouse/api/extension-kit';
 import { createProviderAttemptBudgetHook } from '@greenhouse/api/extension-kit';
-// ─── Limits & write-side validation ─────────────────────
-// Limits/validation live in a zero-import leaf module so tool descriptions can
-// interpolate them at module-eval time without risking an import cycle.
-export {
-  MEMORY_INDEX_BUDGET_CHARS,
-  MEMORY_TITLE_MAX,
-  MEMORY_CONTENT_MAX,
-  MEMORY_DORMANT_AFTER_DAYS,
-  validateMemoryText,
-  redactEvidence,
-  type MemoryTextValidation,
-} from './memory-limits.js';
 /** Memories older than this get a "recorded N ago" marker so the model can discount them. */
 const STALE_MARKER_AFTER_DAYS = 30;
 /** Users below this many active memories aren't worth a consolidation call. */

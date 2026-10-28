@@ -12,7 +12,6 @@ import { releaseTriple } from '@greenhouse/utils/semver';
 import { REPO_ROOT } from '../paths.js';
 
 export { EXTENSION_SDK, checkExtensionCompat } from '@greenhouse/utils/extension-compat';
-export type { ExtensionCompatDeclaration } from '@greenhouse/utils/extension-compat';
 
 /**
  * The running Greenhouse version: `APP_VERSION` when it is a real version (the

@@ -40,7 +40,6 @@ export type {
   ShareItem,
   ShareInfo,
   StreamingEvent,
-  StreamEventCallbacks,
   TextDeltaEvent,
   TitleEvent,
   FinishEvent,
@@ -48,7 +47,7 @@ export type {
   ErrorEvent,
 } from './api.js';
 
-export { formatTokens, formatDuration, handleStreamEvent, readNdjsonStream } from './api.js';
+export { formatTokens, formatDuration } from './api.js';
 
 // Feature flags (per-user experimental feature registry)
 export type { FeatureFlag, FeatureKey } from './features.js';

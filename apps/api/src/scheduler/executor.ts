@@ -345,17 +345,6 @@ export async function completeTaskExecution(
   }
 }
 
-export async function notifyCompletedTaskExecution(
-  task: ScheduledTaskRow,
-  sessionId: string,
-  summary: string,
-  db: DatabaseProvider = getDb(),
-  toolCallCount = 0,
-): Promise<void> {
-  if (isNoUpdateAnswer(task.quiet_when_empty, summary, toolCallCount)) return;
-  await notifyTaskResult(db, task, { status: 'completed', summary, sessionId });
-}
-
 export async function failTaskExecution(
   task: ScheduledTaskRow,
   sessionId: string,
@@ -393,15 +382,6 @@ export async function recordInterruptedTaskSession(sessionId: string, db: Databa
       '请核对中断前可能已经发生的写入，需要时再手动运行一次。',
   });
   await db.sessions.touch(sessionId);
-}
-
-export async function cancelTaskExecution(
-  task: ScheduledTaskRow,
-  sessionId: string,
-  db: DatabaseProvider = getDb(),
-): Promise<void> {
-  await recordCanceledTaskSession(sessionId, db);
-  await db.scheduledTasks.updateRunStatus(task.id, 'canceled', calculateNextRun(task.schedule, task.timezone));
 }
 
 export async function recordCanceledTaskSession(sessionId: string, db: DatabaseProvider = getDb()): Promise<void> {

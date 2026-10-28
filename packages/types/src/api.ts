@@ -661,25 +661,6 @@ export interface ChatRunInfo {
   next_seq: number;
 }
 
-// ─── Stream Event Callbacks ──────────────────────────────
-
-export interface StreamEventCallbacks {
-  onTextDelta?: (text: string) => void;
-  onReasoningDelta?: (text: string) => void;
-  onToolCallStart?: (id: string, toolName: string) => void;
-  onToolCallDelta?: (id: string, delta: string) => void;
-  onToolCallEnd?: (id: string) => void;
-  onToolCall?: (toolName: string, input: unknown, id?: string) => void;
-  onToolResult?: (id: string, toolName: string, output: unknown) => void;
-  onSession?: (sessionId: string) => void;
-  onFinish?: (finishReason?: string, usage?: FinishEvent['usage']) => void;
-  onError?: (error: string) => void;
-  onStepStart?: () => void;
-  onStepFinish?: (finishReason?: string, usage?: FinishEvent['usage']) => void;
-  onTitle?: (title: string) => void;
-  onSource?: (data: Record<string, unknown>) => void;
-}
-
 // ─── Formatting Utilities ────────────────────────────────
 
 export function formatTokens(n: number): string {
@@ -691,62 +672,6 @@ export function formatTokens(n: number): string {
 export function formatDuration(ms: number): string {
   if (ms >= 1000) return (ms / 1000).toFixed(1) + 's';
   return ms + 'ms';
-}
-
-// ─── Stream Event Dispatcher ─────────────────────────────
-
-/**
- * Dispatch a single streaming event to the appropriate callback.
- * UI-framework-agnostic dispatcher used by the browser Web client.
- */
-export function handleStreamEvent(event: StreamingEvent, cbs: StreamEventCallbacks): void {
-  switch (event.type) {
-    case 'text-delta':
-      cbs.onTextDelta?.(event.text);
-      break;
-    case 'reasoning-delta':
-      cbs.onReasoningDelta?.(event.text);
-      break;
-    case 'tool-call-start':
-      cbs.onToolCallStart?.(event.id, event.toolName);
-      break;
-    case 'tool-call-delta':
-      cbs.onToolCallDelta?.(event.id, event.delta);
-      break;
-    case 'tool-call-end':
-      cbs.onToolCallEnd?.(event.id);
-      break;
-    case 'tool-call':
-      cbs.onToolCall?.(event.toolName, event.input, event.id);
-      break;
-    case 'tool-result':
-      cbs.onToolResult?.(event.id, event.toolName, event.output);
-      break;
-    case 'session':
-      cbs.onSession?.(event.session_id);
-      break;
-    case 'finish':
-      cbs.onFinish?.(event.finishReason, event.usage);
-      break;
-    case 'error':
-      cbs.onError?.(event.error);
-      break;
-    case 'step-start':
-      cbs.onStepStart?.();
-      break;
-    case 'step-finish':
-      cbs.onStepFinish?.(event.finishReason, event.usage);
-      break;
-    case 'title':
-      cbs.onTitle?.(event.title);
-      break;
-    case 'source':
-      cbs.onSource?.(event as Record<string, unknown>);
-      break;
-    case 'ping':
-      // Keepalive filler — its only job was to put bytes on the wire.
-      break;
-  }
 }
 
 // ─── Scheduled Tasks ─────────────────────────────────────
@@ -840,68 +765,4 @@ export interface AutomationRunEntry {
      */
     outcome_unknown: boolean;
   } | null;
-}
-
-// ─── NDJSON Stream Reader ────────────────────────────────
-
-/**
- * Read a ReadableStream line-by-line, parse each line as JSON.
- * Platform-agnostic — uses ReadableStreamDefaultReader (available in Web and RN).
- */
-export async function* readNdjsonStream<T>(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<T> {
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    for (const line of lines) {
-      if (line.trim()) {
-        try {
-          yield JSON.parse(line);
-        } catch (_err) {
-          /* skip malformed lines */
-        }
-      }
-    }
-  }
-  if (buffer.trim()) {
-    try {
-      yield JSON.parse(buffer);
-    } catch (_err) {
-      /* skip */
-    }
-  }
-}
-
-/**
- * Chat-specific completion guard layered on top of the generic NDJSON parser.
- *
- * A transport can reach EOF after yielding valid partial JSON lines. That is
- * not a successful chat turn unless the server explicitly emitted `finish`.
- * Keeping this separate preserves readNdjsonStream for non-chat NDJSON users.
- */
-export async function* requireChatStreamFinish(events: AsyncIterable<StreamingEvent>): AsyncGenerator<StreamingEvent> {
-  let sawFinish = false;
-  let streamError: string | undefined;
-
-  for await (const event of events) {
-    yield event;
-    if (event.type === 'error') {
-      streamError = event.error || 'Chat stream failed before completion';
-    }
-    if (event.type === 'finish') {
-      sawFinish = true;
-    }
-  }
-
-  if (streamError) {
-    throw new Error(streamError);
-  }
-  if (!sawFinish) {
-    throw new Error('Chat stream ended before completion. Please retry.');
-  }
 }

@@ -16,8 +16,3 @@ export function isExtensionPublicPath(path: string): boolean {
   if (exact.has(path)) return true;
   return prefixes.some((prefix) => path.startsWith(prefix));
 }
-
-export function _resetExtensionPublicPaths(): void {
-  exact.clear();
-  prefixes.length = 0;
-}
