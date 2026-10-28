@@ -112,7 +112,7 @@
 
 ### 保留期
 
-- 每日清理只在 `services/retention.ts`（`db.retention.run()`）：run_events 30 天（只删已结算 Run、且没有待投递 outbox 的事件）、run_outbox 投递后 7 天、request_log 30 天、feishu_receipts 7 天、budget_ledger 13 个月、notification_deliveries 终态后 7 天，以及过期的 refresh token、OAuth code / token、login_states、rate_limits、过期 30 天的 password_links。
+- 每日清理只在 `services/retention.ts`（`db.retention.run()`）：run_events 30 天（只删已结算 Run、且没有待投递 outbox 的事件）、run_outbox 投递后 7 天、request_log 30 天、feishu_receipts 7 天、budget_ledger 13 个月、notification_deliveries 终态后 7 天、client_reports 90 天且最多 10,000 行，以及过期的 refresh token、OAuth code / token、login_states、rate_limits、过期 30 天的 password_links。
 - 删除分批（每条语句 `batchSize` 行，`maxBatches` 封顶），不持长锁。
 - 调度在 `apps/api/src/upkeep/retention.ts`：启动 10 分钟后首跑、之后每天一次；20 小时内审计里已有一次就跳过；每次结果写一条 `audit_events`（`platform` / `retentionCleanup`，summary 是各表删除行数）。
 - 改窗口改 `RETENTION_POLICY`，同步 db-schema.md「保留期」。

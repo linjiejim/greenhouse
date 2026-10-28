@@ -16,3 +16,4 @@ export * from './audit.js';
 export * from './prompts.js';
 export * from './workspace.js';
 export * from './connectors.js';
+export * from './client-reports.js';

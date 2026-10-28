@@ -42,7 +42,7 @@ describe('coreTableNames', () => {
     expect(declared).toContain('conversations');
     expect(derived).toEqual(new Set(declared));
     expect(declared.filter((name) => !derived.has(name))).toEqual([]);
-    expect(derived.size).toBe(49);
+    expect(derived.size).toBe(50);
   });
 
   it('includes the extension lane bookkeeping table and nets drops', () => {
@@ -64,6 +64,8 @@ describe('core chains', () => {
     expect(baseline?.tag).toBe('0000_v4_baseline');
     expect(baseline!.folderMillis).toBeGreaterThan(ARCHIVED_3X.at(-1)![2]);
     for (const migration of later) expect(migration.folderMillis).toBeGreaterThan(baseline!.folderMillis);
-    expect(new Set(baseline!.createsTables)).toEqual(coreTableNames());
+    expect(baseline!.createsTables).toHaveLength(49);
+    const created = new Set(['extension_migrations', ...[baseline!, ...later].flatMap((m) => m.createsTables)]);
+    expect(created).toEqual(coreTableNames());
   });
 });

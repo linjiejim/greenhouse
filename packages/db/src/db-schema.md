@@ -2,7 +2,7 @@
 
 > 事实源：`packages/db/src/schema/*.ts`（每个域一个文件，文件头写着本域的表）。迁移链从 `packages/db/migrations/0000_v4_baseline.sql` 起步；3.x 的 0000–0009 归档在 `migrations/archive-3x/`，只供 3.x 库原地桥接。
 >
-> 核心 schema **49 张表**（含 `extension_migrations`），新装只建这些；十个数据插件启用时各自建 24 张表（Example 另有 1 张）。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
+> 核心 schema **50 张表**（含 `extension_migrations`；baseline 建 49 张，`0002_client_reports` 加 `client_reports`），新装只建这些；十个数据插件启用时各自建 24 张表（Example 另有 1 张）。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
 
 ## 设计约定
 
@@ -146,6 +146,12 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `prices` | PK `id`；UK `(kind, target, provider)` | super 定的价，覆盖 models.yaml / services.yaml；每百万 token 价或 `unit_price` |
 | `module_usage_daily` | PK `(day, kind, key, client)` | 每日模块计数（`tool_call` / `page_open`），不带成员与内容 |
 
+### 客户端错误报告（client-reports.ts）
+
+| 表 | 主键 / 唯一 | 用途与关键列 |
+|---|---|---|
+| `client_reports` | PK `id`；UK `(user_id, client_report_id)` | 成员的 App 交来的错误（`POST /api/client-reports`），super 在 Admin › 客户端错误按 `fingerprint`（名称 + 归一化消息）分组读；`fatal`、`source`（global / promise / boundary / window / unclean_exit）、`name`、`message`、`stack`、`route`（只有路径）、`platform`（ios / android / web / desktop）、`os_version`、`app_version`、`app_build`、`api_level`、`occurred_at`（设备时钟）；文本只存脱敏后的，不存正文与凭证 |
+
 ### 审计（audit.ts）
 
 | 表 | 主键 / 唯一 | 用途与关键列 |
@@ -182,6 +188,7 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 - `request_log`：30 天
 - `budget_ledger`：13 个月
 - `notification_deliveries`：终态后 7 天
+- `client_reports`：90 天，且只留最新 10,000 行
 - 过期凭证：`auth_refresh_tokens`、`oauth_codes`、`oauth_tokens`、`login_states`、`rate_limits`；`password_links` 过期 30 天后
 
 其余表（会话、Run、通知、审计、用量事实）不自动删除。
@@ -258,6 +265,7 @@ Chat 与 Automation 共用的执行内核：Run / Step 走 version CAS，worker 
 | `budget_ledger.account_id` / `reservation_id` | `budgets.id` / `budget_reservations.id` | append-only |
 | `audit_events.actor_id` / `on_behalf_of_user_id` / `client_id` / `record_id` | 主体 / `users.id` / `oauth_clients.id` / 业务记录 | 审计比主体长寿 |
 | `request_log.user_id` | `users.id` | 请求日志 |
+| `client_reports.user_id` | `users.id` | 遥测，按保留期删 |
 | `prompts.user_id` / `source_session_id` | `users.id` / `conversations.id` | 任务比来源会话长寿 |
 | `provider_connections.provider`（`mcp:<id>`） | `mcp_connectors.id` | 成员的连接器凭证；改地址 / 认证方式与删除连接器时同一事务删除 |
 | `runs.source_id`（`kind='connector_write'`） | `mcp_connectors.id` | 连接器写操作记录 |
@@ -346,6 +354,7 @@ erDiagram
     oauth_clients ||--o{ audit_events : "逻辑 client_id"
     run_tool_calls ||--o| audit_events : "逻辑 platform_audit_event_id"
     users ||--o{ request_log : "逻辑 user_id"
+    users ||--o{ client_reports : "逻辑 user_id"
 ```
 
 ## 全文搜索

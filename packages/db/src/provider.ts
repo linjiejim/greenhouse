@@ -47,6 +47,7 @@ import { createWorkspaceSettingService } from './services/workspace-settings.js'
 import { createOAuthLoginStateService, createRateLimitService } from './services/security-state.js';
 import { createRetentionService } from './services/retention.js';
 import { createMcpConnectorService } from './services/mcp-connectors.js';
+import { createClientReportService } from './services/client-reports.js';
 
 /** Every table the core schema defines, except the migration bookkeeping it must keep. */
 function coreTableNames(): string[] {
@@ -97,6 +98,7 @@ function createDatabaseProvider(db: Db, client: DbClient['client'] | null) {
     retention: createRetentionService(db),
     oauthLoginStates: createOAuthLoginStateService(db),
     mcpConnectors: createMcpConnectorService(db),
+    clientReports: createClientReportService(db),
 
     /** Health check — verifies DB connection is alive. */
     async healthCheck(): Promise<{ ok: boolean; latencyMs: number }> {

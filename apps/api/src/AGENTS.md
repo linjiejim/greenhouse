@@ -261,6 +261,14 @@
 - Retention rules live in `db.retention.run()` plus plugin `retention`; `scheduleRetention()` runs daily, skips within 20h of the last audited run and never throws.
 - Rate-limit buckets, OAuth login states and MCP outputs stay on the five-minute upkeep in `index.ts`, each sweep failing alone.
 
+## Client error reports
+
+- `POST /api/client-reports` (`routes/client-reports.ts`, internal members) takes ≤20 reports and ≤64KB per batch, 20 batches per member per 10 minutes (route-local `checkRateLimit`); answers 202 `{ stored, duplicates, rejected }`.
+- `GET /api/admin/client-reports?days=7|30|90` is super only: groups by `fingerprint` (name + normalized message), newest first, ≤100 groups.
+- Reports carry error name/message/stack, route path, app version/build, platform/OS and station API level; never message bodies, document text, credentials or URL queries.
+- Every entry passes `parseClientReport` (`@greenhouse/types/client-reports`, vendored by the client), which redacts and cuts again; a bad entry drops alone; `(user_id, client_report_id)` stores a resend once.
+- Retention is 90 days and the newest 10,000 rows (`db.retention`); reports are telemetry, never authorization or audit.
+
 ## Plugin host and SDK 2 runtime
 
 - Plugins import only `@greenhouse/api/extension-kit` (snapshot-locked by `__tests__/extension-kit.snapshot.test.ts`); `plugin-host/compiled.generated.ts` comes from `pnpm plugins:sync`, never edited or committed.

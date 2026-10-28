@@ -45,6 +45,7 @@ export default defineConfig({
       '@greenhouse/types/search': resolve(__dirname, 'packages/types/src/search.ts'),
       '@greenhouse/types/notification': resolve(__dirname, 'packages/types/src/notification.ts'),
       '@greenhouse/types/push': resolve(__dirname, 'packages/types/src/push.ts'),
+      '@greenhouse/types/client-reports': resolve(__dirname, 'packages/types/src/client-reports.ts'),
       '@greenhouse/types/metering': resolve(__dirname, 'packages/types/src/metering.ts'),
       '@greenhouse/types/email': resolve(__dirname, 'packages/types/src/email.ts'),
       '@greenhouse/types/discriminators': resolve(__dirname, 'packages/types/src/discriminators.ts'),

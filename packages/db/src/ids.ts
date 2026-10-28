@@ -73,6 +73,7 @@ export const ID_PREFIX = {
   prompt: 'prm',
   memory: 'mem',
   mcpConnector: 'mcc',
+  clientReport: 'crp',
 } as const;
 export type IdKind = keyof typeof ID_PREFIX;
 
