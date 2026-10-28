@@ -59,6 +59,12 @@ describe('vendored workspace code', () => {
     );
   });
 
+  it('src/shared/client-reports.ts is a verbatim copy of packages/types/src/client-reports.ts', () => {
+    expect(statementTexts(parse(`${MOBILE}/shared/client-reports.ts`))).toEqual(
+      statementTexts(parse('packages/types/src/client-reports.ts')),
+    );
+  });
+
   it('src/shared/client-routes.ts is a verbatim copy of packages/types/src/client-routes.ts', () => {
     expect(statementTexts(parse(`${MOBILE}/shared/client-routes.ts`))).toEqual(
       statementTexts(parse('packages/types/src/client-routes.ts')),

@@ -2,7 +2,8 @@
  * Shared frames for the custom fence blocks:
  *  - `BlockBoundary` — blocks render model-authored data; one that throws
  *    shows its source as code instead of taking the conversation down (web
- *    parity: RichMarkdown's per-block boundary).
+ *    parity: RichMarkdown's per-block boundary); the error goes to the
+ *    station's client error reports (src/reports).
  *  - `PendingBlock` — a rich fence whose closing ``` hasn't streamed in yet:
  *    a quiet placeholder card instead of half-written JSON / HTML, about as
  *    tall as the block it stands in for — swapping a one-line placeholder for
@@ -13,12 +14,17 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { makeStyles, radius, space, squircle, typo, useTheme } from '../../theme';
 import { Spinner } from '../../ui/core';
+import { reportError } from '../../reports/client-reports';
 
 export class BlockBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
 
   static getDerivedStateFromError(): { failed: boolean } {
     return { failed: true };
+  }
+
+  componentDidCatch(error: unknown): void {
+    reportError(error);
   }
 
   render(): ReactNode {

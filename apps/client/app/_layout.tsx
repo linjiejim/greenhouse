@@ -1,3 +1,5 @@
+// first: errors are caught from the first module on (src/reports)
+import { useClientReports } from '../src/reports/client-reports';
 import '../src/plugins/store';
 import { clearHandoffs } from '../src/lib/handoff';
 /**
@@ -152,6 +154,7 @@ export default function RootLayout() {
   useAccountLanguage();
   useAccountTextSize();
   useOutboxFlush();
+  useClientReports();
 
   // Pushes (src/push): this phone's registration per signed-in station, opening a tapped
   // notification once the routes are up (switching station first when it came from
