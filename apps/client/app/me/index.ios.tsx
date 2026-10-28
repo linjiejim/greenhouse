@@ -48,11 +48,14 @@ import { useTheme } from '../../src/theme';
 import { TEXT_STEP_NAMES, TEXT_STEPS, type TextStep } from '../../src/theme/type-scale';
 import { AgentAvatar } from '../../src/ui/avatar';
 import { FormNavRow, NativeForm } from '../../src/ui/native-form';
+import { hasPlugin } from '../../src/plugins/manifest';
+import { useStationManifest } from '../../src/plugins/store';
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 
 export default function Me() {
   const t = useT();
+  const manifest = useStationManifest((s) => s.data);
   const { hex } = useTheme();
   const router = useRouter();
   const s = useSettings();
@@ -196,7 +199,9 @@ export default function Me() {
           <LabeledContent label={t('settings.update')}>
             <Text>{s.update}</Text>
           </LabeledContent>
-          <FormNavRow label={t('feedback.title')} value="" onPress={() => router.push('/me/feedback')} />
+          {hasPlugin(manifest, 'feedback') ? (
+            <FormNavRow label={t('feedback.title')} value="" onPress={() => router.push('/me/feedback')} />
+          ) : null}
         </Section>
 
         <Section>

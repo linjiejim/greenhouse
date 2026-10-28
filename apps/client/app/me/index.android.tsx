@@ -25,9 +25,12 @@ import {
   FormValueRow,
   NativeForm,
 } from '../../src/ui/native-form.android';
+import { hasPlugin } from '../../src/plugins/manifest';
+import { useStationManifest } from '../../src/plugins/store';
 
 export default function Me() {
   const t = useT();
+  const manifest = useStationManifest((s) => s.data);
   const m = useM3();
   const router = useRouter();
   const s = useSettings();
@@ -136,7 +139,9 @@ export default function Me() {
         <FormSection title={t('settings.about')} footer={t('settings.footer')}>
           <FormValueRow label={t('settings.version')} value={s.version || '—'} />
           <FormValueRow label={t('settings.update')} value={s.update} />
-          <FormNavRow label={t('feedback.title')} icon="comment" onPress={() => router.push('/me/feedback')} />
+          {hasPlugin(manifest, 'feedback') ? (
+            <FormNavRow label={t('feedback.title')} icon="comment" onPress={() => router.push('/me/feedback')} />
+          ) : null}
         </FormSection>
 
         <FormSection>

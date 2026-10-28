@@ -47,11 +47,14 @@ import { TEXT_STEP_NAMES, TEXT_STEPS, type TextStep } from '../theme/type-scale'
 import { AgentAvatar, Avatar } from '../ui/avatar';
 import { FormNavRow, NativeForm } from '../ui/native-form';
 import { WIDE_MIN } from '../shell/wide-model';
+import { hasPlugin } from '../plugins/manifest';
+import { useStationManifest } from '../plugins/store';
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 
 export default function Me() {
   const t = useT();
+  const manifest = useStationManifest((s) => s.data);
   const { hex } = useTheme();
   const router = useRouter();
   const s = useSettings();
@@ -191,7 +194,9 @@ export default function Me() {
           <LabeledContent label={t('settings.update')}>
             <Text>{s.update}</Text>
           </LabeledContent>
-          <FormNavRow label={t('feedback.title')} value="" onPress={() => router.push('/me/feedback')} />
+          {hasPlugin(manifest, 'feedback') ? (
+            <FormNavRow label={t('feedback.title')} value="" onPress={() => router.push('/me/feedback')} />
+          ) : null}
         </Section>
 
         <Section>
