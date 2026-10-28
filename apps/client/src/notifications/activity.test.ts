@@ -30,9 +30,11 @@ describe('team activity rows', () => {
 
   it('titles by the object, then the action', () => {
     expect(activityTitle(item())).toBe('Ship v3');
-    expect(activityTitle(item({ target: { id: '9', label: null, url: null } }))).toBe('#9');
+    expect(activityTitle(item({ target: { id: 'doc_01M6', label: null, url: null } }))).toBe('Update task');
+    expect(activityTitle(item({ target: { id: '9', label: null, url: null }, action_title: null }))).toBe('#9');
     expect(activityTitle(item({ target: null }))).toBe('Update task');
-    expect(activityTitle(item({ target: null, action_title: null }))).toBe('updateTask');
+    expect(activityTitle(item({ target: null, action_title: null, action: 'updateWorkspaceSettings' }))).toBe('Update workspace settings');
+    expect(activityTitle(item({ target: null, action_title: null, action: 'task.update' }))).toBe('task.update');
   });
 
   it('says who did it, through which agent, and the verb', () => {
