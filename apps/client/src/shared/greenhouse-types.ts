@@ -52,7 +52,7 @@ export interface Bootstrap {
   /** A data URL (or null). */
   logo: string | null;
   theme_tokens: Record<string, string> | null;
-  /** The level of the API the phone app relies on; absent on servers before mobile push. */
+  /** The level of the API the client relies on (absent when the body is not a 4.0 station's). */
   mobile_api?: number;
 }
 
@@ -325,8 +325,8 @@ export interface TableField {
   type: TableFieldType | string;
   required: boolean;
   is_primary: boolean;
-  /** `{ options: [{ id, label, color? }] }` for selects: an object from tables v2 stations, JSON text from older ones. */
-  config: Record<string, unknown> | string | null;
+  /** `{ options: [{ id, label, color? }] }` for selects. */
+  config: Record<string, unknown> | null;
   position: number;
   archived_at: string | null;
 }
@@ -433,8 +433,6 @@ export interface ChatSession {
   is_owner?: boolean;
   pinned?: boolean;
   pin_sort?: number;
-  /** The start of the newest member or assistant message (newer stations only; raw Markdown). */
-  last_message?: string | null;
 }
 
 export interface ChatMessage {
@@ -480,6 +478,9 @@ export interface SearchGroup {
     title: string;
     subtitle?: string | null;
     sessionId?: string;
+    /** A conversation hit's last activity (ISO). */
+    updatedAt?: string;
+    automationId?: string;
     ref?: { kind: string; id: string; slug?: string };
   }[];
 }

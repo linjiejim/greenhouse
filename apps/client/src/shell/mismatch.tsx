@@ -1,14 +1,12 @@
 /**
- * What the app shows instead of itself when the active station speaks another API
- * (src/api/compat.ts): a server older than the API level this app needs asks for a server update;
- * a server of another Greenhouse line cannot be used by this app. Never a white screen: the
+ * What the app shows instead of itself when the active station is older than the API level this
+ * app needs (src/api/bootstrap.ts): it asks for a station update. Never a white screen: the
  * station's name, why, and the way out — retry (after updating), or another station.
  */
 
 import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { ApiMismatch } from '../api/compat';
 import { useT } from '../lib/i18n';
 import { useActiveStation } from '../stations/use-active-station';
 import { useAuth } from '../store/auth';
@@ -18,23 +16,22 @@ import { Icon } from '../ui/core';
 import { StationsForm } from '../stations/stations-form';
 import { useFontScaleKey } from '../ui/font-scale';
 
-export function MismatchScreen({ mismatch }: { mismatch: ApiMismatch }) {
+export function MismatchScreen() {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const t = useT();
   const insets = useSafeAreaInsets();
   const station = useActiveStation();
   const fontKey = useFontScaleKey();
-  const unsupported = mismatch === 'unsupported';
   return (
     <View style={[styles.root, { paddingTop: insets.top + space.xxl }]}>
       <ScrollView style={styles.messageScroll} contentContainerStyle={styles.message}>
-        <Icon name={unsupported ? 'alert' : 'server'} size={40} color={c.accent} />
+        <Icon name="server" size={40} color={c.accent} />
         <Text key={`title:${fontKey}`} style={styles.title} accessibilityRole="header">
-          {t(unsupported ? 'mismatch.unsupportedTitle' : 'mismatch.serverTitle')}
+          {t('mismatch.serverTitle')}
         </Text>
         <Text key={`body:${fontKey}`} style={styles.body}>
-          {t(unsupported ? 'mismatch.unsupportedBody' : 'mismatch.serverBody', { station: station?.name ?? '' })}
+          {t('mismatch.serverBody', { station: station?.name ?? '' })}
         </Text>
         <NativeButton
           label={t('common.retry')}

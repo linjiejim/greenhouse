@@ -3,8 +3,8 @@ import { nativeScreens } from './native-registry';
 export function nativeRoute(screen: string): string | undefined {
   return nativeScreens[screen]?.route;
 }
-export function nativeVisible(state: ManifestState, screen: string, legacyAllowed = true): boolean {
-  return builtinVisible(state, screen, legacyAllowed);
+export function nativeVisible(state: ManifestState, screen: string): boolean {
+  return builtinVisible(state, screen);
 }
 export function pluginHref(plugin: string, page: { id: string; kind: string; screen?: string }): string {
   return (

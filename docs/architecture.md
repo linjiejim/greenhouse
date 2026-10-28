@@ -63,8 +63,8 @@ Retro 依赖 Knowledge。关闭插件会撤下其工具、接口、页面与注�
 标记）与动作。页面有 `native`、
 `entity-list`、`entity-detail`、`settings-form`、`embed` 五种；`parent: 'administration'` 的
 native 页面或设置表单是 Admin 分区，只发给 super。清单只决定显示什么，请求时仍逐次鉴权。
-`/api/bootstrap` 在登录前提供品牌与 `mobile_api: 4`（`CLIENT_API_LEVEL`）；客户端自身最低要求 3
-（`apps/client/src/api/compat.ts`），清单为 v1 或不存在时按内置规则显示入口。
+`/api/bootstrap` 在登录前提供品牌与 `mobile_api: 4`（`CLIENT_API_LEVEL`）；客户端同样要求 4
+（`apps/client/src/api/bootstrap.ts`），低于它的 3.x 工作站只显示「需要升级」。
 
 ## 客户端与托管
 

@@ -259,8 +259,7 @@ export const en = {
     urlLabel: 'Server address',
     invalidUrl: 'Enter a valid server address',
     unreachable: 'Could not reach a Greenhouse server at this address',
-    unsupported: 'This server runs a Greenhouse version this app does not support.',
-    serverOutdated: 'This server runs an older Greenhouse that this app cannot use yet. Ask your admin to update it.',
+    serverOutdated: 'This server runs a Greenhouse older than 4.0, which this app cannot use. Ask your admin to update it.',
     deleteTitle: 'Remove station?',
     deleteHint: '“{name}” and its saved sign-in will be removed from this device.',
     delete: 'Remove',
@@ -274,12 +273,9 @@ export const en = {
     connectionFailed: 'Could not connect to this station. Retry or choose another station.',
   },
   mismatch: {
-    unsupportedTitle: 'Not supported by this app',
-    unsupportedBody:
-      '{station} runs a Greenhouse version this app does not support. Choose another station, or use the web app.',
     serverTitle: 'This server needs an update',
     serverBody:
-      '{station} runs an older Greenhouse than this app needs. Ask your admin to update it, or choose another station.',
+      '{station} runs a Greenhouse older than 4.0, which this app cannot use. Ask your admin to update the station, or choose another one.',
   },
   nav: {
     sidebar: 'Sidebar',
@@ -627,7 +623,7 @@ export const en = {
     hint: 'The app version, this station’s address and the last error the app showed go along, so the team can follow up.',
     thanks: 'Thanks — the team will read it',
     failed: 'Couldn’t send the feedback',
-    unsupported: 'This station is too old to take feedback from the app.',
+    unsupported: 'Feedback is turned off on this station.',
   },
   me: {
     title: 'Me',
@@ -824,7 +820,7 @@ export const en = {
     emptyHint: 'Your team adds connectors on the web; your own ones too.',
     loadFailed: 'Couldn’t load connections',
     unavailable: 'Connectors aren’t available',
-    unavailableHint: 'Your account can’t use connectors here, or this station is too old.',
+    unavailableHint: 'Your account can’t use connectors here.',
     needsYou: 'Needs Your Account',
     needsYouFooter: 'These act as you: your agent can use them once you connect.',
     ready: 'Ready',

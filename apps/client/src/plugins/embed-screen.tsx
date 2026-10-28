@@ -56,11 +56,11 @@ export function EmbedScreen({ plugin, page, title }: { plugin: string; page: Plu
         attempt = ++gen.current;
       const r = await post<{ token: string; expires_at: string }>('/api/ext-ui/token', { plugin });
       if (!alive.current || !current() || attempt !== gen.current) return;
-      if (!r.ok && r.status !== 404) {
+      if (!r.ok) {
         setError(r.message || t('places.pluginError'));
         return;
       }
-      credential.current = r.ok ? r.data : { token: '', expires_at: '' };
+      credential.current = r.data;
       setError('');
       setOutgoing(
         refresh

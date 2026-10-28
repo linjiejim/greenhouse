@@ -37,7 +37,7 @@ export interface MyConnectors {
   personal: MyConnector[];
 }
 
-/** 403 = my account has no `mcp_call`; 404 = the station predates connectors. */
+/** 403 = my account has no `mcp_call`. */
 export const listMyConnectors = () => get<MyConnectors>('/api/me/connectors');
 
 /** Store my key; the server tries it once and says whether it worked. */

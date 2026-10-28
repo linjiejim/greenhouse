@@ -22,7 +22,7 @@
 
 import { create } from 'zustand';
 import { checkAborted, withConnectionDeadline } from '../api/connection-deadline';
-import { apiMismatch, parseBootstrap, type ApiMismatch } from '../api/compat';
+import { apiMismatch, parseBootstrap, type ApiMismatch } from '../api/bootstrap';
 import { DEFAULT_API_BASE, IS_SINGLE_STATION, STATIONS } from '../config';
 import type { StationConfig } from '../shared/greenhouse-config';
 import { detachTokens, loadPref, savePref, purgeStationTokens } from '../api/token-storage';
@@ -91,14 +91,14 @@ async function getJson(url: string, signal: AbortSignal): Promise<Record<string,
 /** What a station's preflight found: a Greenhouse that speaks this app's API, or why not. */
 export type StationProbe =
   | { ok: true; productName?: string }
-  /** `server_outdated`: below the API level this app needs; `unsupported`: another Greenhouse line. */
+  /** `server_outdated`: below the API level this app needs. */
   | { ok: false; mismatch?: ApiMismatch };
 
 /**
  * Is there a Greenhouse at this origin that speaks this app's API? (no auth needed)
  *
  * `GET /api/bootstrap` is the public, side-effect-free pre-sign-in endpoint: its `mobile_api`
- * says which API level the server offers (../api/compat.ts) and its `product_name` doubles as a
+ * says which API level the server offers (../api/bootstrap.ts) and its `product_name` doubles as a
  * default station name. One connection budget covers the request and its body.
  */
 export async function probeStation(baseUrl: string): Promise<StationProbe> {

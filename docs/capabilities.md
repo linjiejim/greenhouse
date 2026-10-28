@@ -91,7 +91,7 @@ MCP 始终额外提供 `team_context`、`data_catalog`、`tool_output_read`。
 
 站点 v2 清单按成员裁剪，页面有 `native`、`entity-list`、`entity-detail`、`settings-form`、`embed`
 五种；`parent: 'administration'` 的页面只发给 super，成为 Admin 分区。数据插件的 `user` 字段显示
-成员名。`mobile_api` 为 4，客户端最低要求 3，清单缺失时按内置规则显示入口；不认识的页面只在插件
+成员名。`mobile_api` 为 4，客户端也要求 4，3.x 工作站会提示先升级；不认识的页面只在插件
 声明了外部地址时提供浏览器打开。声明页面不扩大权限，管理设置写入仍是 super-only。
 
 内嵌 UI 使用主题/品牌 token、语言与成员上下文，以及十分钟窄令牌；只允许所属插件 API 与基础

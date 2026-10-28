@@ -33,13 +33,14 @@ export function useLogin(fields: { email: () => string | undefined; password: ()
   const loginWithFeishu = useAuth((s) => s.loginWithFeishu);
   const [feishu, setFeishu] = useState(false);
   const stationKey = station?.id ?? '';
-  const mobileApi = useAuth((s) => s.station?.mobile_api);
+  // discovery waits for the station's bootstrap
+  const booted = useAuth((s) => s.station?.mobile_api !== undefined);
   const loading = useAuth((s) => s.loading);
   useEffect(() => {
     setFeishu(false);
-    if (!stationKey || loading || mobileApi === undefined) return;
+    if (!stationKey || loading || !booted) return;
     let alive = true;
-    void feishuLoginAvailable(mobileApi, (path) => fetch(`${getApiBase()}${path}`))
+    void feishuLoginAvailable((path) => fetch(`${getApiBase()}${path}`))
       .then((available) => {
         if (alive) setFeishu(available);
       })
@@ -47,7 +48,7 @@ export function useLogin(fields: { email: () => string | undefined; password: ()
     return () => {
       alive = false;
     };
-  }, [stationKey, mobileApi, loading]);
+  }, [stationKey, booted, loading]);
   const [busy, setBusy] = useState(false);
   const { email: readEmail, password: readPassword } = fields;
 

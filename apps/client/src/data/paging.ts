@@ -34,10 +34,3 @@ export function appendUnique<T extends { id: string | number }>(listed: readonly
   const seen = new Set(listed.map((item) => item.id));
   return [...listed, ...page.filter((item) => !seen.has(item.id) && !!seen.add(item.id))];
 }
-
-/** The offset of the next page from a `page_meta` answer, or null when there is none. */
-export function nextOffset(page: { has_more: boolean; next_offset: number } | undefined, received: number, pageSize: number, offset: number): number | null {
-  if (page) return page.has_more ? page.next_offset : null;
-  // an older server without page_meta: a full page may have more after it
-  return received >= pageSize ? offset + received : null;
-}

@@ -22,7 +22,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { IS_SINGLE_STATION } from '../config';
-import type { ApiMismatch } from '../api/compat';
+import type { ApiMismatch } from '../api/bootstrap';
 import { normalizeBaseUrl, probeStation, useStations, type StationRecord } from '../store/stations';
 import { AFTER_DISMISS_MS, useAuth } from '../store/auth';
 import { useT } from '../lib/i18n';
@@ -31,7 +31,6 @@ import { unregisterActive, unregisterStation } from '../push/register';
 
 /** Why a station cannot be used, in the alert's words. */
 function probeProblem(mismatch?: ApiMismatch) {
-  if (mismatch === 'unsupported') return 'station.unsupported' as const;
   if (mismatch === 'server_outdated') return 'station.serverOutdated' as const;
   return 'station.unreachable' as const;
 }

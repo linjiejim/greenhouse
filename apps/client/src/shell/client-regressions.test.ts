@@ -73,7 +73,7 @@ vi.mock('../store/notifications', () => ({
 vi.mock('../store/sessions', () => ({
   useSessions: Object.assign((s: any) => s({ items: [], status: 'ready' }), { getState: () => ({ refresh: vi.fn() }) }),
 }));
-vi.mock('../plugins/store', () => ({ useStationManifest: (s: any) => s({ data: { kind: 'legacy' } }) }));
+vi.mock('../plugins/store', () => ({ useStationManifest: (s: any) => s({ data: { kind: 'pending' } }) }));
 vi.mock('../lib/i18n', () => ({ useT: () => (s: string) => s }));
 vi.mock('../ui/logo', () => ({ GreenhouseMark: () => null }));
 vi.mock('../ui/core', () => ({ Icon: () => null }));

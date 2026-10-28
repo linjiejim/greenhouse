@@ -24,8 +24,8 @@ import { clearHandoffs } from '../src/lib/handoff';
  *
  * Auth gate: signed out on any route but /login and the stations sheet it opens → everything
  * above the root is dismissed, then /login replaces it; signed in on /login → home. A station
- * that speaks another API (src/api/compat.ts) shows why — the server needs updating, or it is
- * not a server this app supports — with the way to another station, never a white screen.
+ * older than this app's API level (src/api/bootstrap.ts) shows why — the station needs updating —
+ * with the way to another station, never a white screen.
  *
  * `usePushBridge` runs the push side (src/push): registration, taps, banners, badge.
  */
@@ -169,7 +169,7 @@ export default function RootLayout() {
                 <LoadingState />
               </View>
             ) : mismatch ? (
-              <MismatchScreen mismatch={mismatch} />
+              <MismatchScreen />
             ) : (
               <Stack
                 screenOptions={{ ...stackDefaults(c, hex, isDark), headerShown: false }}

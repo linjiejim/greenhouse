@@ -1,15 +1,14 @@
-/** Optional station manifest. A 3.x station has all built-in places and no plugin pages. */
+/**
+ * The station manifest (`GET /api/extensions` v2) decides which plugin places and pages exist.
+ * Until the station (or the saved copy) answers, the state is `pending` and shows none of them.
+ */
 import type { PluginManifestEntry, PluginNavItem, PluginPage, StationManifest } from '../shared/plugins';
-export type ManifestState = { kind: 'legacy' } | { kind: 'v2'; manifest: StationManifest };
-export const LEGACY_MANIFEST: ManifestState = { kind: 'legacy' };
+export type ManifestState = { kind: 'pending' } | { kind: 'v2'; manifest: StationManifest };
+export const PENDING_MANIFEST: ManifestState = { kind: 'pending' };
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 export function parseManifest(value: unknown): ManifestState {
   if (!record(value)) throw new Error('Invalid station manifest');
-  if (value.manifest_version !== 2) {
-    if (value.manifest_version === undefined && Array.isArray(value.extensions) && Array.isArray(value.entityKinds))
-      return LEGACY_MANIFEST;
-    throw new Error('Unsupported station manifest version');
-  }
+  if (value.manifest_version !== 2) throw new Error('Unsupported station manifest version');
   if (!record(value.core) || !Array.isArray(value.plugins)) throw new Error('Invalid station manifest');
   for (const plugin of value.plugins) {
     if (!record(plugin) || typeof plugin.id !== 'string' || !Array.isArray(plugin.nav) || !Array.isArray(plugin.pages))
@@ -33,21 +32,19 @@ export async function fetchManifest(
   fetcher: () => Promise<{ status: number; ok: boolean; json: () => Promise<unknown> }>,
 ): Promise<ManifestState> {
   const response = await fetcher();
-  if (response.status === 404) return LEGACY_MANIFEST;
   if (!response.ok) throw new Error(`Station manifest: ${response.status}`);
   return parseManifest(await response.json());
 }
 export function hasPlugin(state: ManifestState, id: string): boolean {
-  return state.kind === 'legacy' || state.manifest.plugins.some((p) => p.id === id);
+  return state.kind === 'v2' && state.manifest.plugins.some((p) => p.id === id);
 }
-/** v2 is already permission-filtered by the station; only legacy stations use local feature flags. */
-export function builtinVisible(state: ManifestState, id: string, legacyAllowed = true): boolean {
-  if (state.kind === 'legacy') return legacyAllowed;
+/** The manifest is already permission-filtered by the station. */
+export function builtinVisible(state: ManifestState, id: string): boolean {
   return pluginNavigation(state, 'primary').some((item) => item.page.kind === 'native' && item.page.screen === id);
 }
 export type PluginNavigation = { plugin: PluginManifestEntry; nav: PluginNavItem; page: PluginPage };
 export function pluginNavigation(state: ManifestState, placement: 'primary' | 'more'): PluginNavigation[] {
-  if (state.kind === 'legacy') return [];
+  if (state.kind !== 'v2') return [];
   return state.manifest.plugins
     .flatMap((plugin) =>
       plugin.nav

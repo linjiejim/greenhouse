@@ -1,8 +1,7 @@
 /**
  * Member names for plugin record fields, resolved in batches through `POST /api/people/resolve`
- * and kept for the station + member that asked (cleared on any change). A station without the
- * endpoint (404) is not asked again this session: fields keep showing the id. Failed batches are
- * retried on the next screen that asks.
+ * and kept for the station + member that asked (cleared on any change). Until a name arrives the
+ * field shows the id. Failed batches are retried on the next screen that asks.
  */
 
 import { useEffect } from 'react';
@@ -17,7 +16,6 @@ export const usePeople = create<{ names: Record<string, string> }>(() => ({ name
 
 const queued = new Set<string>();
 const asked = new Set<string>();
-const unsupported = new Set<string>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 let identity = '';
@@ -34,8 +32,7 @@ useStations.subscribe(follow);
 
 async function flush(): Promise<void> {
   timer = null;
-  const station = useStations.getState().activeId;
-  if (!station || unsupported.has(station)) {
+  if (!useStations.getState().activeId) {
     queued.clear();
     return;
   }
@@ -47,8 +44,7 @@ async function flush(): Promise<void> {
   const result = await post<unknown>('/api/people/resolve', { ids });
   if (!current()) return;
   if (!result.ok) {
-    if (result.status === 404 || result.status === 405) unsupported.add(station);
-    else ids.forEach((id) => asked.delete(id));
+    ids.forEach((id) => asked.delete(id));
     return;
   }
   const names = parsePeople(result.data);
@@ -60,8 +56,7 @@ export function usePeopleNames(ids: readonly string[]): Record<string, string> {
   const names = usePeople((s) => s.names);
   const key = ids.join('\n');
   useEffect(() => {
-    const station = useStations.getState().activeId;
-    if (!station || unsupported.has(station)) return;
+    if (!useStations.getState().activeId) return;
     // the signed-in member is known without asking
     const me = useAuth.getState().user;
     let added = false;

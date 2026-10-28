@@ -15,7 +15,7 @@ import { hasPlugin, type ManifestState } from '../plugins/manifest';
 export const WIDGET_TASKS = 3;
 export const WIDGET_DOCS = 3;
 
-/** Wait for discovery before treating a station as legacy; web has no home-screen widget. */
+/** Wait for the station's manifest before reading tasks; web has no home-screen widget. */
 export function widgetTasksAction(
   platform: string,
   manifest: ManifestState,

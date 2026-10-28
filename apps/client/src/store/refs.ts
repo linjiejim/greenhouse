@@ -1,8 +1,8 @@
 /**
  * Link titles for the chips (src/markdown/link-chip.tsx), resolved in batches through
  * `POST /api/refs/resolve` and kept for the station + member that asked (cleared on any change).
- * A station without the endpoint (404) is not asked again this session: chips keep the link's own
- * words and the object's type. Failed batches are retried on the next link that asks.
+ * Until a title arrives chips keep the link's own words and the object's type. Failed batches are
+ * retried on the next link that asks.
  */
 
 import { useEffect } from 'react';
@@ -21,7 +21,6 @@ export const useRefs = create<Refs>(() => ({ items: {} }));
 
 const queued = new Set<string>();
 const asked = new Set<string>();
-const unsupported = new Set<string>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 let identity = '';
@@ -38,8 +37,7 @@ useStations.subscribe(follow);
 
 async function flush(): Promise<void> {
   timer = null;
-  const station = useStations.getState().activeId;
-  if (!station || unsupported.has(station)) {
+  if (!useStations.getState().activeId) {
     queued.clear();
     return;
   }
@@ -51,8 +49,7 @@ async function flush(): Promise<void> {
   const result = await post<unknown>('/api/refs/resolve', { urls });
   if (!current()) return;
   if (!result.ok) {
-    if (result.status === 404 || result.status === 405) unsupported.add(station);
-    else urls.forEach((url) => asked.delete(url));
+    urls.forEach((url) => asked.delete(url));
     return;
   }
   const resolved = parseResolved(result.data);
@@ -64,8 +61,7 @@ export function useLinkRef(url: string): RefInfo | undefined {
   const info = useRefs((s) => (url ? s.items[url] : undefined));
   useEffect(() => {
     if (!url || asked.has(url)) return;
-    const station = useStations.getState().activeId;
-    if (!station || unsupported.has(station)) return;
+    if (!useStations.getState().activeId) return;
     asked.add(url);
     queued.add(url);
     if (!timer) timer = setTimeout(() => void flush(), 40);
