@@ -77,9 +77,9 @@ API 与 Expo Web；`pnpm app:build` 把 Web 导出到 `public/app`，API 在 `/`
 出现）、「更多」浮层里的插件入口，super 在底部多一个 Admin；⌘K 与桌面 Go 菜单共用这份列表。
 新建与编辑用固定尺寸的居中对话框（`DIALOG_SIZES` sm / md / lg / xl）；设置是居中窗口，只放个人
 设置（偏好、账号、我的 Agent、连接、站点）。界面规则见 [apps/client/DESIGN.md](../apps/client/DESIGN.md)。
-Admin 位置 `/admin` 只给 super，只在浏览器与桌面端的宽窗口可用。核心分区固定 10 个（`apps/client/src/admin/sections.ts`）：
-成员、操作记录、用量、服务与计价、团队上下文、品牌、运行时配置、MCP 接入、团队连接器、插件；
-插件分区来自清单：Feedback 的问题与需求、Retro 的月度复盘、Computer 的云电脑管理，全开时共 13 个。
+Admin 位置 `/admin` 只给 super，只在浏览器与桌面端的宽窗口可用。核心分区固定 11 个（`apps/client/src/admin/sections.ts`）：
+成员、操作记录、客户端错误、用量、服务与计价、团队上下文、品牌、运行时配置、MCP 接入、团队连接器、插件；
+插件分区来自清单：Feedback 的问题与需求、Retro 的月度复盘、Computer 的云电脑管理，全开时共 14 个。
 
 服务端链接来自 `@greenhouse/types/client-routes`，一次性凭证只放在 URL 片段。入口页有 `/activate`、
 `/oauth-consent`、`/connectors/oauth-finish`、`/bindings`，飞书登录回到 `/login`，会话通知链到
