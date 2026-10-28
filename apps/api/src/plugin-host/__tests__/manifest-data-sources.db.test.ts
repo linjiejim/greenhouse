@@ -102,7 +102,6 @@ it('filters entities, pages and nav by each data source flag within a visible pl
       );
       const kinds = keys.map((key) => ({ kind: `ext:fixture:${key}`, route: `#/ext/fixture/${key}/:id` }));
       expect(plugin.entity_kinds).toEqual(kinds);
-      expect(manifest.entityKinds).toEqual(kinds);
     }
   } finally {
     await db.close();

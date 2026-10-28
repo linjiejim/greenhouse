@@ -1,8 +1,7 @@
 /**
  * Station manifest — what one Greenhouse server (a "station") offers the signed-in
- * member, as data. Every client (the universal client on web, iOS, Android and
- * desktop, and installed 3.x apps) renders plugins from this list instead of
- * shipping a hard-coded navigation.
+ * member, as data. The universal client (web, iOS, Android and desktop) renders
+ * plugins from this list instead of shipping a hard-coded navigation.
  *
  * Served by `GET /api/extensions` (authenticated). The response is already cut to
  * the caller: a plugin, a nav entry, a page or an entity action the member cannot
@@ -42,10 +41,6 @@ export interface StationManifest {
     webhook?: boolean;
   }>;
   identityProviders?: Array<{ id: string; title: string; icon: string; login: boolean; bind: boolean }>;
-  /** Kept for 3.x clients: `{ id, name, description }` of every active plugin. */
-  extensions: Array<{ id: string; name: string; description: string | null }>;
-  /** Kept for 3.x clients: record-kind route templates. */
-  entityKinds: Array<{ kind: string; route: string }>;
 }
 
 export interface PluginManifestEntry {

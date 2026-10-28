@@ -282,8 +282,7 @@ for full signatures rather than creating a second registry.
 ## Client surfaces and trusted embeds
 
 `manifest.surfaces` is pure data exposed by authenticated `/api/extensions` v2. The host filters
-plugins/nav/pages/entities/actions/fields/features/groups/kinds to the member, preserving the v1
-`extensions`/`entityKinds` fields for 3.x clients. `client_min` is the wire spelling; server
+plugins/nav/pages/entities/actions/fields/features/groups/kinds to the member. `client_min` is the wire spelling; server
 `CLIENT_API_LEVEL` and bootstrap `mobile_api` are 4. The universal client renders every surface;
 there is no plugin code in the client except the official native screens.
 

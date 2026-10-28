@@ -71,7 +71,7 @@
 - The API serves the hosted client from `public/app` at `/`; `/classic` redirects to `/`; API, plugin and OAuth paths never fall through to SPA HTML.
 - `pnpm app:build` exports the isolated Expo app into `public/app` without developer/desktop station overrides.
 - Keep `apps/client` outside the root workspace with its own lockfile; Docker installs and exports it in a separate stage.
-- `/api/extensions` v2 is member-filtered and keeps the v1 `extensions`/`entityKinds` fields for 3.x clients; server client API is 4, the client's minimum is 3.
+- `/api/extensions` v2 is member-filtered; server client API is 4, the client's minimum is 3.
 - Server-made browser links use `@greenhouse/types/client-routes` with secrets in the fragment; old `#/…` links are mapped by `apps/client/src/shell/legacy-links.ts`.
 - Settings forms never weaken super-only settings APIs; unknown pages use validated fallbacks.
 - Regenerate shared themes with `pnpm tokens:build`; never hand-edit generated tokens.

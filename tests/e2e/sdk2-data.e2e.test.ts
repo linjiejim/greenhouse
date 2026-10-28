@@ -49,14 +49,14 @@ afterAll(async () => {
     });
 });
 describe('SDK 2 example over HTTP and MCP', () => {
-  it('serves v2 plus v1 manifest fields and the static plugin page', async () => {
+  it('serves the v2 manifest and the static plugin page', async () => {
     const manifest = await (await fetch(`${BASE_URL}/api/extensions`, { headers: authHeaders(token) })).json();
     expect(manifest.manifest_version).toBe(2);
     expect(manifest.plugins.find((p: any) => p.id === 'example').entities[0].endpoint).toBe(
       '/api/ext/example/entities/note',
     );
-    expect(manifest.extensions.some((p: any) => p.id === 'example')).toBe(true);
-    expect(manifest.entityKinds.some((p: any) => p.kind === 'ext:example:note')).toBe(true);
+    expect(manifest.extensions).toBeUndefined();
+    expect(manifest.entityKinds).toBeUndefined();
     expect((await (await fetch(`${BASE_URL}/api/bootstrap`)).json()).mobile_api).toBe(4);
     const ui = await fetch(`${BASE_URL}/ext/example/ui/`);
     expect(ui.status).toBe(200);

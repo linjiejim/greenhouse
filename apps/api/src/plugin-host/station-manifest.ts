@@ -126,10 +126,5 @@ export async function stationManifest(
     manifest_version: STATION_MANIFEST_VERSION,
     core: { version: runningAppVersion() ?? '0.0.0', client_api: CLIENT_API_LEVEL },
     plugins,
-    extensions: plugins.map((plugin) => {
-      const ext = extensions.find((e) => e.id === plugin.id)!;
-      return { id: ext.id, name: ext.name, description: ext.description ?? null };
-    }),
-    entityKinds: plugins.flatMap((plugin) => plugin.entity_kinds),
   };
 }

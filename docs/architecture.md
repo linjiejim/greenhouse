@@ -60,7 +60,7 @@ Retro 依赖 Knowledge。关闭插件会撤下其工具、接口、页面与注�
 原语在 `apps/api/src/agent-access/oauth.ts`。
 
 鉴权后的 `GET /api/extensions` 返回按成员裁剪的 v2 站点清单：导航、页面、实体、字段（含可写
-标记）与动作，并保留 v1 的 `extensions` / `entityKinds` 供 3.x 客户端使用。页面有 `native`、
+标记）与动作。页面有 `native`、
 `entity-list`、`entity-detail`、`settings-form`、`embed` 五种；`parent: 'administration'` 的
 native 页面或设置表单是 Admin 分区，只发给 super。清单只决定显示什么，请求时仍逐次鉴权。
 `/api/bootstrap` 在登录前提供品牌与 `mobile_api: 4`（`CLIENT_API_LEVEL`）；客户端自身最低要求 3

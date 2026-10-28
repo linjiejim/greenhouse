@@ -5,8 +5,6 @@ const v2 = (plugins: unknown[] = []) => ({
   manifest_version: 2,
   core: { version: '4.0.0', client_api: 4 },
   plugins,
-  extensions: [],
-  entityKinds: [],
 });
 describe('optional station manifest', () => {
   it('vendors the complete wire contract verbatim', () => {

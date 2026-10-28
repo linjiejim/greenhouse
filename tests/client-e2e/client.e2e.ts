@@ -132,8 +132,6 @@ test('v2 manifest hides inactive places and keeps future pages reachable', async
       json: {
         manifest_version: 2,
         core: { version: '4.0.0', client_api: 4 },
-        extensions: [],
-        entityKinds: [],
         plugins: [
           {
             id: 'crm',

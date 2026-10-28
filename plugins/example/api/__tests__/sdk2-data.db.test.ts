@@ -200,7 +200,7 @@ describe('data plugin REST and station manifest', () => {
     expect(exported.rows).toHaveLength(2);
     expect(exported.rows.some((row) => row.body === 'Runtime note')).toBe(true);
   });
-  it('cuts v2 surfaces/actions to the member and keeps v1 fields', async () => {
+  it('cuts v2 surfaces/actions to the member', async () => {
     const member = await stationManifest(db, {
       id: alice.id,
       role: alice.role,
@@ -211,8 +211,7 @@ describe('data plugin REST and station manifest', () => {
     expect(plugin.entities[0].actions).toEqual(['read', 'create', 'update', 'delete', 'export']);
     expect(plugin.entities[0].fields.filter((f) => f.writable).map((f) => f.key)).toEqual(['body']);
     expect(plugin.pages.some((p) => p.kind === 'settings-form')).toBe(false);
-    expect(member.extensions.some((p) => p.id === 'example')).toBe(true);
-    expect(member.entityKinds.some((k) => k.kind === 'ext:example:note')).toBe(true);
+    expect(plugin.entity_kinds.some((k) => k.kind === 'ext:example:note')).toBe(true);
     const superManifest = await stationManifest(db, {
       id: admin.id,
       role: admin.role,
