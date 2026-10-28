@@ -72,6 +72,7 @@
     "@playwright/test": "^1.61.1",
     "@types/node": "^22.0.0",
     "@types/web-bluetooth": "^0.0.21",
+    "axe-core": "^4.14.0",
     "concurrently": "^9.2.1",
     "drizzle-kit": "^0.31.10",
     "eslint": "^10.4.0",
