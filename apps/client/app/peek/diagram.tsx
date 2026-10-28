@@ -26,8 +26,11 @@ export default function DiagramViewer() {
   const { k } = useLocalSearchParams<{ k?: string }>();
   const code = getHandoff<string>(k, 'diagram');
   const [failed, setFailed] = useState(false);
-  const source = useMemo(() => (code ? { html: mermaidHtml(code, hex, isDark, true) } : null), [code, hex, isDark]);
   const lib = useMermaid();
+  const source = useMemo(
+    () => (code ? { html: mermaidHtml(code, hex, isDark, lib.font, true) } : null),
+    [code, hex, isDark, lib.font],
+  );
 
   return (
     <View style={styles.root}>

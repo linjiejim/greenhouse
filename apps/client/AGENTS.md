@@ -263,4 +263,7 @@
 
 - Declarative entity edits use only manifest fields with `writable === true` and PATCH only values changed from the loaded row; preserve untouched nulls, JSON and timestamp strings. Refreshing a list keeps its rows and total until the next page arrives; identity/query changes still invalidate old data.
 - `pnpm app:build` at the repository root exports this isolated workspace to `dist-hosted`, then copies it to `public/app`. Hosted exports clear desktop and developer station overrides and disable dotenv loading; browser requests use their own origin. Native/store configuration stays unchanged.
+- Keep web async routes off: they split off under 200 KB (routes share most code) and add React's 300 ms Suspense reveal to every cold start and first visit to a place.
+- Heavy or rarely used browser code (the document editor, admin sections, inlined fonts) loads through `React.lazy`/`import()` in `.web` files, or a `.web` sibling when native shares the module (src/markdown/blocks/mermaid-font.web.ts); keep it out of static imports.
+- Import lucide icons per file (`lucide-react/dist/esm/icons/<name>.mjs`, src/ui/icon-map.ts); Metro does not tree-shake, so the `lucide-react` barrel adds every icon.
 - Trusted desktop plugin frames append `host_origin=tauri://localhost`; plugins explicitly allow that parent origin. Browser frames retain their normal same-origin contract. The host allows scripts/same-origin/forms/popups only for installed plugin bridges.

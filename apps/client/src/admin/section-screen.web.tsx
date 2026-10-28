@@ -1,32 +1,23 @@
 /** `/admin` and `/admin/<section>`: a core section. */
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { useStationManifest } from '../plugins/store';
-import { useT } from '../lib/i18n';
+import { useT, type TranslationKey } from '../lib/i18n';
 import { AdminPage, SectionState } from './kit.web';
 import { DEFAULT_SECTION, isCoreSection, type CoreSectionId } from './sections';
-import UsersSection from './users.web';
-import ServicesSection from './services.web';
-import UsageSection from './usage.web';
-import PluginsSection from './plugins.web';
-import RuntimeConfigSection from './runtime-config.web';
-import McpKeysSection from './mcp-keys.web';
-import ConnectorsSection from './connectors.web';
-import ActivitySection from './activity.web';
-import TeamContextSection from './team-context.web';
-import BrandingSection from './branding.web';
 
-const SECTIONS: Record<CoreSectionId, React.ComponentType> = {
-  users: UsersSection,
-  services: ServicesSection,
-  usage: UsageSection,
-  plugins: PluginsSection,
-  'runtime-config': RuntimeConfigSection,
-  'mcp-keys': McpKeysSection,
-  connectors: ConnectorsSection,
-  activity: ActivitySection,
-  'team-context': TeamContextSection,
-  branding: BrandingSection,
+// Each section is its own chunk in the hosted browser export, fetched when it is opened.
+const SECTIONS: Record<CoreSectionId, React.LazyExoticComponent<React.ComponentType>> = {
+  users: lazy(() => import('./users.web')),
+  services: lazy(() => import('./services.web')),
+  usage: lazy(() => import('./usage.web')),
+  plugins: lazy(() => import('./plugins.web')),
+  'runtime-config': lazy(() => import('./runtime-config.web')),
+  'mcp-keys': lazy(() => import('./mcp-keys.web')),
+  connectors: lazy(() => import('./connectors.web')),
+  activity: lazy(() => import('./activity.web')),
+  'team-context': lazy(() => import('./team-context.web')),
+  branding: lazy(() => import('./branding.web')),
 };
 
 export default function AdminSectionScreen() {
@@ -35,7 +26,17 @@ export default function AdminSectionScreen() {
   const status = useStationManifest((s) => s.status);
   if (isCoreSection(section)) {
     const Section = SECTIONS[section];
-    return <Section key={section} />;
+    return (
+      <Suspense
+        fallback={
+          <AdminPage title={t(`admin.sections.${section}` as TranslationKey)}>
+            <SectionState loading />
+          </AdminPage>
+        }
+      >
+        <Section key={section} />
+      </Suspense>
+    );
   }
   return (
     <AdminPage title={t('admin.title')}>
