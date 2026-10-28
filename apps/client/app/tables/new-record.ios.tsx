@@ -18,17 +18,21 @@ import { EmptyState } from '../../src/ui/empty';
 import { FormLoading, NativeForm } from '../../src/ui/native-form';
 import { FormChrome } from '../../src/ui/sheet-chrome';
 import { objectId } from '../../src/lib/object-id';
+import { useLateField, useLateFields, type LateFields } from '../../src/ui/late-fields';
 
 function TextRow({
   field,
   numeric,
   onChange,
+  late,
 }: {
   field: TableField;
   numeric?: boolean;
   onChange: (text: string) => void;
+  late: LateFields;
 }) {
   const state = useNativeState('');
+  useLateField(late, String(field.id), state);
   return (
     <TextField
       text={state}
@@ -54,6 +58,7 @@ export default function NewRecord() {
   const t = useT();
   const router = useRouter();
   const form = useNewRecord(tableId);
+  const late = useLateFields();
 
   // close once the added record cleared the discard guard (dirty turns off on the next render)
   useEffect(() => {
@@ -67,7 +72,7 @@ export default function NewRecord() {
         dirty={form.dirty}
         canSave={!!form.schema && form.fields.length > 0}
         saving={form.saving}
-        onSave={() => void form.submit()}
+        onSave={() => void form.submit(late.read())}
         protectNavigation
       />
       {form.error && !form.schema ? (
@@ -128,9 +133,9 @@ export default function NewRecord() {
                       />
                     );
                   case 'number':
-                    return <TextRow key={key} field={field} numeric onChange={(text) => form.set(field.id, text)} />;
+                    return <TextRow late={late} key={key} field={field} numeric onChange={(text) => form.set(field.id, text)} />;
                   default:
-                    return <TextRow key={key} field={field} onChange={(text) => form.set(field.id, text)} />;
+                    return <TextRow late={late} key={key} field={field} onChange={(text) => form.set(field.id, text)} />;
                 }
               })}
             </Section>

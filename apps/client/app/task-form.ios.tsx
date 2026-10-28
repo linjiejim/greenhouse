@@ -15,6 +15,7 @@ import { useTaskForm } from '../src/projects/use-task-form';
 import { EmptyState } from '../src/ui/empty';
 import { FormLoading, NativeForm } from '../src/ui/native-form';
 import { FormChrome } from '../src/ui/sheet-chrome';
+import { useLateField, useLateFields, type LateFields } from '../src/ui/late-fields';
 
 function parseDay(day: string): Date {
   const [y, m, d] = day.split('-').map(Number);
@@ -26,12 +27,15 @@ function TitleField({
   initial,
   placeholder,
   onChange,
+  late,
 }: {
   initial: string;
   placeholder: string;
   onChange: (text: string) => void;
+  late: LateFields;
 }) {
   const state = useNativeState(initial);
+  useLateField(late, 'title', state);
   return <TextField text={state} placeholder={placeholder} onTextChange={onChange} autoFocus={!initial} />;
 }
 
@@ -39,6 +43,7 @@ export default function TaskForm() {
   const t = useT();
   const form = useTaskForm();
   const { draft, set } = form;
+  const late = useLateFields();
   const title = form.editing ? t('projects.editTask') : t('projects.newTask');
 
   if (form.gone) {
@@ -57,7 +62,10 @@ export default function TaskForm() {
         dirty={form.dirty}
         canSave={form.canSave}
         saving={form.saving}
-        onSave={() => void form.save()}
+        onSave={() => {
+          const { title: typed } = late.read();
+          void form.save(typed === undefined ? undefined : { title: typed });
+        }}
         saveLabel={form.editing ? t('common.save') : t('projects.addTask')}
         protectNavigation
       />
@@ -74,6 +82,7 @@ export default function TaskForm() {
                   initial={draft.title}
                   placeholder={t('projects.taskTitle')}
                   onChange={(text) => set({ title: text })}
+                  late={late}
                 />
               </Section>
               <Section>

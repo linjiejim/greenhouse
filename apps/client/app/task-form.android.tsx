@@ -18,13 +18,16 @@ import {
   useNativeState,
 } from '../src/ui/native-form.android';
 import { FormChrome } from '../src/ui/sheet-chrome';
+import { useLateField, useLateFields, type LateFields } from '../src/ui/late-fields';
 import type { TaskPriority } from '../src/shared/greenhouse-types';
 
-function Fields({ form }: { form: ReturnType<typeof useTaskForm> }) {
+function Fields({ form, late }: { form: ReturnType<typeof useTaskForm>; late: LateFields }) {
   const t = useT();
   const { draft, set } = form;
   const titleState = useNativeState(draft.title);
   const dueState = useNativeState(draft.due ?? '');
+  useLateField(late, 'title', titleState);
+  useLateField(late, 'due', dueState);
   return (
     <>
       <FormSection>
@@ -60,6 +63,7 @@ function Fields({ form }: { form: ReturnType<typeof useTaskForm> }) {
 export default function TaskForm() {
   const t = useT();
   const form = useTaskForm();
+  const late = useLateFields();
   const title = form.editing ? t('projects.editTask') : t('projects.newTask');
 
   if (form.gone) {
@@ -78,14 +82,20 @@ export default function TaskForm() {
         dirty={form.dirty}
         canSave={form.canSave}
         saving={form.saving}
-        onSave={() => void form.save()}
+        onSave={() => {
+          const { title: typed, due } = late.read();
+          void form.save({
+            ...(typed === undefined ? {} : { title: typed }),
+            ...(due === undefined ? {} : { due: due.trim() || null }),
+          });
+        }}
         saveLabel={form.editing ? t('common.save') : t('projects.addTask')}
         protectNavigation
       />
       {form.failed ? (
         <EmptyState icon="alert" title={t('projects.loadFailed')} onRetry={form.retry} />
       ) : (
-        <NativeForm>{!form.ready ? <FormLoading /> : <Fields form={form} />}</NativeForm>
+        <NativeForm>{!form.ready ? <FormLoading /> : <Fields form={form} late={late} />}</NativeForm>
       )}
     </>
   );

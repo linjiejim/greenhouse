@@ -22,17 +22,21 @@ import {
 } from '../../src/ui/native-form.android';
 import { FormChrome } from '../../src/ui/sheet-chrome';
 import { objectId } from '../../src/lib/object-id';
+import { useLateField, useLateFields, type LateFields } from '../../src/ui/late-fields';
 
 function TextRow({
   field,
   kind,
   onChange,
+  late,
 }: {
   field: TableField;
   kind: 'text' | 'number' | 'date';
   onChange: (text: string) => void;
+  late: LateFields;
 }) {
   const state = useNativeState('');
+  useLateField(late, String(field.id), state);
   return (
     <FormTextField
       label={field.required ? `${field.name} *` : field.name}
@@ -50,6 +54,7 @@ export default function NewRecord() {
   const t = useT();
   const router = useRouter();
   const form = useNewRecord(tableId);
+  const late = useLateFields();
 
   // close once the added record cleared the discard guard (dirty turns off on the next render)
   useEffect(() => {
@@ -63,7 +68,7 @@ export default function NewRecord() {
         dirty={form.dirty}
         canSave={!!form.schema && form.fields.length > 0}
         saving={form.saving}
-        onSave={() => void form.submit()}
+        onSave={() => void form.submit(late.read())}
         protectNavigation
       />
       {form.error && !form.schema ? (
@@ -78,7 +83,7 @@ export default function NewRecord() {
                 {form.fields
                   .filter((field) => field.type === 'text' || field.type === 'number' || field.type === 'date')
                   .map((field) => (
-                    <TextRow
+                    <TextRow late={late}
                       key={field.id}
                       field={field}
                       kind={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}

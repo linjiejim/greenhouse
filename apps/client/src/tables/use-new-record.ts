@@ -49,9 +49,10 @@ export function useNewRecord(tableId: string | null) {
   }, []);
 
   /** Save the record; true when it was added (then `saved` turns on and the sheet closes). */
-  const submit = useCallback(async (): Promise<boolean> => {
+  // `latest`: the native text fields' own text at the tap (src/ui/late-fields.ts), newer than `draft`
+  const submit = useCallback(async (latest?: Record<string, string>): Promise<boolean> => {
     if (tableId == null || !schema || saving) return false;
-    const built = draftValues(schema.fields, draft);
+    const built = draftValues(schema.fields, latest ? { ...draft, ...latest } : draft);
     if (!built.ok) {
       const { kind, field } = built.problem;
       alertError(

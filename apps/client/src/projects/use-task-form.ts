@@ -69,11 +69,15 @@ export function useTaskForm() {
     return list;
   }, [users.data, task]);
 
-  const save = async () => {
-    if (!canSave || saving || projectId == null) return;
+  /** `latest`: the native fields' own text at the tap (src/ui/late-fields.ts), newer than `draft`. */
+  const save = async (latest?: Partial<TaskDraft>) => {
+    const next = latest ? { ...draft, ...latest } : draft;
+    const patch = initial ? taskPatch(initial, next) : {};
+    if (!initial || !canSaveDraft(next) || (editing && Object.keys(patch).length === 0)) return;
+    if (saved || saving || projectId == null) return;
     const current = captureIdentity();
     setSaving(true);
-    const result = taskId != null ? await updateTask(taskId, changes) : await createTask(projectId, createBody(draft));
+    const result = taskId != null ? await updateTask(taskId, patch) : await createTask(projectId, createBody(next));
     if (!current()) return;
     setSaving(false);
     if (!result.ok) {
