@@ -298,9 +298,9 @@ describe('GET /api/sessions?scope=', () => {
     expect(mocks.users.getById).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves the unscoped list on the legacy rule: a super sees every owner', async () => {
+  it('pins the unscoped list to the caller even for a super', async () => {
     await createApp(superUser).request('/api/sessions');
 
-    expect(mocks.sessions.list).toHaveBeenCalledWith(expect.objectContaining({ userId: undefined }));
+    expect(mocks.sessions.list).toHaveBeenCalledWith(expect.objectContaining({ userId: 'boss' }));
   });
 });

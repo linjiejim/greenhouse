@@ -49,9 +49,9 @@ const SHARED_BACKFILL_LIMIT = 200;
 /**
  * `undefined` = no scope asked for, `null` = asked for something unknown.
  *
- * Omitting the scope keeps the historical behaviour (super sees everything, a
- * team user sees own + shared), so existing consumers are untouched; the
- * sidebar asks for `mine` explicitly. The vocabulary lives in
+ * Omitting the scope lists the caller's own sessions plus the ones shared with
+ * them, for every role; a super reads other members' conversations only through
+ * `team`. The client sidebar asks for `mine` explicitly. The vocabulary lives in
  * `@greenhouse/types/api` so the browser and the server can't drift.
  */
 /** `exclude_channel=task,feishu` → the channel names, or null when one is malformed. */
@@ -190,10 +190,8 @@ const sessions = new Hono<AppEnv>()
     } else if (scope === 'team') {
       baseList = await getDb().sessions.list({ ...listOpts, excludeUserId: authUser.id });
     } else {
-      // 'mine' pins the query to the caller for every role. Without a scope the
-      // historical rule stands: super sees everyone's sessions.
-      const ownerId = scope === 'mine' || authUser.role !== 'super' ? authUser.id : undefined;
-      baseList = await getDb().sessions.list({ ...listOpts, userId: ownerId });
+      // 'mine' and the unscoped list are the caller's own sessions, whatever the role.
+      baseList = await getDb().sessions.list({ ...listOpts, userId: authUser.id });
     }
     const hasMore = includePageMeta && baseList.length > limit;
     const list = includePageMeta ? baseList.slice(0, limit) : baseList;
@@ -206,9 +204,9 @@ const sessions = new Hono<AppEnv>()
       : [];
     const sharedIdSet = new Set(sharedSessionIds);
 
-    // Unscoped + non-super: fold in sessions shared with this user. `scope=mine`
-    // deliberately skips this — shared conversations live in their own tab.
-    if (scope === undefined && authUser.role !== 'super' && sharedSessionIds.length > 0) {
+    // Unscoped: fold in sessions shared with this user. `scope=mine` deliberately
+    // skips this — shared conversations live in their own tab.
+    if (scope === undefined && sharedSessionIds.length > 0) {
       const sharedRows = await getDb().sessions.listSharedWith(authUser.id, {
         status,
         includeEval,

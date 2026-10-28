@@ -154,7 +154,7 @@ export interface UsageSummary {
  * - `shared` — sessions someone else shared with the caller
  * - `team`   — everyone else's sessions; super only, 403 otherwise
  *
- * Omitting the scope keeps the legacy combined list (super sees everything).
+ * Omitting the scope lists the caller's own sessions plus those shared with them, for every role.
  */
 export const SESSION_SCOPES = ['mine', 'shared', 'team'] as const;
 export type SessionScope = (typeof SESSION_SCOPES)[number];
