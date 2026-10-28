@@ -12,6 +12,7 @@ import { EntityList, EntityDetail } from './entity-screen';
 import { SettingsForm } from './settings-screen';
 import { EmbedScreen } from './embed-screen';
 import { ResourceScreen } from './resource-screen';
+import { pluginScreens } from './screens';
 import { safeEndpoint } from './surface-model';
 export default function PluginPageScreen({ detail = false }: { detail?: boolean }) {
   const {
@@ -34,6 +35,8 @@ export default function PluginPageScreen({ detail = false }: { detail?: boolean 
     if (detail && id && entity && safeEndpoint(entity.endpoint))
       return <EntityDetail key={`${plugin}:${entity.id}:${id}`} entity={entity} id={id} />;
     if (entry.kind === 'native') {
+      const Owned = pluginScreens[entry.screen];
+      if (Owned) return <Owned key={entry.screen} title={title} />;
       const native = nativeScreens[entry.screen];
       if (native?.route) return <Redirect href={native.route as never} />;
       if (native?.endpoint) return <ResourceScreen key={entry.screen} entry={native} title={title} />;

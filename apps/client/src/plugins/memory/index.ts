@@ -1,7 +1,3 @@
 import type { NativeScreenEntry } from '../native-types';
-export const screen: NativeScreenEntry = {
-  screen: 'memory',
-  icon: 'brain',
-  endpoint: '/api/auth/me/memories',
-  collection: 'memories',
-};
+/** The page itself is ./screen.tsx (indexed in ../screens.ts). */
+export const screen: NativeScreenEntry = { screen: 'memory', icon: 'brain' };
