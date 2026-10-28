@@ -132,17 +132,6 @@ export const feishuLoginRoutes = new Hono<AppEnv>()
   // `/exchange` must stay public, so a blanket `.use('/api/feishu/*')` would
   // break them.
 
-  /**
-   * Is Feishu login offered at all? Public, read-only, and deliberately
-   * SEPARATE from `/oauth/start-login`.
-   *
-   * The login screen asks this on every mount to decide whether to render the
-   * button. Asking `start-login` instead would mean every page load — including
-   * every plain password login — mints a pending state that nobody will ever
-   * consume. A probe must not have side effects.
-   */
-  .get('/login-available', (c) => c.json({ available: getFeishuConfig() !== null }))
-
   .get('/oauth/start-login', async (c) => {
     const config = getFeishuConfig();
     if (!config) return c.json({ error: 'Feishu login is not configured on this deployment' }, 503);

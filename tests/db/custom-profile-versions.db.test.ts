@@ -32,8 +32,6 @@ async function createAgent(riskLevel: 'low' | 'medium' | 'high' = 'medium', mode
     audience: 'Engineering leads',
     risk_level: riskLevel,
     budget_policy: { max_tokens: 50_000 },
-    change_log: 'Initial version',
-    created_by: owner.id,
   });
 }
 
@@ -70,8 +68,6 @@ describe('Custom Agent versions', () => {
       name: 'Release analyst v2',
       system_prompt: 'Require verified evidence and identify blockers.',
       tools: ['team_knowledge', 'project_query'],
-      change_log: 'Add blocker analysis',
-      created_by: owner.id,
     });
 
     expect(changed?.profile).toMatchObject({ version: 2, tools: ['team_knowledge', 'project_query'] });
@@ -84,7 +80,7 @@ describe('Custom Agent versions', () => {
     });
     expect(await db.customProfiles.getVersion(asset.id, 3)).toBeUndefined();
     expect(await db.customProfiles.getVersion(asset.id, 0)).toBeUndefined();
-    expect((await db.customProfiles.listVersions(asset.id)).map((version) => version.version)).toEqual([2]);
+    expect((await db.customProfiles.getCurrentVersion(asset.id))?.version).toBe(2);
   });
 
   it('keeps a shared Agent shared across edits, hands non-owners the current version, and keeps old pins resolving', async () => {
@@ -99,8 +95,6 @@ describe('Custom Agent versions', () => {
 
     const v2 = await db.customProfiles.createVersion(asset.id, {
       system_prompt: 'Require verified evidence and identify blockers.',
-      change_log: 'Add blocker analysis',
-      created_by: owner.id,
     });
     expect(v2?.profile).toMatchObject({ version: 2, is_shared: true });
     // The next pick gets the new version; work already pinned keeps its pin (now the current configuration).
@@ -163,11 +157,11 @@ describe('Custom Agent versions', () => {
 
   it('deletes an Agent, so its pins fail closed', async () => {
     const asset = await createAgent();
-    await db.customProfiles.createVersion(asset.id, { change_log: 'Second', created_by: owner.id });
+    await db.customProfiles.createVersion(asset.id, { name: 'Second' });
 
     expect(await db.customProfiles.delete(asset.id)).toBe(true);
     expect(await db.customProfiles.getById(asset.id)).toBeUndefined();
-    expect(await db.customProfiles.listVersions(asset.id)).toEqual([]);
+    expect(await db.customProfiles.getCurrentVersion(asset.id)).toBeUndefined();
     await expect(resolveProfileAsync(`custom:${asset.id}@1`, db)).rejects.toThrow(/not found/);
     expect(await db.customProfiles.delete(asset.id)).toBe(false);
   });

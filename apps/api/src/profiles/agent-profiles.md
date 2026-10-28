@@ -103,8 +103,8 @@ v3 曾把模型收进 Agent 身份：想更强的推理就选 deep、想百万�
 
 - `run_profiles` 一行就是 Agent 的完整当前配置（含 purpose、audience、risk、budget policy、backup owner）；
   `version` 是配置编辑计数，每次编辑 +1。3.0 起**不存历史版本、不记 change log**：`custom:<id>@<n>`
-  （n ≤ version，包括 1.x 留下的 pin）一律解析为**当前配置**；`getVersion` / `getCurrentVersion` /
-  `listVersions` 由当前行合成版本对象（`manifest_hash` 是当前配置的 SHA-256），`listVersions` 只返回一条。
+  （n ≤ version，包括 1.x 留下的 pin）一律解析为**当前配置**；`getVersion` / `getCurrentVersion`
+  由当前行合成版本对象（`manifest_hash` 是当前配置的 SHA-256）。没有版本列表接口。
 - **私有，除非团队可用**：Agent 默认只有 owner 能看、能用；`is_shared=true` 时所有内部用户都能选用。
   只有 super 能切换（`PUT /api/profiles/custom/:id/sharing`，Agents 页的开关）；owner 在 UI 里只看到一行
   「请联系管理员」的提示，create/update 带 `is_shared` 想改值会被 400 拒绝。可见性判断只有一处：

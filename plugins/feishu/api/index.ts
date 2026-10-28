@@ -15,12 +15,7 @@ export default defineExtension({
   notificationTransports: [transport],
   routes: [{ path: '/api/feishu', app: feishuLoginRoutes }],
   publicPaths: {
-    exact: [
-      '/api/feishu/login-available',
-      '/api/feishu/oauth/start-login',
-      '/api/feishu/oauth/callback',
-      '/api/feishu/oauth/exchange',
-    ],
+    exact: ['/api/feishu/oauth/start-login', '/api/feishu/oauth/callback', '/api/feishu/oauth/exchange'],
   },
   channels: [
     {

@@ -77,7 +77,6 @@ export interface Profile {
   /** Configuration edit counter; every pin up to it runs the current configuration. */
   current_version?: number;
   manifest_hash?: string;
-  change_log?: string;
   purpose?: string | null;
   audience?: string | null;
   risk_level?: 'low' | 'medium' | 'high';

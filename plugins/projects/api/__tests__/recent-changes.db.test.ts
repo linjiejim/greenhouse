@@ -239,13 +239,6 @@ describe('recent changes', () => {
       expect(Date.parse(items[i].at)).toBeLessThanOrEqual(Date.parse(items[i - 1].at));
     }
     expect(items.map((item) => item.target?.label)).toEqual(expect.arrayContaining(titles));
-
-    // A plain ISO timestamp (older clients) still pages: strictly older only.
-    const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    expect(await listRecentChanges(db, bob, { limit: 2, before: old }, { runtime })).toEqual({
-      items: [],
-      next_before: null,
-    });
   });
 
   it('does not skip changes that share the page boundary’s timestamp', async () => {

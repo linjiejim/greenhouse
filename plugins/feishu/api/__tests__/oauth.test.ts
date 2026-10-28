@@ -80,7 +80,6 @@ describe('Feishu OAuth auth boundary', () => {
     expect(isPublicPath('/api/feishu/oauth/callback')).toBe(true);
     expect(isPublicPath('/api/feishu/oauth/start-login')).toBe(true);
     expect(isPublicPath('/api/feishu/oauth/exchange')).toBe(true);
-    expect(isPublicPath('/api/feishu/login-available')).toBe(true);
     // Everything else must stay behind the Bearer: `/start` is the only hop
     // that can tell who is binding, and `/binding` reads and writes their row.
     expect(isPublicPath('/api/feishu/oauth/start')).toBe(false);
@@ -114,12 +113,6 @@ describe('Feishu OAuth without a configured app', () => {
     const res = await feishuOAuthRoutes.request('/oauth/callback?code=x&state=y');
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toContain('feishu=error');
-  });
-
-  it('answers the availability probe with false rather than an error', async () => {
-    const res = await feishuOAuthRoutes.request('/login-available');
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ available: false });
   });
 });
 
@@ -169,21 +162,6 @@ beforeEach(() => {
 });
 
 describe('Feishu binding with a configured app', () => {
-  it('the availability probe mints no state — a password login must not leave one behind', async () => {
-    // Regression guard: the login screen calls this on EVERY mount. Probing
-    // `start-login` instead would accumulate pending states nobody consumes.
-    const probe = await feishuOAuthRoutes.request('/login-available');
-    expect(await probe.json()).toEqual({ available: true });
-
-    // Prove it by consuming a state issued afterwards: if the probe had minted
-    // one, this callback would be matching a different entry than the one the
-    // real start leg handed out.
-    const state = await issueLoginState();
-    identityBinding = { user_id: 'user-1' };
-    const res = await feishuOAuthRoutes.request(`/oauth/callback?code=abc&state=${state}`);
-    expect(res.headers.get('location')).toContain('feishu_code=');
-  });
-
   it('start hands the browser a consent URL with a fresh state and the registered callback — never the secret', async () => {
     const app = authedApp();
     const res = await app.request('/oauth/start');

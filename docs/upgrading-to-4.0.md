@@ -148,6 +148,7 @@ database.
 | SDK 1 plugins, in-tree overlays and plugin `web/` halves are refused by `plugins:sync`. | Port them to SDK 2 ([below](#plugin-authors-sdk-1-to-sdk-2)). |
 | A plugin without `sdk` or `core` refuses activation (3.x only warned). | Declare `sdk: 2` and a `core` range that includes 4.0. |
 | `GET /api/sessions` caps every page at 200 and ignores `include_eval`. | Page with `offset`/`page_meta`. |
+| `GET /api/feishu/login-available`, `GET /api/profiles/custom/:id/versions` and the plain ISO `before` of the team activity feed are removed; custom Agents no longer report `change_log`. | Read `/api/auth/providers`; page the feed with its opaque `next_before`. |
 | Automations accept delivery only as the `notify` object; the flat `notify_webhook`, `notify_email`, `notify_wecom` and `notify_feishu` fields are ignored. | Send `notify: { webhook, email, wecom, feishu }`. |
 | Kit `WidgetRecipe`, `defineExtension.workbenchRecipes` and tool `surface.workbench` are removed. | Delete them; they had no effect since 3.0. |
 | `@greenhouse/web/extension-kit`, `@greenhouse/ui/*` and `packages/contract` are no longer importable from plugins. | Use `@greenhouse/api/extension-kit`, `@greenhouse/types/*`, `@greenhouse/ui-tokens`. |

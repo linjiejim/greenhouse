@@ -33,7 +33,6 @@ async function runProfile(owner: UserRow, shared: boolean) {
     tools: [],
     system_prompt: 'Write a short digest.',
     max_steps: 8,
-    created_by: owner.id,
   });
   // Creating is always private; team availability is switched separately (by a super in the app).
   if (shared) await db.customProfiles.setShared(profile.id, true);
@@ -100,7 +99,7 @@ describe('automations on a run profile — save', () => {
     const own = await runProfile(maya, false);
     const created = await createTask(db, actor(maya), automation(`custom:${own.id}`));
     if (!created.ok) throw new Error(created.error);
-    await db.customProfiles.createVersion(own.id, { change_log: 'v2', created_by: maya.id });
+    await db.customProfiles.createVersion(own.id, { system_prompt: 'Write a shorter digest.' });
 
     const kept = await updateTask(db, actor(maya), created.task.id, {
       name: 'Renamed digest',

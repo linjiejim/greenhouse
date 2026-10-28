@@ -3,12 +3,7 @@ import { assertPluginDisabled } from '../../../../apps/api/src/plugin-host/__tes
 it('contributes no surfaces when disabled', async () => {
   await assertPluginDisabled(
     'feishu',
-    [
-      '/api/feishu/binding',
-      '/api/feishu/login-available',
-      '/api/feishu/oauth/start-login',
-      '/api/feishu/oauth/exchange',
-    ],
+    ['/api/feishu/binding', '/api/feishu/oauth/start-login', '/api/feishu/oauth/exchange'],
     [],
   );
 }, 60000);

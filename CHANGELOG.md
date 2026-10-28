@@ -39,7 +39,9 @@ Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
   `pnpm db:migrate` has bridged it. 1.x and 2.x databases are refused; `migrate-from-1x` is removed.
 - `TASK_CENTER_ENABLED` is removed: `/api/runtime` is always on and `/health` drops
   `surfaces.task_center`; `RUNTIME_APPROVAL_INBOX_ENABLED` alone switches the Approval Inbox.
-- `GET /api/sessions` caps every page at 200 and no longer accepts `include_eval`. Automations
+- `GET /api/sessions` caps every page at 200 and no longer accepts `include_eval`.
+  `GET /api/feishu/login-available` (use `/api/auth/providers`), `GET /api/profiles/custom/:id/versions`,
+  the custom Agent `change_log` field and the team activity feed's plain ISO `before` are removed. Automations
   take delivery only as the `notify` object; the flat `notify_*` fields are ignored.
 
 ### Upgrading from 3.x

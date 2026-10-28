@@ -94,11 +94,6 @@ describe('custom Agent team availability routes', () => {
     expect(edited.status).toBe(200);
     expect(await edited.json()).toMatchObject({ is_shared: true, current_version: 2 });
 
-    const versions = await app.request(`/api/profiles/custom/${profileId}/versions`, as(reader));
-    expect(
-      ((await versions.json()) as { versions: Array<{ version: number }> }).versions.map((v) => v.version),
-    ).toEqual([2]);
-
     const lifecycle = await app.request(
       `/api/profiles/custom/${profileId}/lifecycle`,
       as(owner, { method: 'POST', body: JSON.stringify({ status: 'review' }) }),
@@ -133,7 +128,6 @@ describe('GET /api/profiles/usable-by/:userId', () => {
       base_profile_id: 'sprouty',
       system_prompt: 'Help.',
       tools: [],
-      created_by: user.id,
     });
     if (shared) await db.customProfiles.setShared(row.id, true);
     return row;
