@@ -27,7 +27,7 @@ import { useResource } from '../../src/data/use-resource';
 import { useT } from '../../src/lib/i18n';
 import { makeStyles, space, useTheme } from '../../src/theme';
 import { EmptyState, LoadingState } from '../../src/ui/empty';
-import { Badge, Row, Section, type BadgeTone } from '../../src/ui/list';
+import { Badge, Row, Section, SectionFooter, SectionHeader, type BadgeTone } from '../../src/ui/list';
 import { NativeMenu, menuSections } from '../../src/ui/menu';
 import { usePullRefresh } from '../../src/ui/refresh';
 import { Screen } from '../../src/ui/screen';
@@ -231,6 +231,12 @@ export default function MyConnectorsPage() {
                 : []),
             ]}
           </Section>
+        ) : mine.length || ready.length ? (
+          // the phone cannot add one, so say where that happens instead of leaving the place out
+          <View>
+            <SectionHeader title={t('connectors.own')} />
+            <SectionFooter text={t('connectors.ownNonePhone')} />
+          </View>
         ) : null}
       </ScrollView>
     </>

@@ -8,9 +8,9 @@ import { FormChrome } from '../src/ui/sheet-chrome';
 
 export default function NewDoc() {
   const t = useT();
-  const doc = useNewDoc();
   const titleState = useNativeState('');
   const bodyState = useNativeState('');
+  const doc = useNewDoc({ title: () => titleState.get(), body: () => bodyState.get() });
   return (
     <>
       <FormChrome

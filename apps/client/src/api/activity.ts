@@ -5,7 +5,7 @@
  * Answers an `ApiResult` (./client.ts), never throws.
  */
 
-import type { MyActivityPage } from '../data/my-activity';
+import type { MyActivityPage, MyActivityQuery } from '../data/my-activity';
 import type { RecentChangesPage } from '../shared/greenhouse-types';
 import { get } from './client';
 
@@ -17,5 +17,5 @@ export const listRecentChanges = (query: { before?: string | null; limit?: numbe
     before: query.before ?? undefined,
   });
 
-export const listMyActivity = (query: { source?: string; from: string }, cursor?: string | null) =>
+export const listMyActivity = (query: MyActivityQuery, cursor?: string | null) =>
   get<MyActivityPage>('/api/activity', { ...query, cursor: cursor ?? undefined, limit: ACTIVITY_PAGE_SIZE });

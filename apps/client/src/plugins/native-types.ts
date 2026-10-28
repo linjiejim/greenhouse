@@ -8,4 +8,6 @@ export interface NativeScreenEntry {
   collection?: string;
   /** What the phone's read-only list leaves to a wider window (the browser has a screen for it). */
   wideNote?: TranslationKey;
+  /** Words for the rows' `status` values; `null` keeps the usual state quiet. Others show humanized. */
+  statuses?: Readonly<Record<string, TranslationKey | null>>;
 }

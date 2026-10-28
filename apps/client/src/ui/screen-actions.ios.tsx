@@ -1,14 +1,21 @@
-import React from 'react';
+import React, { useLayoutEffect, useState } from 'react';
 import { Stack } from 'expo-router';
+import { createPressRelay } from './press-relay';
 import { screenActionIcon } from './screen-action-icon';
 import { refreshItem } from './refresh';
 import type { ScreenAction, ScreenActionsProps } from './screen-action-types';
 export type { ScreenAction } from './screen-action-types';
-/** Return native items directly: expo-router does not inspect wrapped toolbar children. */
+/**
+ * Return native items directly: expo-router does not inspect wrapped toolbar children. Presses go
+ * through a relay (./press-relay.ts) so a button tapped before the header catches up still runs
+ * the newest handler.
+ */
 export function useScreenActions(
   actions: readonly ScreenAction[],
   { placement = 'right' }: Omit<ScreenActionsProps, 'actions'> = {},
 ) {
+  const [relay] = useState(createPressRelay);
+  useLayoutEffect(() => relay.update(actions));
   return (
     <Stack.Toolbar placement={placement}>
       {actions.map((a) =>
@@ -22,7 +29,7 @@ export function useScreenActions(
                 icon={screenActionIcon(item)}
                 destructive={item.destructive}
                 disabled={item.disabled}
-                onPress={item.onPress}
+                onPress={relay.press(a.id, item.id)}
               >
                 {item.label}
               </Stack.Toolbar.MenuAction>
@@ -36,7 +43,7 @@ export function useScreenActions(
             disabled={a.disabled}
             separateBackground={a.separateBackground}
             hidden={a.hidden}
-            onPress={a.onPress}
+            onPress={relay.press(a.id)}
           >
             {a.badge ? <Stack.Toolbar.Badge>{a.badge}</Stack.Toolbar.Badge> : null}
           </Stack.Toolbar.Button>

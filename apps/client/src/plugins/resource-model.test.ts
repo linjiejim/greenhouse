@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { humanizeKey, resourceOf } from './resource-model';
+import { humanizeKey, resourceOf, statusWords } from './resource-model';
 
 it('turns a collection into rows with a title, one supporting line, status, tags and a time', () => {
   const skills = {
@@ -50,4 +50,14 @@ it('shows a single object as its scalar facts', () => {
 it('reads nothing as an empty list', () => {
   expect(resourceOf(undefined, 'docs')).toEqual({ kind: 'rows', rows: [] });
   expect(humanizeKey('pricePerMinute')).toBe('Price per minute');
+});
+
+it('says a status in the surface\'s words, keeps the usual one quiet and never shows a raw value', () => {
+  const words = { active: null, archived: 'skillHub.archived' } as const;
+  const say = (key: string) => `<${key}>`;
+  expect(statusWords('active', words, say)).toBeUndefined();
+  expect(statusWords('archived', words, say)).toBe('<skillHub.archived>');
+  expect(statusWords('needs_review', words, say)).toBe('Needs review');
+  expect(statusWords('active', undefined, say)).toBe('Active');
+  expect(statusWords(undefined, words, say)).toBeUndefined();
 });

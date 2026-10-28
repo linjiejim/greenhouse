@@ -992,6 +992,7 @@ export const en = {
     own: 'My Connectors',
     ownFooter: 'Only you and your agent use these; their handle is me/<name>.',
     ownFooterPhone: 'Only you and your agent use these. Add and edit them in a browser.',
+    ownNonePhone: 'None yet. Add your own in a browser; only you and your agent use them.',
     ownIntro:
       'A connector of your own: an MCP server only you and your agent use. Add your key or sign in from its row once it is saved.',
     addOwn: 'Add Connector',

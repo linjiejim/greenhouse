@@ -62,7 +62,7 @@ import { MenuHost } from '../src/ui/menu';
 import { ToastHost } from '../src/ui/toast';
 import { useT } from '../src/lib/i18n';
 import { MismatchScreen } from '../src/shell/mismatch';
-import { detailScreen, modalScreen, sheetScreen, stackDefaults } from '../src/ui/nav';
+import { detailScreen, modalScreen, opaqueBar, sheetScreen, stackDefaults } from '../src/ui/nav';
 import { sheetEdgeLayout } from '../src/ui/sheet-edge';
 import nunitoRegular from '../assets/fonts/Nunito-Regular.ttf';
 import nunitoMedium from '../assets/fonts/Nunito-Medium.ttf';
@@ -214,10 +214,13 @@ export default function RootLayout() {
                 <Stack.Screen name="peek/diagram" options={{ ...detailScreen(c), presentation: 'modal' }} />
                 <Stack.Screen name="table" options={{ ...detailScreen(c), presentation: 'modal' }} />
 
+                {/* ── plugin pages: their lists and forms start below an opaque bar ── */}
+                <Stack.Screen name="p/[plugin]/[page]" options={opaqueBar(hex)} />
+
                 {/* ── administration: a link on a phone lands on the wide-window notice, with a way back ── */}
                 <Stack.Screen
                   name="admin"
-                  options={{ ...detailScreen(c, { grouped: true }), headerTransparent: false, title: t('admin.title') }}
+                  options={{ ...detailScreen(c, { grouped: true }), ...opaqueBar(hex), title: t('admin.title') }}
                 />
 
                 {/* ── 「我」: a page sheet with its own stack ── */}

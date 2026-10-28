@@ -8,8 +8,8 @@ import { FormChrome } from '../../src/ui/sheet-chrome';
 
 export default function Feedback() {
   const t = useT();
-  const feedback = useFeedback();
   const text = useNativeState('');
+  const feedback = useFeedback(() => text.get());
   return (
     <>
       <FormChrome
