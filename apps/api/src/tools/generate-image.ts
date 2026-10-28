@@ -225,9 +225,7 @@ const generateImageSchema = z.object({
         'Anything else (e.g. a platform spec like 1080x1080) is snapped to whichever of those three has the closest aspect ratio; ' +
         'pick by shape, not by a target pixel count.',
     ),
-  // No `quality` knob by design — see the module header. Zod strips unknown keys, so
-  // callers still passing `quality` from the old schema are silently served `low`
-  // rather than erroring.
+  // No `quality` knob by design — see the module header.
 
   // Reference assets. Usable with BOTH actions: on `edit` they are the images being
   // changed, on `generate` they are source material composited into a new image.

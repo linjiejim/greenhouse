@@ -153,6 +153,9 @@ database.
 | Kit `WidgetRecipe`, `defineExtension.workbenchRecipes` and tool `surface.workbench` are removed. | Delete them; they had no effect since 3.0. |
 | `@greenhouse/web/extension-kit`, `@greenhouse/ui/*` and `packages/contract` are no longer importable from plugins. | Use `@greenhouse/api/extension-kit`, `@greenhouse/types/*`, `@greenhouse/ui-tokens`. |
 | The Docker image contains only the universal client. | Nothing; the API serves it. |
+| Old environment aliases are ignored: `APP_BASE_URL` (skill alerts read `PUBLIC_BASE_URL`), `SYNC_WECOM_WEBHOOK_URL` (use `SKILLS_WECOM_WEBHOOK_URL`), `PORT` for the OAuth issuer (use `API_PORT` or `API_BASE_URL`) and `SILICONFLOW_API_KEY` in `pnpm cli doctor`. | Rename them in `.env`. |
+| The agent proxy and MCP accept live tool ids only: retired names such as `session_history`, `team_knowledge`, `personal_knowledge`, `get_team_knowledge` or `search_greenhouse_doc` are refused (403). Stored custom Agents keep working. | Update external agents and scripts to `session_query` and `knowledge_query`. |
+| Connector catalog files (`connectors/*.json`) name member keys `"mode": "key"` (was `per_user`). | Rename the mode in your own catalog files. |
 | `TASK_CENTER_ENABLED` is ignored: run details (`/api/runtime`) are always on, `/health` no longer reports `surfaces.task_center`, and the Approval Inbox depends only on `RUNTIME_APPROVAL_INBOX_ENABLED`. | Remove the variable; use `RUNTIME_APPROVAL_INBOX_ENABLED=0` to stop approvals. |
 
 What now breaks: installed iOS/Android apps from the 3.x line must be updated before they can use

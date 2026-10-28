@@ -56,7 +56,7 @@ interface ParsedToolCall {
 
 /** Alias projection is supplied by the active tool owner, including for recovered calls. */
 export function normalizeToolCall(call: ParsedToolCall): ParsedToolCall {
-  const normalized = normalizePluginToolCall(call.name, call.args, 'dsml');
+  const normalized = normalizePluginToolCall(call.name, call.args);
   return { name: normalized.toolId, args: normalized.input as Record<string, unknown> };
 }
 

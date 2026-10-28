@@ -72,9 +72,7 @@ function normalizeBaseUrl(raw: string): string {
 }
 
 export function getOAuthIssuerUrl(): string {
-  return normalizeBaseUrl(
-    process.env.API_BASE_URL ?? `http://localhost:${process.env.API_PORT ?? process.env.PORT ?? '3000'}`,
-  );
+  return normalizeBaseUrl(process.env.API_BASE_URL ?? `http://localhost:${process.env.API_PORT ?? '3000'}`);
 }
 
 export function getOAuthWebUrl(): string {

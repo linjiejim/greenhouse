@@ -9,8 +9,7 @@
  * catalog and can therefore derive a "needs review" count client-side without
  * any new endpoint (spec D7).
  *
- * Webhook: SKILLS_WECOM_WEBHOOK_URL, falling back to the sync bot
- * (SYNC_WECOM_WEBHOOK_URL). Unconfigured → silent no-op, never a fake
+ * Webhook: SKILLS_WECOM_WEBHOOK_URL. Unconfigured → silent no-op, never a fake
  * notification (capability-must-be-real rule). Never throws: a failed notify
  * must not turn a completed publish into an error.
  */
@@ -23,7 +22,7 @@ import type { ScanFinding } from './scanner.js';
 
 /** The Skills page of the universal client (it has no per-skill address; the message names the skill). */
 export function skillsPageUrl(): string {
-  const base = (process.env.APP_BASE_URL ?? '').replace(/\/$/, '');
+  const base = (process.env.PUBLIC_BASE_URL ?? '').replace(/\/$/, '');
   return `${base}${pluginPagePath('skills', 'skills')}`;
 }
 
@@ -32,7 +31,7 @@ export async function notifySuspiciousSkill(opts: {
   version: string;
   findings: ScanFinding[];
 }): Promise<void> {
-  const webhook = process.env.SKILLS_WECOM_WEBHOOK_URL || process.env.SYNC_WECOM_WEBHOOK_URL;
+  const webhook = process.env.SKILLS_WECOM_WEBHOOK_URL;
   if (!webhook) return;
   const transport = notificationWebhookTransport(webhook);
   if (!transport?.sendWebhook) return; // disabled/unconfigured adapter never sends

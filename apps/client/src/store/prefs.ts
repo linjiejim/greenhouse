@@ -12,7 +12,7 @@
 import { create } from 'zustand';
 import { loadPref, savePref } from '../api/token-storage';
 import { DEFAULT_HOME_RECENT, homeRecentOf, type HomeRecent } from '../data/home';
-import { DEFAULT_TEXT_STEP, legacyTextStepOf, TEXT_STEPS, textStepOf, type TextStep } from '../theme/type-scale';
+import { DEFAULT_TEXT_STEP, TEXT_STEPS, textStepOf, type TextStep } from '../theme/type-scale';
 
 export type ThemePref = 'system' | 'light' | 'dark';
 export type LangPref = 'zh' | 'en';
@@ -62,16 +62,14 @@ export const usePrefs = create<Prefs>((set, get) => ({
   },
   hydrated: false,
   hydrate: async () => {
-    const [theme, lang, textScale, legacyStep, homeRecent] = await Promise.all([
+    const [theme, lang, textScale, homeRecent] = await Promise.all([
       loadPref('theme'),
       loadPref('lang'),
       loadPref('textScale'),
-      loadPref('textStep'),
       loadPref('homeRecent'),
     ]);
     const recent = homeRecentOf(homeRecent);
-    const textStep =
-      textScale != null ? textStepOf(textScale) : legacyStep != null ? legacyTextStepOf(legacyStep) : null;
+    const textStep = textScale != null ? textStepOf(textScale) : null;
     set({
       ...(theme === 'light' || theme === 'dark' || theme === 'system' ? { theme } : {}),
       ...(lang === 'zh' || lang === 'en' ? { lang } : {}),

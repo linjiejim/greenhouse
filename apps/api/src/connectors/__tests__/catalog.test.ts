@@ -74,7 +74,7 @@ describe('the official catalog', () => {
           [CONNECTOR_CATALOG_META_KEY]: {
             ...meta,
             slug: 'c',
-            auth: { mode: 'per_user', header: 'X-Key', query_param: 'key', help: 'h', help_zh: 'h', zero_config: true },
+            auth: { mode: 'key', header: 'X-Key', query_param: 'key', help: 'h', help_zh: 'h', zero_config: true },
           },
         },
       }),

@@ -37,6 +37,10 @@ Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
   tables). Fresh installs no longer create plugin tables; each plugin creates its own when
   enabled. 3.x databases upgrade in place and the API refuses a 3.x database until
   `pnpm db:migrate` has bridged it. 1.x and 2.x databases are refused; `migrate-from-1x` is removed.
+- Environment aliases `APP_BASE_URL`, `SYNC_WECOM_WEBHOOK_URL`, `PORT` (OAuth issuer) and
+  `SILICONFLOW_API_KEY` (doctor) are ignored. The agent proxy and MCP refuse retired tool names
+  (`session_history`, `team_knowledge`, …); connector catalog files use `"mode": "key"` instead of
+  `per_user`; avatar writers no longer dual-write the pre-plant `color` and `faceStyle` keys.
 - `TASK_CENTER_ENABLED` is removed: `/api/runtime` is always on and `/health` drops
   `surfaces.task_center`; `RUNTIME_APPROVAL_INBOX_ENABLED` alone switches the Approval Inbox.
 - `GET /api/sessions` caps every page at 200 and no longer accepts `include_eval`.

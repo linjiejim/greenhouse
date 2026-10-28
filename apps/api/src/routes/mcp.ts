@@ -63,7 +63,6 @@ import {
   buildProxyManifest,
   executeProxyTool,
   isMutatingProxyTool,
-  canonicalProxyToolId,
   ProxyToolError,
   type ProxyToolManifestEntry,
 } from '../agent-runtime/tool-proxy.js';
@@ -475,9 +474,7 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
         }
         const { view } = written;
         const bounded =
-          written.status === 'executed'
-            ? await boundReplyText(JSON.stringify(view.output), outputCaller, canonicalProxyToolId(name))
-            : null;
+          written.status === 'executed' ? await boundReplyText(JSON.stringify(view.output), outputCaller, name) : null;
         await recordMcpAudit(c, {
           endpoint: 'mcp:tools/call',
           statusCode: written.status === 'executed' ? 200 : written.status === 'failed' ? 422 : 500,
@@ -522,7 +519,7 @@ export function buildMcpServer(c: Context, ctx: McpContext): Server {
         usageClient: 'mcp',
         metering: meteringScope,
       });
-      const bounded = await boundReplyText(JSON.stringify(output), outputCaller, canonicalProxyToolId(name));
+      const bounded = await boundReplyText(JSON.stringify(output), outputCaller, name);
       await recordMcpAudit(c, {
         endpoint: 'mcp:tools/call',
         statusCode: 200,
@@ -627,7 +624,7 @@ async function handleToolOutputRead(
 export function createMcpRoutes(toolRegistry: ToolRegistry) {
   return (
     new Hono<AppEnv>()
-      // OAuth or legacy API key → current internal-user identity → scoped rate limit.
+      // OAuth access token → current internal-user identity → scoped rate limit.
       .use('*', mcpCredentialMiddleware)
       // Single MCP endpoint. POST carries JSON-RPC; GET/DELETE are handled by the
       // transport per spec (405 in stateless mode).

@@ -2,10 +2,8 @@
 import type { Reference } from '@greenhouse/types/session';
 export interface ToolResultAdapter {
   toolId: string;
-  legacyCalls?: Record<
-    string,
-    Partial<Record<'proxy' | 'dsml', (input: Record<string, unknown>) => Record<string, unknown>>>
-  >;
+  /** Retired tool names a model may still write in DSML markup (./dsml-interceptor.ts) → this tool's input. */
+  legacyCalls?: Record<string, (input: Record<string, unknown>) => Record<string, unknown>>;
   summarizeInput?: (input: Record<string, unknown>) => unknown;
   summarizeOutput?: (output: Record<string, unknown>) => unknown;
   references?: (output: Record<string, unknown>) => Reference[];
@@ -22,14 +20,10 @@ export function registerToolResultAdapters(entries: ToolResultAdapter[]) {
   for (const entry of entries) {
     if (next.has(entry.toolId)) throw new Error(`Duplicate tool result adapter "${entry.toolId}"`);
     next.set(entry.toolId, entry);
-    for (const [name, handlers] of Object.entries(entry.legacyCalls ?? {}))
-      for (const transport of ['proxy', 'dsml'] as const) {
-        const normalize = handlers[transport];
-        if (!normalize) continue;
-        const key = `${transport}:${name}`;
-        if (nextAliases.has(key)) throw new Error(`Duplicate legacy tool call ${name}`);
-        nextAliases.set(key, { toolId: entry.toolId, normalize });
-      }
+    for (const [name, normalize] of Object.entries(entry.legacyCalls ?? {})) {
+      if (nextAliases.has(name)) throw new Error(`Duplicate legacy tool call ${name}`);
+      nextAliases.set(name, { toolId: entry.toolId, normalize });
+    }
   }
   adapters = next;
   aliases = nextAliases;
@@ -47,8 +41,9 @@ export function toolResultRelevance(id: string, output: Record<string, unknown>)
   return output && !output.error ? (adapters.get(id)?.relevance?.(output) ?? []) : [];
 }
 
-export function normalizePluginToolCall(toolId: string, input: unknown, transport: 'proxy' | 'dsml' = 'proxy') {
-  const alias = aliases.get(`${transport}:${toolId}`);
+/** A retired tool name in a model's DSML markup → the live tool and its input. */
+export function normalizePluginToolCall(toolId: string, input: unknown) {
+  const alias = aliases.get(toolId);
   if (!alias) return { toolId, input };
   const args = input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
   return { toolId: alias.toolId, input: alias.normalize(args) };

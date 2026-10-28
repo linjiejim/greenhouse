@@ -14,7 +14,7 @@ vi.mock('@greenhouse/db', async (importOriginal) => ({
   getDb: () => ({ usageCounters: { increment } }),
 }));
 
-import { executeProxyTool, ProxyToolError, canonicalProxyToolId } from '../tool-proxy.js';
+import { executeProxyTool, ProxyToolError } from '../tool-proxy.js';
 
 const execute = vi.fn();
 const registry = {
@@ -34,19 +34,6 @@ describe('executeProxyTool usage counting', () => {
       executeProxyTool(registry, 'session_query', ['session_query'], { action: 'tree' }, { usageClient: 'mcp' }),
     ).resolves.toEqual({ ok: true });
     expect(increment).toHaveBeenCalledWith('tool_call', 'session_query', 'mcp');
-  });
-
-  it('counts a legacy alias under the canonical tool id', async () => {
-    await executeProxyTool(
-      registry,
-      'session_history',
-      ['session_query'],
-      { query: 'x' },
-      {
-        usageClient: 'agent_api',
-      },
-    );
-    expect(increment).toHaveBeenCalledWith('tool_call', 'session_query', 'agent_api');
   });
 
   it('does not count a call the proxy refused', async () => {
@@ -74,13 +61,5 @@ describe('executeProxyTool usage counting', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('db down'));
     warn.mockRestore();
-  });
-});
-
-describe('canonicalProxyToolId', () => {
-  it('names the tool a legacy alias runs as, so paged output keeps its real source', () => {
-    expect(canonicalProxyToolId('session_history')).toBe('session_query');
-    expect(canonicalProxyToolId('session_history')).toBe('session_query');
-    expect(canonicalProxyToolId('tables_query')).toBe('tables_query');
   });
 });

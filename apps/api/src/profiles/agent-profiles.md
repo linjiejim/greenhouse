@@ -165,7 +165,7 @@ stateless Agent/MCP 不开放该文件工具。
   避免模型枚举别人的绑定。共享的 greenhouse@ 邮箱仅 super 可用，且只能发给发起人自己的
   账号邮箱或共享邮箱所在域（`SHARED_MAILBOX_ALLOWED_DOMAIN`）。
 - **无人值守禁用写工具**：`email_mutation` 声明 `surface.unattendedDenied`，启用后进入 `UNATTENDED_TOOL_DENYLIST`——没有人读那张卡，
-  两步确认就退化成一步发送。定时任务要送邮件走 scheduler 自己的 `notify_email` 通道。
+  两步确认就退化成一步发送。定时任务要送邮件走 scheduler 自己的 `notify.email` 通道。
 - 附件从当前会话的文件取（chat 面独有；stateless 的 proxy 无 session，会明确报错而不是静默跳过）。
 - **两个工具都不在 MCP 上**（2026-08-16 摘除）：`email_mutation` 的安全性全靠有人读那张草稿卡，
   而 MCP 调用方自填 `user_confirmed` 与 `confirm`，两步确认坍缩成一步；`email_query` 一并摘掉——

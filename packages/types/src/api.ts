@@ -880,7 +880,7 @@ export interface ScheduledTaskInput {
   timezone?: string;
   max_steps?: number;
   enabled?: boolean;
-  /** Only the keys given change on update. (1.x flat `notify_*` fields are still accepted by the API.) */
+  /** Only the keys given change on update. */
   notify?: Partial<AutomationNotify>;
   quiet_when_empty?: boolean;
   /** Console only: tools granted to unattended runs. */

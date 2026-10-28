@@ -2,20 +2,10 @@ import type { ToolResultAdapter } from '@greenhouse/api/extension-kit';
 export const knowledgeTranscript: ToolResultAdapter = {
   toolId: 'knowledge_query',
   legacyCalls: {
-    get_team_knowledge: {
-      proxy: (input) => ({ ...input, scope: 'team', action: 'get' }),
-      dsml: (input) => ({ action: 'get', ...input }),
-    },
-    search_team_knowledge: {
-      proxy: (input) => ({ ...input, scope: 'team', action: 'search' }),
-      dsml: (input) => ({ action: 'search', ...input }),
-    },
-    get_greenhouse_doc: { proxy: (input) => ({ ...input, scope: 'team', action: 'get' }) },
-    search_greenhouse_doc: { proxy: (input) => ({ ...input, scope: 'team', action: 'search' }) },
-    get_personal_knowledge: { dsml: (input) => ({ action: 'get', ...input }) },
-    search_personal_knowledge: { dsml: (input) => ({ action: 'search', ...input }) },
-    team_knowledge: { proxy: (input) => ({ scope: 'team', ...input }) },
-    personal_knowledge: { proxy: (input) => ({ scope: 'personal', ...input }) },
+    get_team_knowledge: (input) => ({ action: 'get', ...input }),
+    search_team_knowledge: (input) => ({ action: 'search', ...input }),
+    get_personal_knowledge: (input) => ({ action: 'get', ...input }),
+    search_personal_knowledge: (input) => ({ action: 'search', ...input }),
   },
   summarizeInput: (input) =>
     input.action === 'get' || input.action === 'versions'

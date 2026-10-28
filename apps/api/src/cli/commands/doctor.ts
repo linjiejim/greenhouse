@@ -83,13 +83,13 @@ export async function run(_args: string[]): Promise<number> {
     fix: 'Set TOKEN_SIGNING_KEY to `openssl rand -hex 32` output — exactly 64 hexadecimal characters',
   });
 
-  const llmKey = process.env.LLM_API_KEY || process.env.SILICONFLOW_API_KEY || '';
+  const llmKey = process.env.LLM_API_KEY || '';
   checks.push({
     label: 'LLM API key set',
     ok: !!llmKey,
     warn: true, // agent/chat needs it, but the app boots without it
     detail: llmKey ? 'present' : 'missing',
-    fix: 'Set LLM_API_KEY or SILICONFLOW_API_KEY in .env for chat/agent features',
+    fix: 'Set LLM_API_KEY in .env for chat/agent features',
   });
 
   console.log(heading(`${dbName()} — doctor`));

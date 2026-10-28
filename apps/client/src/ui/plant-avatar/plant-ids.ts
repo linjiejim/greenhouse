@@ -16,7 +16,7 @@
  * Stored avatar JSON is never rewritten: legacy Sprouty configs (`color`,
  * `accessories`, `leafStyle`, `faceStyle`, `eyeStyle`, `palette`) render through
  * `legacyToPlant` / `legacyToMood` below. The resolver and the writer rule
- * (`withPlant` / `withTint` / `withMood` / `plantAvatarConfig`) live here, not in the ui
+ * (`withPlant` / `withTint` / `plantAvatarConfig`) live here, not in the ui
  * package, so the API (template seeds, fork pinning), the web editors and the
  * renderer all share one copy.
  */
@@ -147,26 +147,6 @@ export const COLOR_FAMILY = Object.freeze({
   midnight: ['eucalyptus'],
   autumn: ['maple'],
 } as const satisfies Record<SproutyColorId, readonly PlantId[]>);
-
-/** Nearest legacy colour, dual-written next to `plant` so old desktop builds degrade to a matching hue. */
-export const PLANT_LEGACY_COLOR = Object.freeze({
-  sprout: 'forest',
-  ivy: 'forest',
-  sage: 'forest',
-  basil: 'forest',
-  fern: 'forest',
-  clover: 'forest',
-  monstera: 'forest',
-  opuntia: 'forest',
-  ginkgo: 'sunset',
-  maple: 'autumn',
-  echeveria: 'ocean',
-  lotus: 'blossom',
-  eucalyptus: 'midnight',
-  lavender: 'lavender',
-  sunflower: 'sunshine',
-  dandelion: 'sunshine',
-} as const satisfies Record<PlantId, SproutyColorId>);
 
 /**
  * Species a stored avatar without a `plant` may land on implicitly (resolution steps 4–6). FROZEN
@@ -370,40 +350,15 @@ export function resolvePlantAvatar(
 
 // ─── Writer rule (both editors, the API's template seeds, fork pinning) ────
 
-/** Resting mood → the legacy `faceStyle` that stores it. */
-export const MOOD_FACE_STYLE = Object.freeze({
-  calm: 'default',
-  soft: 'happy',
-  bright: 'sparkle',
-  drowsy: 'sleepy',
-} as const satisfies Record<PlantMood, SproutyFaceStyleId>);
-
 /** The avatar keys a writer sets (AvatarConfig and ProfileAvatar both fit). */
 interface WritableAvatar {
   plant?: string;
-  mood?: string;
-  color?: string;
-  faceStyle?: string;
   tint?: string;
 }
 
-/**
- * Choose a species: `plant` plus its nearest legacy `color`, so a client that
- * predates plant avatars still shows a matching hue. Every other key is kept
- * (rollback-safe).
- */
+/** Choose a species. Every other key is kept; `plant` wins over the legacy keys when read. */
 export function withPlant<T extends WritableAvatar>(avatar: T, plant: PlantId): T {
-  return { ...avatar, plant, color: PLANT_LEGACY_COLOR[plant] };
-}
-
-/**
- * Choose a resting mood. Stored as `faceStyle`; a `mood` key is dropped, because
- * `legacyToMood` reads it first and an old client editing `faceStyle` would never
- * update it.
- */
-export function withMood<T extends WritableAvatar>(avatar: T, mood: PlantMood): T {
-  const { mood: _superseded, ...rest } = avatar;
-  return { ...rest, faceStyle: MOOD_FACE_STYLE[mood] } as T;
+  return { ...avatar, plant };
 }
 
 /** Choose a colour; `plant` (the species' own) drops the key. Every other key is kept. */
@@ -412,10 +367,9 @@ export function withTint<T extends WritableAvatar>(avatar: T, tint: PlantTint): 
   return (tint === 'plant' ? rest : { ...rest, tint }) as T;
 }
 
-/** A fresh stored avatar: species + legacy colour (+ resting mood). Accessories are not written. */
-export function plantAvatarConfig(plant: PlantId, mood?: PlantMood): AvatarConfig {
-  const avatar = withPlant<AvatarConfig>({}, plant);
-  return mood ? withMood(avatar, mood) : avatar;
+/** A fresh stored avatar: the species alone. */
+export function plantAvatarConfig(plant: PlantId): AvatarConfig {
+  return withPlant<AvatarConfig>({}, plant);
 }
 
 // ─── Members' connected agents (MCP / OAuth clients) ──────────────────────
