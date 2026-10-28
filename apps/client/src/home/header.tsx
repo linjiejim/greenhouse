@@ -19,7 +19,7 @@ export function HomeHeader({ unread }: { unread: number }) {
             icon: 'bell',
             label: unread > 0 ? t('home.notificationsUnread', { n: unread }) : t('notifications.title'),
             onPress: () => router.push('/notifications'),
-            badge: unread > 99 ? '99+' : String(unread),
+            badge: unread > 99 ? '99+' : unread > 0 ? String(unread) : undefined,
           },
         ]}
       />
