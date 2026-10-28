@@ -183,7 +183,7 @@ describe('scanToolErrors', () => {
     });
   }
   it('extracts failed tool calls out of the pipeline column', async () => {
-    const session = await db.sessions.create('miner evidence', 'team', 'user-miner');
+    const session = await db.sessions.create('miner evidence', 'sprouty', 'user-miner');
     await assistantMessage(session.id, [
       step({ tool: 'crm_query', input: { type: 'company' }, output: { error: 'id and type required' } }),
       step({ step: 2, tool: 'knowledge_query', input: { q: 'x' }, output: { results: [] } }),
@@ -197,7 +197,7 @@ describe('scanToolErrors', () => {
     expect(mine[0]!.input).toContain('company');
   });
   it('ignores turns that used no tool, succeeded, or answered with a non-object', async () => {
-    const session = await db.sessions.create('miner noise', 'team', 'user-miner');
+    const session = await db.sessions.create('miner noise', 'sprouty', 'user-miner');
     await assistantMessage(session.id, []);
     await assistantMessage(session.id, [step({ tool: 'ok_tool', output: { results: [1] } })]);
     // `jsonb_typeof(... ) = 'object'` is what keeps this one out of the results.
@@ -209,7 +209,7 @@ describe('scanToolErrors', () => {
   it('stores a tool output that carried a NUL character, and still mines it', async () => {
     // A UTF-16 CSV decoded as UTF-8 puts NULs into a tool output. jsonb cannot
     // hold U+0000, so the write drops it rather than losing the whole message.
-    const session = await db.sessions.create('miner nul', 'team', 'user-miner');
+    const session = await db.sessions.create('miner nul', 'sprouty', 'user-miner');
     const nul = String.fromCharCode(0);
     await assistantMessage(session.id, [step({ tool: 'read_attachment', output: { error: `garbage${nul}text` } })]);
     await assistantMessage(session.id, [step({ tool: 'crm_query', output: { error: 'still minable' } })]);
@@ -219,7 +219,7 @@ describe('scanToolErrors', () => {
     expect(mine.map((s) => s.error).sort()).toEqual(['garbagetext', 'still minable']);
   });
   it('honours the time window and the row cap', async () => {
-    const session = await db.sessions.create('miner window', 'team', 'user-miner');
+    const session = await db.sessions.create('miner window', 'sprouty', 'user-miner');
     await assistantMessage(session.id, [
       step({ output: { error: 'boom' } }),
       step({ step: 2, output: { error: 'boom' } }),
@@ -252,7 +252,7 @@ describe('scanEmptyResults', () => {
     await db.sessions.addMessage({ session_id: sessionId, role: 'assistant', content: 'answer', pipeline });
   }
   it('finds searches that succeeded with nothing, and keeps the query as evidence', async () => {
-    const session = await db.sessions.create('empty search', 'team', 'user-miner');
+    const session = await db.sessions.create('empty search', 'sprouty', 'user-miner');
     await assistantMessage(session.id, [
       step({ tool: 'knowledge_query', input: { action: 'search', query: '退货政策' }, output: { found: 0 } }),
     ]);
@@ -263,7 +263,7 @@ describe('scanEmptyResults', () => {
     expect(mine[0]!.input).toContain('退货政策');
   });
   it('ignores non-empty results and anything that already errored', async () => {
-    const session = await db.sessions.create('empty search noise', 'team', 'user-miner');
+    const session = await db.sessions.create('empty search noise', 'sprouty', 'user-miner');
     await assistantMessage(session.id, [step({ output: { found: 3 } })]);
     // An error is the OTHER miner's business; counting it twice would double the queue.
     await assistantMessage(session.id, [step({ step: 2, output: { found: 0, error: 'boom' } })]);

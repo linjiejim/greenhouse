@@ -70,7 +70,7 @@ describe('global search', () => {
     const token = marker();
     const user = await createInternalTestUser(db, { email: `search-super-${token}@test.local`, role: 'super' });
 
-    await db.sessions.create(`${token} planning`, 'team', user.id, undefined, 'web');
+    await db.sessions.create(`${token} planning`, 'sprouty', user.id, undefined, 'web');
     await projectsServices(db).projects.createProject({
       title: `${token} rollout`,
       owner_id: user.id,
@@ -118,11 +118,11 @@ describe('global search', () => {
       createInternalTestUser(db, { email: `search-session-owner-${token}@test.local`, role: 'team' }),
       createInternalTestUser(db, { email: `search-session-other-${token}@test.local`, role: 'team' }),
     ]);
-    const own = await db.sessions.create(`${token} own chat`, 'team', owner.id, undefined, 'web');
-    const run = await db.sessions.create(`${token} daily digest run`, 'team', owner.id, undefined, 'task');
-    const bot = await db.sessions.create(`${token} feishu thread`, 'team', owner.id, undefined, 'feishu');
-    await db.sessions.create(`${token} other chat`, 'team', stranger.id, undefined, 'web');
-    await db.sessions.create(`${token} workflow`, 'team', owner.id, undefined, 'workflow');
+    const own = await db.sessions.create(`${token} own chat`, 'sprouty', owner.id, undefined, 'web');
+    const run = await db.sessions.create(`${token} daily digest run`, 'sprouty', owner.id, undefined, 'task');
+    const bot = await db.sessions.create(`${token} feishu thread`, 'sprouty', owner.id, undefined, 'feishu');
+    await db.sessions.create(`${token} other chat`, 'sprouty', stranger.id, undefined, 'web');
+    await db.sessions.create(`${token} workflow`, 'sprouty', owner.id, undefined, 'workflow');
 
     const { body } = await search(createApp([owner]), owner.id, token, 'session');
     const hits = body.groups.find((group) => group.kind === 'session')?.items ?? [];

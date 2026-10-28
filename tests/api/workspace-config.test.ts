@@ -17,10 +17,12 @@ function def(key: string) {
 }
 
 describe('validateWorkspaceValue', () => {
-
-  it('accepts Markdown team context and validates workspace time zones',()=>{
-    expect(validateWorkspaceValue(def('team_context.conventions_markdown'),'  # Team rules  ')).toEqual({ok:true,value:'# Team rules'});
-    expect(validateWorkspaceValue(def('team_context.timezone'),'Mars/Base').ok).toBe(false);
+  it('accepts Markdown team context and validates workspace time zones', () => {
+    expect(validateWorkspaceValue(def('team_context.conventions_markdown'), '  # Team rules  ')).toEqual({
+      ok: true,
+      value: '# Team rules',
+    });
+    expect(validateWorkspaceValue(def('team_context.timezone'), 'Mars/Base').ok).toBe(false);
   });
 
   it('accepts and trims plain strings', () => {
@@ -56,9 +58,9 @@ describe('validateWorkspaceValue', () => {
   it('sanitizes theme tokens and rejects payloads with nothing valid', () => {
     const good = validateWorkspaceValue(def('branding.theme_tokens'), {
       brand: '#4f46e5',
-      light: { '--t-surface': '#ffffff', 'bad key': 'x;y' },
+      light: { '--gh-background': '#ffffff', 'bad key': 'x;y' },
     });
-    expect(good).toEqual({ ok: true, value: { brand: '#4f46e5', light: { '--t-surface': '#ffffff' } } });
+    expect(good).toEqual({ ok: true, value: { brand: '#4f46e5', light: { '--gh-background': '#ffffff' } } });
     expect(validateWorkspaceValue(def('branding.theme_tokens'), { light: { 'bad key': ';' } }).ok).toBe(false);
   });
 });

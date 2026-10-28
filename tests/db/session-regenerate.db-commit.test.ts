@@ -28,7 +28,7 @@ describe('Session message concurrency', () => {
   });
 
   it('lets exactly one rapid request atomically replace the selected assistant tail', async () => {
-    const session = await db.sessions.create(`Regenerate race ${randomUUID()}`, 'team');
+    const session = await db.sessions.create(`Regenerate race ${randomUUID()}`, 'sprouty');
     createdSessionIds.push(session.id);
     const user = await db.sessions.addMessage({
       session_id: session.id,
@@ -65,7 +65,7 @@ describe('Session message concurrency', () => {
   });
 
   it('allocates a unique contiguous sequence for concurrent appenders', async () => {
-    const session = await db.sessions.create(`Append race ${randomUUID()}`, 'team');
+    const session = await db.sessions.create(`Append race ${randomUUID()}`, 'sprouty');
     createdSessionIds.push(session.id);
 
     await Promise.all(
@@ -85,7 +85,7 @@ describe('Session message concurrency', () => {
   });
 
   it('never retains an assistant generated from a concurrently edited prompt', async () => {
-    const session = await db.sessions.create(`Edit race ${randomUUID()}`, 'team');
+    const session = await db.sessions.create(`Edit race ${randomUUID()}`, 'sprouty');
     createdSessionIds.push(session.id);
     const user = await db.sessions.addMessage({
       session_id: session.id,
@@ -117,7 +117,7 @@ describe('Session message concurrency', () => {
   });
 
   it('serializes assistant replacement against prompt editing and truncation', async () => {
-    const session = await db.sessions.create(`Replacement edit race ${randomUUID()}`, 'team');
+    const session = await db.sessions.create(`Replacement edit race ${randomUUID()}`, 'sprouty');
     createdSessionIds.push(session.id);
     const user = await db.sessions.addMessage({
       session_id: session.id,

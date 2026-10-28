@@ -15,7 +15,7 @@ beforeEach(async () => {
 it('hides sharing routes, lists and access while preserving stored shares', async () => {
   const owner = await createInternalTestUser(db, { email: 'sharing-owner@test.local' });
   const viewer = await createInternalTestUser(db, { email: 'sharing-viewer@test.local' });
-  const session = await db.sessions.create('Shared fixture', 'team', owner.id);
+  const session = await db.sessions.create('Shared fixture', 'sprouty', owner.id);
   await db.sessionShares.createMany([{ session_id: session.id, shared_by: owner.id, shared_with: viewer.id }]);
   const app = new Hono<AppEnv>()
     .use('*', async (c, next) => {

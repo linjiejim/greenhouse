@@ -20,7 +20,7 @@ async function createUser(db: DatabaseProvider, email: string, nickname: string)
 }
 
 async function createSession(db: DatabaseProvider, userId: string, title = 'Test Session') {
-  return db.sessions.create(title, 'team', userId);
+  return db.sessions.create(title, 'sprouty', userId);
 }
 
 // ─── Tests ───────────────────────────────────────────────

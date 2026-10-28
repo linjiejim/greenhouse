@@ -57,7 +57,7 @@ describe('POST /api/chat client_turn_id', () => {
 
   it('saves the first send and refuses a repeat with 409 duplicate_turn', async () => {
     const app = createApp();
-    const session = await db.sessions.create('t', 'team', user.id);
+    const session = await db.sessions.create('t', 'sprouty', user.id);
     const first = await send(app, session.id, { content: 'same words', client_turn_id: 'turn_0001-abc' });
     expect(first.status).toBe(400); // passed admission; stopped by the stubbed transcript read
     const [saved] = await turnRows(session.id);
@@ -77,7 +77,7 @@ describe('POST /api/chat client_turn_id', () => {
 
   it('keeps the same words sent as a new turn, and works without an id', async () => {
     const app = createApp();
-    const session = await db.sessions.create('t', 'team', user.id);
+    const session = await db.sessions.create('t', 'sprouty', user.id);
     await send(app, session.id, { content: 'again', client_turn_id: 'turn_0002-aaa' });
     await send(app, session.id, { content: 'again', client_turn_id: 'turn_0002-bbb' });
     await send(app, session.id, { content: 'again' });
@@ -92,7 +92,7 @@ describe('POST /api/chat client_turn_id', () => {
 
   it('saves exactly one message for two concurrent sends of one turn', async () => {
     const app = createApp();
-    const session = await db.sessions.create('t', 'team', user.id);
+    const session = await db.sessions.create('t', 'sprouty', user.id);
     const responses = await Promise.all([
       send(app, session.id, { content: 'race', client_turn_id: 'turn_0003-race' }),
       send(app, session.id, { content: 'race', client_turn_id: 'turn_0003-race' }),
@@ -103,7 +103,7 @@ describe('POST /api/chat client_turn_id', () => {
 
   it('rejects a malformed client_turn_id', async () => {
     const app = createApp();
-    const session = await db.sessions.create('t', 'team', user.id);
+    const session = await db.sessions.create('t', 'sprouty', user.id);
     for (const bad of ['short', 'has space in it', 'x'.repeat(65), 42]) {
       const res = await send(app, session.id, { content: 'x', client_turn_id: bad });
       expect(res.status).toBe(400);
