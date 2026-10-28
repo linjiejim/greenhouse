@@ -217,6 +217,7 @@ export function EntityDetail({ entity, id }: { entity: PluginEntitySchema; id: s
       />
       <ScrollView
         style={{ flex: 1, backgroundColor: c.background }}
+        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{ padding: space.margin, gap: space.lg }}
       >
         {!row ? (
