@@ -161,6 +161,7 @@ database.
 | The agent proxy and MCP accept live tool ids only: retired names such as `session_history`, `team_knowledge`, `personal_knowledge`, `get_team_knowledge` or `search_greenhouse_doc` are refused (403). Stored custom Agents keep working. | Update external agents and scripts to `session_query` and `knowledge_query`. |
 | Connector catalog files (`connectors/*.json`) name member keys `"mode": "key"` (was `per_user`). | Rename the mode in your own catalog files. |
 | `TASK_CENTER_ENABLED` is ignored: run details (`/api/runtime`) are always on, `/health` no longer reports `surfaces.task_center`, and the Approval Inbox depends only on `RUNTIME_APPROVAL_INBOX_ENABLED`. | Remove the variable; use `RUNTIME_APPROVAL_INBOX_ENABLED=0` to stop approvals. |
+| `POST /api/chat` with a `session_id` but neither `messages` nor `regenerate_assistant_message_id` (a continuation of the stored transcript) is refused with 400. | Send the new user message, regenerate with `regenerate_assistant_message_id`, or reattach to a live reply with `GET /api/chat/runs/:sessionId/stream`. |
 
 What now breaks: installed iOS/Android apps from the 3.x line must be updated before they can use
 a 4.0 station; 4.0 clients (web, iOS, Android and desktop) cannot reach a 3.x station and ask for

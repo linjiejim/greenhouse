@@ -157,6 +157,21 @@ describe('POST /api/chat session authorization', () => {
     expect(mocks.sessions.buildChatMessages).not.toHaveBeenCalled();
   });
 
+  it('refuses a session turn with neither a new message nor a regeneration target', async () => {
+    const response = await createApp().request('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-user-id': 'owner', 'x-user-role': 'team' },
+      body: JSON.stringify({ session_id: 'session-1' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'A session turn needs messages or regenerate_assistant_message_id',
+    });
+    expect(mocks.sessions.getById).not.toHaveBeenCalled();
+    expect(mocks.sessions.buildChatMessages).not.toHaveBeenCalled();
+  });
+
   it('refuses to continue a retired Mission conversation without touching it', async () => {
     mocks.sessions.getById.mockResolvedValue({ ...makeSession(), channel: 'mission' });
 

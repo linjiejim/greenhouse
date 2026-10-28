@@ -46,6 +46,9 @@ Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
   `per_user`; avatar writers no longer dual-write the pre-plant `color` and `faceStyle` keys.
 - `TASK_CENTER_ENABLED` is removed: `/api/runtime` is always on and `/health` drops
   `surfaces.task_center`; `RUNTIME_APPROVAL_INBOX_ENABLED` alone switches the Approval Inbox.
+- `POST /api/chat` no longer continues a stored transcript without a new message: a session turn
+  sends `messages` or `regenerate_assistant_message_id`, and a live reply is resumed through
+  `GET /api/chat/runs/:sessionId/stream`.
 - `GET /api/sessions` caps every page at 200 and no longer accepts `include_eval`.
   `GET /api/feishu/login-available` (use `/api/auth/providers`), `GET /api/profiles/custom/:id/versions`,
   the custom Agent `change_log` field and the team activity feed's plain ISO `before` are removed. Automations

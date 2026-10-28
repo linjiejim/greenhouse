@@ -105,6 +105,11 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         if (regenerationTargetId && !sessionId) {
           return c.json({ error: 'Regeneration requires session_id' }, 400);
         }
+        // A session turn either appends a user message or regenerates the
+        // latest reply; resuming a live reply is GET /api/chat/runs/:id/stream.
+        if (sessionId && !regenerationTargetId && !body.messages?.length) {
+          return c.json({ error: 'A session turn needs messages or regenerate_assistant_message_id' }, 400);
+        }
         // The client's id for this user turn: a resend of a turn the session
         // already has is refused (409 duplicate_turn) instead of saved and run twice.
         const rawClientTurnId = body.messages?.at(-1)?.client_turn_id;
@@ -188,7 +193,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
         let pendingTitleMessage: string | null = null;
         let sessionChannel: SessionChannel | undefined;
         let triggeringUserMessageId: string | undefined;
-        let sourceMode: 'message' | 'regeneration' | 'continuation' = 'continuation';
+        let sourceMode: 'message' | 'regeneration' | 'stateless' = 'stateless';
         let expectedAssistantTail: { id: string; content: string } | undefined;
         // The session's rolling digest as read at the start of this turn: it
         // replaces every message with seq <= uptoSeq in the prompt.
@@ -303,21 +308,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                 releaseClaim();
                 return c.json({ error: 'The last session message must have role "user"' }, 400);
               }
-            } else if (!regenerationTargetId) {
-              // Legacy continuation requests do not append a new user message.
-              // Capture the exact revision used for generation so a concurrent
-              // edit makes terminal persistence fail closed.
-              const latestMessage = await getDb().sessions.getLatestMessage(sessionId);
-              if (latestMessage) {
-                expectedAssistantTail = {
-                  id: latestMessage.id,
-                  content: latestMessage.content,
-                };
-                if (latestMessage.role === 'user') {
-                  sourceMode = 'message';
-                  triggeringUserMessageId = latestMessage.id;
-                }
-              }
             }
 
             // Only what the digest has not folded yet; the digest itself closes
@@ -426,26 +416,25 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           // or the main model can perform provider I/O. Disabling the adapter
           // is an emergency rollback for the derived trace only; domain Chat
           // keeps running under its own ChatRun id and persistence contract.
-          // A newly appended/legacy user-message id closes the transcript→trace
-          // crash window; regeneration and assistant-tail continuations add the
-          // transport UUID because the same target may be explicitly retried.
+          // The newly appended user-message id closes the transcript→trace
+          // crash window; regeneration adds the transport UUID because the same
+          // target may be explicitly retried.
           if (!run) {
             run = chatRunRegistry.createDetached(userId);
           }
           if (runtimeAdapterEnabled('chat')) {
-            const sourceId = !sessionId
-              ? `stateless:${run.runId}`
-              : sourceMode === 'message' && triggeringUserMessageId
+            const sourceId =
+              sourceMode === 'message'
                 ? `message:${triggeringUserMessageId}`
-                : sourceMode === 'regeneration' && regenerationTargetId
+                : sourceMode === 'regeneration'
                   ? `regeneration:${regenerationTargetId}:${run.runId}`
-                  : `continuation:${expectedAssistantTail?.id ?? 'empty'}:${run.runId}`;
+                  : `stateless:${run.runId}`;
             runtimeTrace = await startChatRuntimeTrace(getDb(), {
               ownerUserId: userId,
               sessionId: sessionId ?? null,
               sourceId,
               input: {
-                source_mode: sessionId ? sourceMode : 'stateless',
+                source_mode: sourceMode,
                 triggering_user_message_id: triggeringUserMessageId ?? null,
                 regeneration_target_id: regenerationTargetId ?? null,
                 profile_id: profile.id,
