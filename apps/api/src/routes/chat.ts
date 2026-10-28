@@ -610,11 +610,11 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           if (pendingTitleMessage && sessionId) {
             const firstUserMessage = pendingTitleMessage;
             titlePromise = runWithMeteringScope(meteringScope, () =>
-              generateSessionTitle(firstUserMessage, {
-                userId,
-                sessionId,
-                ...(runtimeTrace ? { runId: runtimeTrace.runId } : {}),
-              }),
+              generateSessionTitle(
+                firstUserMessage,
+                { userId, sessionId, ...(runtimeTrace ? { runId: runtimeTrace.runId } : {}) },
+                user.locale,
+              ),
             )
               .then(async (title) => {
                 await getDb().sessions.updateTitle(sessionId, title);
