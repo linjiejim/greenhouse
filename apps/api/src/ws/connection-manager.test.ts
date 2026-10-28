@@ -19,7 +19,6 @@ function makeConnection(role = 'team', tokenExp = Math.floor(Date.now() / 1000) 
     userId: 'user-1',
     nickname: 'User One',
     role,
-    connectedAt: '2026-07-21T00:00:00.000Z',
     tokenAuthVersion,
     tokenExp,
   };
@@ -51,11 +50,10 @@ describe('WebSocket account revalidation', () => {
 
     await manager.pingAll();
 
-    expect(manager.getOnlineUsers()).toMatchObject([{ userId: 'user-1', role: 'team' }]);
     expect(connection.ws.send).toHaveBeenCalledWith(JSON.stringify({ type: 'ping' }));
 
     connection.ws.send.mockClear();
-    manager.broadcastToSuper({ type: 'presence:leave', userId: 'someone-else' });
+    manager.broadcastToSuperExcept('someone-else', { type: 'ping' });
     expect(connection.ws.send).not.toHaveBeenCalled();
   });
 

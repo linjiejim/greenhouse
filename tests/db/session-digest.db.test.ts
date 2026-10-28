@@ -21,7 +21,7 @@ function uid(prefix: string): string {
 
 /** A session owned by `userId` with `count` alternating user/assistant messages (seq 0..count-1). */
 async function seededSession(userId: string, contents: string[]): Promise<string> {
-  const session = await db.sessions.create('Digest test', 'team', userId);
+  const session = await db.sessions.create('Digest test', 'sprouty', userId);
   for (const [i, content] of contents.entries()) {
     await db.sessions.addMessage({ session_id: session.id, role: i % 2 === 0 ? 'user' : 'assistant', content });
   }

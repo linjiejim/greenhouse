@@ -3,30 +3,21 @@ import { effectiveUserId, type ActorContext } from './contract.js';
 const EXACT_CAPABILITY_PATTERN = /^[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*){2,}$/;
 const WILDCARD_CAPABILITY_PATTERN = /^[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*\.\*$/;
 
-export type CapabilityEffect = 'allow' | 'deny';
-
 export interface RoleCapabilityGrant {
   source: 'role';
   roleId: string;
   capability: string;
 }
 
-export interface UserCapabilityOverride {
-  source: 'user';
-  capability: string;
-  effect: CapabilityEffect;
-}
-
 export interface CapabilityResolutionInput {
   capability: string;
   roleGrants: readonly RoleCapabilityGrant[];
-  userOverrides: readonly UserCapabilityOverride[];
 }
 
 export interface CapabilityDecision {
   allowed: boolean;
   capability: string;
-  reason: 'user-deny' | 'user-allow' | 'role-allow' | 'default-deny';
+  reason: 'role-allow' | 'default-deny';
   matchedPattern?: string;
   sourceId?: string;
 }
@@ -51,32 +42,8 @@ export function capabilityMatches(pattern: string, capability: string): boolean 
   return capability.startsWith(prefix);
 }
 
-/**
- * Resolve one capability using the platform precedence contract:
- * user deny > user allow > role allow > default deny.
- */
+/** Resolve one capability: allowed when a role grant matches, denied otherwise. */
 export function resolveCapability(input: CapabilityResolutionInput): CapabilityDecision {
-  const matchingOverrides = input.userOverrides.filter((item) => capabilityMatches(item.capability, input.capability));
-  const userDeny = matchingOverrides.find((item) => item.effect === 'deny');
-  if (userDeny) {
-    return {
-      allowed: false,
-      capability: input.capability,
-      reason: 'user-deny',
-      matchedPattern: userDeny.capability,
-    };
-  }
-
-  const userAllow = matchingOverrides.find((item) => item.effect === 'allow');
-  if (userAllow) {
-    return {
-      allowed: true,
-      capability: input.capability,
-      reason: 'user-allow',
-      matchedPattern: userAllow.capability,
-    };
-  }
-
   const roleAllow = input.roleGrants.find((item) => capabilityMatches(item.capability, input.capability));
   if (roleAllow) {
     return {
@@ -114,11 +81,6 @@ export interface FieldPolicy {
 export interface EntityPolicy {
   scopes: readonly DataScope[];
   fields: Readonly<Record<string, FieldPolicy>>;
-}
-
-export interface UserEntityPolicyOverride {
-  effect: CapabilityEffect;
-  policy?: EntityPolicy;
 }
 
 export interface RecordAccessFacts {
@@ -188,21 +150,8 @@ function mergeFieldPolicies(current: FieldPolicy | undefined, incoming: FieldPol
   };
 }
 
-/**
- * Role policies are additive. A user entity override replaces the merged role
- * policy; a deny override produces an empty policy.
- */
-export function resolveEntityPolicy(
-  rolePolicies: readonly EntityPolicy[],
-  userOverride?: UserEntityPolicyOverride,
-): EntityPolicy {
-  if (userOverride?.effect === 'deny') {
-    return { scopes: [], fields: {} };
-  }
-  if (userOverride?.effect === 'allow') {
-    return userOverride.policy ? validateEntityPolicy(userOverride.policy) : { scopes: [], fields: {} };
-  }
-
+/** Role policies are additive: scopes union, each field takes its widest grant. */
+export function resolveEntityPolicy(rolePolicies: readonly EntityPolicy[]): EntityPolicy {
   const scopes: DataScope[] = [];
   const seenScopes = new Set<string>();
   const fields: Record<string, FieldPolicy> = {};

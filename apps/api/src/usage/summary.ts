@@ -1,5 +1,5 @@
 export type { FrictionErrorClass } from './summary-insights.js';
-export { frictionErrorClass, FRICTION_ERROR_CLASSES } from './summary-insights.js';
+export { frictionErrorClass } from './summary-insights.js';
 type SummarySource = NonNullable<import('../plugin-host/define.js').GreenhouseExtension['summarySources']>[number];
 let summarySources: SummarySource[] = [];
 export function registerSummarySources(sources: SummarySource[]) {

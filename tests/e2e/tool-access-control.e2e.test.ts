@@ -210,7 +210,7 @@ describe('E2E: Tool Assignment & Enforcement', () => {
     const sessionRes = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: authHeaders(memberToken),
-      body: JSON.stringify({ profile_id: 'team' }),
+      body: JSON.stringify({ profile_id: 'sprouty' }),
     });
     expect(sessionRes.status).toBe(201);
     const session = await sessionRes.json();

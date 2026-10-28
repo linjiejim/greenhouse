@@ -44,7 +44,6 @@ export default defineExtension({
     },
   ],
   tools: [projectQueryTool, projectMutationTool],
-  retiredToolAliases: { project_manager: ['project_query', 'project_mutation'] },
   routes: [{ path: '/api/projects', app: routes, guards: [requireInternal()] }],
   applications: [
     {

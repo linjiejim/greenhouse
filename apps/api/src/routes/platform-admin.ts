@@ -176,7 +176,7 @@ const platformAdminRoutes = new Hono<AppEnv>()
     const role = await getDb().platform.getRole(c.req.param('id'));
     if (!role) return c.json({ error: 'Role not found' }, 404);
     if (role.system_protected) {
-      return c.json({ error: 'Use user overrides instead of editing protected baseline roles' }, 409);
+      return c.json({ error: 'Assign a custom role instead of editing protected baseline roles' }, 409);
     }
     const body = (await c.req.json()) as { capabilities?: string[] };
     if (!Array.isArray(body.capabilities)) return c.json({ error: 'capabilities must be an array' }, 400);

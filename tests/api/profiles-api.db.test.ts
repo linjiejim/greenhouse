@@ -22,7 +22,7 @@ afterEach(async () => {
 
 async function seedUsage(): Promise<void> {
   await db.usage.record({
-    profile_id: 'team',
+    profile_id: 'sprouty',
     caller: 'chat',
     model: 'deepseek-v4-flash',
     input_tokens: 1000,
@@ -30,7 +30,7 @@ async function seedUsage(): Promise<void> {
     duration_ms: 2000,
   });
   await db.usage.record({
-    profile_id: 'team',
+    profile_id: 'sprouty',
     caller: 'compiler',
     model: 'deepseek-v4-flash',
     input_tokens: 5000,
@@ -51,7 +51,7 @@ describe('Profile API: usage integration', () => {
 
     const stats = await db.usage.getStatsByProfile();
     expect(stats).toHaveLength(1);
-    expect(stats[0].profile_id).toBe('team');
+    expect(stats[0].profile_id).toBe('sprouty');
     expect(stats[0].total_calls).toBe(2);
     expect(stats[0].total_input_tokens).toBe(6000);
     expect(stats[0].total_output_tokens).toBe(3500);
@@ -59,13 +59,13 @@ describe('Profile API: usage integration', () => {
 
   it('profile detail returns time-bucketed stats', async () => {
     await seedUsage();
-    const total = await db.usage.getProfileStats('team');
+    const total = await db.usage.getProfileStats('sprouty');
     expect(total).not.toBeNull();
     expect(total!.total_calls).toBe(2);
 
     // Since we just inserted, all records should be within 24h
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const last24h = await db.usage.getProfileStats('team', { since: since24h });
+    const last24h = await db.usage.getProfileStats('sprouty', { since: since24h });
     expect(last24h).not.toBeNull();
     expect(last24h!.total_calls).toBe(2);
   });
@@ -92,7 +92,7 @@ describe('Profile API: usage integration', () => {
 
   it('recent usage returns ordered records', async () => {
     await seedUsage();
-    const recent = await db.usage.getRecentUsage('team', 10);
+    const recent = await db.usage.getRecentUsage('sprouty', 10);
     expect(recent).toHaveLength(2);
     // Most recent first
     expect(new Date(recent[0].created_at).getTime()).toBeGreaterThanOrEqual(new Date(recent[1].created_at).getTime());

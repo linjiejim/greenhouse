@@ -5,9 +5,6 @@
  * are the per-request lazy server tools assembled". Used by both `/api/chat`
  * (session-authenticated) and `/api/agent/*` (API-key authenticated) so the two
  * never fork their permission logic.
- *
- * NOTE: browser client actions are not handled here — they carry route-specific
- * UX (NDJSON bridge writers) and stay in the chat route.
  */
 
 import type { DatabaseProvider } from '@greenhouse/db';
@@ -18,7 +15,7 @@ import type { ToolRegistry } from '../agent.js';
 import { createFilesQueryTool } from '../tools/files-query.js';
 import { createFilesMutationTool } from '../tools/files-mutation.js';
 // Derived from the catalog (kind !== 'static' + route-constructed special metas) — see registry.
-import { BUILTIN_AGENT_TOOL_IDS, getToolMeta, LAZY_TOOL_IDS, RETIRED_TOOL_ALIASES } from '../tools/registry.js';
+import { BUILTIN_AGENT_TOOL_IDS, getToolMeta, LAZY_TOOL_IDS } from '../tools/registry.js';
 export { LAZY_TOOL_IDS };
 import { createCallLlmTool } from '../tools/call-llm.js';
 import { createSessionQueryTool } from '../tools/session-query.js';
@@ -72,17 +69,15 @@ export async function resolveEffectiveTools(args: ResolveEffectiveToolsArgs): Pr
   const isCustomProfile = profileId.startsWith('custom:');
   const userTools = await resolveUserTools(userId, userRole);
 
-  // Custom profiles persist tool id arrays in the DB; expand retired ids to
-  // their successors so a tool retirement never silently strips a saved agent.
+  // Custom profiles persist tool id arrays in the DB; retiring a tool id means
+  // rewriting those arrays in a core migration (0001, 0004), not aliasing here.
   //
   // The built-ins join the FILTER, not the result. Written the other way round
   // — unioned into `effectiveTools` below — this would hand out tools the user
   // does not have: `memory` to someone whose flag is off, or a super-only tool
   // to a team member. The intersection with `activeTools` is what keeps the
   // module's promise that a profile can only ever narrow.
-  const profileTools = isCustomProfile
-    ? new Set([...profile.tools.flatMap((t) => [t, ...(RETIRED_TOOL_ALIASES[t] ?? [])]), ...BUILTIN_AGENT_TOOL_IDS])
-    : null;
+  const profileTools = isCustomProfile ? new Set([...profile.tools, ...BUILTIN_AGENT_TOOL_IDS]) : null;
 
   const effectiveTools = profileTools
     ? userTools.activeTools.filter((t) => profileTools.has(t))
@@ -135,8 +130,7 @@ export interface LazyServerToolContext {
  * Assemble the per-request lazy *server* tools that both the chat route and the
  * agent proxy share (feature_request, knowledge_query, session_query, …).
  *
- * Returns a partial registry the caller merges into its tool set. Does NOT
- * include browser client actions (route-specific).
+ * Returns a partial registry the caller merges into its tool set.
  */
 /**
  * Tools denied in every UNATTENDED context — scheduled-task runs, where no

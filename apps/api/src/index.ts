@@ -57,8 +57,6 @@ import peopleRoutes from './routes/people.js';
 import profileRoutes from './routes/profiles.js';
 import sessionRoutes from './routes/sessions.js';
 import { createChatRoute } from './routes/chat.js';
-import clientActionRoutes from './routes/client-actions.js';
-import { CLIENT_ACTIONS_API_PREFIX } from '@greenhouse/types/api';
 import { createAgentRoutes } from './routes/agent-tools.js';
 import { createMcpRoutes } from './routes/mcp.js';
 import { createAnthropicGatewayRoutes, createGatewayRoutes } from './routes/gateway.js';
@@ -79,12 +77,9 @@ import {
 } from './plugin-host/boot.js';
 import adminSettingsRoutes from './routes/admin-settings.js';
 import { adminTeamContextRoutes } from './routes/admin-team-context.js';
-import dataCatalogRoutes from './routes/data-catalog.js';
 import { applyWorkspaceEnvOverlay } from './settings/workspace-config.js';
 import uploadRoutes from './routes/upload.js';
 import adminRoutes from './routes/admin.js';
-import costValueRoutes from './routes/cost-value.js';
-import platformRoutes from './routes/platform.js';
 import platformAdminRoutes from './routes/platform-admin.js';
 import { bootstrapPlatform } from './plugin-host/bootstrap.js';
 import { initializePlatformRuntime } from './plugin-host/runtime.js';
@@ -206,14 +201,11 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .use('/api/admin/*', requireSuper())
       .route('/api/admin/connectors', adminConnectorRoutes)
       .route('/api/admin/platform', platformAdminRoutes)
-      .route('/api/admin/operations', costValueRoutes)
       .route('/api/admin/metering', adminMeteringRoutes)
       .route('/api/admin/client-reports', adminClientReportRoutes)
       .route('/api/admin', adminRoutes)
       .route('/api/admin/settings', adminSettingsRoutes)
       .route('/api/admin/team-context', adminTeamContextRoutes)
-      .use('/api/platform/*', requireInternal())
-      .route('/api/platform', platformRoutes)
       // Email accounts — every internal user (mailbox binding is per-user and
       // self-service; the shared mailbox stays super-only inside the service).
       // Prompts, knowledge docs & shares — all internal users
@@ -246,8 +238,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .use('/api/auth/me/push-devices/*', requireInternal())
       .route('/api/auth/me/push-devices', pushDeviceRoutes)
       // Module usage counts (page opens) — all internal users; counts only
-      .use('/api/data-catalog', requireInternal())
-      .route('/api/data-catalog', dataCatalogRoutes)
       .use('/api/usage/*', requireInternal())
       .route('/api/usage', usageRoutes)
       // Client error reports — a member's app sends what it caught; the bare path is the endpoint.
@@ -258,9 +248,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/tools', toolsRoutes)
       // WebSocket endpoint — internal users only (auth via query token)
       .route('/api/ws', wsRoutes)
-      // Browser client-action results — internal user-bound and part of the typed contract
-      .use(`${CLIENT_ACTIONS_API_PREFIX}/*` as const, requireInternal())
-      .route(CLIENT_ACTIONS_API_PREFIX, clientActionRoutes)
       // ── Registry-dependent routes (need DB-backed toolRegistry) ──
       .route('/api/chat', createChatRoute(toolRegistry))
       .use('/api/tasks/*', requireInternal())

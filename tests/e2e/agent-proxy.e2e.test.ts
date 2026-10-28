@@ -104,7 +104,7 @@ describe('E2E: Agent tool call', () => {
     const res = await fetch(`${BASE_URL}/api/agent/tools/knowledge_query/call`, {
       method: 'POST',
       headers: h(memberToken),
-      body: JSON.stringify({ profile_id: 'team', input: { action: 'search', query: 'nutrient' } }),
+      body: JSON.stringify({ profile_id: 'sprouty', input: { action: 'search', query: 'nutrient' } }),
     });
     expect(res.status).toBe(200);
     const data = await res.json();
@@ -116,7 +116,7 @@ describe('E2E: Agent tool call', () => {
     const res = await fetch(`${BASE_URL}/api/agent/tools/tables_schema_plan/call`, {
       method: 'POST',
       headers: h(memberToken),
-      body: JSON.stringify({ profile_id: 'team', input: {} }),
+      body: JSON.stringify({ profile_id: 'sprouty', input: {} }),
     });
     expect(res.status).toBe(403);
   });
@@ -125,7 +125,7 @@ describe('E2E: Agent tool call', () => {
     const res = await fetch(`${BASE_URL}/api/agent/tools/knowledge_query/call`, {
       method: 'POST',
       headers: h(memberToken),
-      body: JSON.stringify({ profile_id: 'team', input: {} }), // missing required action/query
+      body: JSON.stringify({ profile_id: 'sprouty', input: {} }), // missing required action/query
     });
     expect(res.status).toBe(400);
   });
@@ -150,7 +150,7 @@ describe('E2E: Agent write-tool gating', () => {
       method: 'POST',
       headers: h(memberToken),
       body: JSON.stringify({
-        profile_id: 'team',
+        profile_id: 'sprouty',
         input: { action: 'knowledge.create_doc', title: 't', content: 'c' },
       }),
     });

@@ -40,7 +40,6 @@ export type {
   ShareItem,
   ShareInfo,
   StreamingEvent,
-  StreamEventCallbacks,
   TextDeltaEvent,
   TitleEvent,
   FinishEvent,
@@ -48,7 +47,7 @@ export type {
   ErrorEvent,
 } from './api.js';
 
-export { formatTokens, formatDuration, handleStreamEvent, readNdjsonStream } from './api.js';
+export { formatTokens, formatDuration } from './api.js';
 
 // Feature flags (per-user experimental feature registry)
 export type { FeatureFlag, FeatureKey } from './features.js';
@@ -60,16 +59,7 @@ export type { ExtensionEntityKindDef, CoreEntityKind, ExtensionEntityKind } from
 export { registerMcpResourceGroups, allMcpResourceGroups } from './mcp.js';
 
 // WebSocket message protocol
-export type { ServerWsEvent, ClientWsEvent, OnlineUser } from './ws.js';
-
-// Agent context types (frontend-specific but shared for type safety)
-export type {
-  PageContext,
-  PageContextType,
-  ContextOfType,
-  QuickAction,
-  ContextProviderDescriptor,
-} from './agent-context.js';
+export type { ServerWsEvent, ClientWsEvent } from './ws.js';
 
 // Workspace settings (DB-backed, admin-editable deployment config). Runtime
 // values are safe to re-export here — the module is dependency-free (no zod).

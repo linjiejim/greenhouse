@@ -46,6 +46,26 @@ Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
   `per_user`; avatar writers no longer dual-write the pre-plant `color` and `faceStyle` keys.
 - `TASK_CENTER_ENABLED` is removed: `/api/runtime` is always on and `/health` drops
   `surfaces.task_center`; `RUNTIME_APPROVAL_INBOX_ENABLED` alone switches the Approval Inbox.
+- `POST /api/chat` no longer continues a stored transcript without a new message: a session turn
+  sends `messages` or `regenerate_assistant_message_id`, and a live reply is resumed through
+  `GET /api/chat/runs/:sessionId/stream`.
+- `GET /api/platform/apps`, `GET /api/platform/me/permissions`, `GET /api/data-catalog` and
+  `GET /api/admin/operations/cost-value` are removed; the MCP `data_catalog` tool remains.
+- `/api/ws` no longer sends supers online-presence events (`presence:*`).
+- Chat turns no longer take page context or browser Client Actions: `ambient_context`,
+  `client_actions`, `client_action_scope_id`, `POST /api/client-actions/tool-result`, the
+  `local-tool-request` event and `@greenhouse/types/agent-context` are removed.
+- Plugin frontends receive `--gh-*` theme variables only; the classic `--t-*` names and the
+  classic web stylesheet `@greenhouse/ui/tokens/tokens.css` are removed.
+- Core migration `0003_canonical_profile_ids` rewrites stored retired profile ids (`team`,
+  `default`, the retired presets, `eval-judge` → `sprouty`; `local-dev`/`local-pi` → `desktop`)
+  and makes `sprouty` the column default. Readers take stored ids as they are; only request
+  edges (`/api/chat`, `/api/sessions`, `/api/agent`, automations, custom-Agent base) still map
+  the old ids.
+- Core migration `0004_retired_tool_aliases` rewrites retired plugin tool ids in custom Agents and
+  saved prompts (`team_knowledge`/`personal_knowledge` → `knowledge_query`, `project_manager` →
+  `project_query` + `project_mutation`, `example_notes_legacy` → `example_notes_query`), and the
+  `retiredToolAliases` plugin seam that expanded them at run time is removed.
 - `GET /api/sessions` caps every page at 200 and no longer accepts `include_eval`.
   `GET /api/feishu/login-available` (use `/api/auth/providers`), `GET /api/profiles/custom/:id/versions`,
   the custom Agent `change_log` field and the team activity feed's plain ISO `before` are removed. Automations
@@ -131,6 +151,10 @@ facades needed by official plugins; add data entity/context types, scoped CRUD, 
 notify, readable-field projection and observation types. Remove `WidgetRecipe`,
 `defineExtension.workbenchRecipes` and the tool surface `workbench` flag. Kit exports remain
 snapshot-locked; optional kernel `writable` metadata enforces declared SDK 2 writes.
+`resolveEntityPolicy` takes role policies only: the never-populated per-user capability and
+entity overrides are removed from the kernel and the platform snapshots.
+`defineExtension.retiredToolAliases` is removed: core migration `0004_retired_tool_aliases`
+rewrote the stored ids it expanded.
 
 ### Fixed
 

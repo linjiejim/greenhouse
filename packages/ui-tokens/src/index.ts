@@ -1,16 +1,11 @@
 /** Minimal browser bridge for installed, trusted plugin frontends. */
 import { EMBED_PROTOCOL, type EmbedInitMessage } from '@greenhouse/types/plugins';
-import { themeTokens, tokenAliases } from './tokens.generated.js';
+import { themeTokens } from './tokens.generated.js';
 export { tokenNames, themeTokens } from './tokens.generated.js';
 
-/** Either host palette can supply overrides without leaving the other names stale. */
+/** The theme defaults with the host's `--gh-*` overrides on top. */
 export function resolveThemeTokens(theme: 'light' | 'dark', tokens: Record<string, string>): Record<string, string> {
-  const resolved: Record<string, string> = { ...themeTokens[theme], ...tokens };
-  for (const [classic, native] of Object.entries(tokenAliases)) {
-    if (tokens[classic] && !tokens[native]) resolved[native] = tokens[classic];
-    if (tokens[native] && !tokens[classic]) resolved[classic] = tokens[native];
-  }
-  return resolved;
+  return { ...themeTokens[theme], ...tokens };
 }
 
 export function connectGreenhouse(

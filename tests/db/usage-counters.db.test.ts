@@ -87,7 +87,7 @@ describe('Usage counters', () => {
     const idle = uniqueKey('idle-model');
     const record = (m: string, input: number, cached: number) =>
       db.usage.record({
-        profile_id: 'team',
+        profile_id: 'sprouty',
         caller: 'chat',
         model: m,
         input_tokens: input,

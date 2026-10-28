@@ -16,7 +16,7 @@ beforeEach(async () => {
 // Helper to insert a usage record
 async function insertUsage(overrides: Partial<UsageRecord> = {}): Promise<void> {
   await db.usage.record({
-    profile_id: 'team',
+    profile_id: 'sprouty',
     caller: 'chat',
     model: 'deepseek-v4-flash',
     input_tokens: 1000,
@@ -33,7 +33,7 @@ describe('Usage Repository: record & read', () => {
     await insertUsage();
     const recent = await db.usage.getRecentUsage(undefined, 10);
     expect(recent).toHaveLength(1);
-    expect(recent[0].profile_id).toBe('team');
+    expect(recent[0].profile_id).toBe('sprouty');
     expect(recent[0].caller).toBe('chat');
     expect(recent[0].input_tokens).toBe(1000);
     expect(recent[0].output_tokens).toBe(500);
@@ -82,14 +82,14 @@ describe('Usage Repository: record & read', () => {
 
 describe('Usage Repository: getStatsByProfile', () => {
   it('aggregates by profile correctly', async () => {
-    await insertUsage({ profile_id: 'team', input_tokens: 100, output_tokens: 50, duration_ms: 1000 });
-    await insertUsage({ profile_id: 'team', input_tokens: 200, output_tokens: 100, duration_ms: 3000 });
+    await insertUsage({ profile_id: 'sprouty', input_tokens: 100, output_tokens: 50, duration_ms: 1000 });
+    await insertUsage({ profile_id: 'sprouty', input_tokens: 200, output_tokens: 100, duration_ms: 3000 });
     await insertUsage({ profile_id: 'wiki-manager', input_tokens: 500, output_tokens: 300, duration_ms: 5000 });
 
     const stats = await db.usage.getStatsByProfile();
     expect(stats).toHaveLength(2);
 
-    const teamStats = stats.find((s) => s.profile_id === 'team')!;
+    const teamStats = stats.find((s) => s.profile_id === 'sprouty')!;
     expect(teamStats.total_calls).toBe(2);
     expect(teamStats.total_input_tokens).toBe(300);
     expect(teamStats.total_output_tokens).toBe(150);
@@ -110,11 +110,11 @@ describe('Usage Repository: getStatsByProfile', () => {
 
 describe('Usage Repository: getProfileStats', () => {
   it('returns stats for a specific profile', async () => {
-    await insertUsage({ profile_id: 'team', input_tokens: 100 });
-    await insertUsage({ profile_id: 'team', input_tokens: 200 });
+    await insertUsage({ profile_id: 'sprouty', input_tokens: 100 });
+    await insertUsage({ profile_id: 'sprouty', input_tokens: 200 });
     await insertUsage({ profile_id: 'other', input_tokens: 999 });
 
-    const stats = await db.usage.getProfileStats('team');
+    const stats = await db.usage.getProfileStats('sprouty');
     expect(stats).not.toBeNull();
     expect(stats!.total_calls).toBe(2);
     expect(stats!.total_input_tokens).toBe(300);
@@ -126,16 +126,16 @@ describe('Usage Repository: getProfileStats', () => {
   });
 
   it('supports since filter', async () => {
-    await insertUsage({ profile_id: 'team' });
+    await insertUsage({ profile_id: 'sprouty' });
 
     // Query with a future timestamp → should return null
     const futureDate = new Date(Date.now() + 86400000).toISOString();
-    const stats = await db.usage.getProfileStats('team', { since: futureDate });
+    const stats = await db.usage.getProfileStats('sprouty', { since: futureDate });
     expect(stats).toBeNull();
 
     // Query with a past timestamp → should return data
     const pastDate = new Date(Date.now() - 86400000).toISOString();
-    const stats2 = await db.usage.getProfileStats('team', { since: pastDate });
+    const stats2 = await db.usage.getProfileStats('sprouty', { since: pastDate });
     expect(stats2).not.toBeNull();
     expect(stats2!.total_calls).toBe(1);
   });

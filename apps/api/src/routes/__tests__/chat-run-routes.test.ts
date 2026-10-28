@@ -51,7 +51,7 @@ function makeSession(id: string, ownerId = 'owner'): SessionRow {
     id,
     title: 'Existing title',
     status: 'active',
-    profile_id: 'team',
+    profile_id: 'sprouty',
     user_id: ownerId,
     app_id: null,
     channel: 'web',

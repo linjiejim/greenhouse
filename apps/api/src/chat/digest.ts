@@ -44,7 +44,7 @@ const MAX_MESSAGE_CHARS_IN_FOLD = 6_000;
 /** Fold passes per trigger; lets a long legacy session catch up over a few turns. */
 const MAX_PASSES_PER_RUN = 3;
 /** Agent profile whose default (fast) model writes the digest. */
-const DIGEST_PROFILE_ID = 'team';
+const DIGEST_PROFILE_ID = 'sprouty';
 
 export interface DigestFoldPlan {
   /** Messages to fold, oldest first. */

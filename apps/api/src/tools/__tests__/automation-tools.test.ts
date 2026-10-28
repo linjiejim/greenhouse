@@ -81,7 +81,7 @@ function row(overrides: Partial<Row> = {}): Row {
     id: 1,
     user_id: 'owner-1',
     name: 'Daily digest',
-    profile_id: 'team',
+    profile_id: 'sprouty',
     task_prompt: 'Summarize yesterday of the CRM follow-ups.',
     schedule: '0 9 * * *',
     timezone: 'Asia/Hong_Kong',
@@ -352,7 +352,7 @@ describe('automation_mutation — update / delete / run_now', () => {
     });
 
     expect(result.error).toMatch(/not available/);
-    expect(store.get('3')!.profile_id).toBe('team');
+    expect(store.get('3')!.profile_id).toBe('sprouty');
   });
 
   it('cannot touch another user’s automation', async () => {

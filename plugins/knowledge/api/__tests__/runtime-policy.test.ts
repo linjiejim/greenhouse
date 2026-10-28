@@ -20,20 +20,20 @@ describe('knowledge runtime policy contributions', () => {
     ).rejects.toMatchObject({ status: 403 });
   });
 
-  it('keeps stored profile aliases meaningful while the plugin is enabled', async () => {
-    const { effectiveTools } = await resolveEffectiveTools({
-      userId: 'super-1',
-      userRole: 'super',
-      profileId: 'custom:legacy',
-      profile: {
-        id: 'custom:legacy',
-        access: { level: 'internal', rich_output: false },
-        tools: ['team_knowledge', 'personal_knowledge'],
-      } as AgentProfile,
-    });
-    expect(effectiveTools).toContain('knowledge_query');
-    expect(effectiveTools).not.toContain('team_knowledge');
-    expect(effectiveTools).not.toContain('personal_knowledge');
+  it('runs a migrated custom Agent on knowledge_query; a retired name grants nothing', async () => {
+    const run = (tools: string[]) =>
+      resolveEffectiveTools({
+        userId: 'super-1',
+        userRole: 'super',
+        profileId: 'custom:legacy',
+        profile: { id: 'custom:legacy', access: { level: 'internal', rich_output: false }, tools } as AgentProfile,
+      });
+    // Core migration 0004 rewrote team_knowledge / personal_knowledge to knowledge_query.
+    expect((await run(['knowledge_query'])).effectiveTools).toContain('knowledge_query');
+    const retired = (await run(['team_knowledge', 'personal_knowledge'])).effectiveTools;
+    expect(retired).not.toContain('knowledge_query');
+    expect(retired).not.toContain('team_knowledge');
+    expect(retired).not.toContain('personal_knowledge');
   });
 
   it('offers reads to browser and scheduled runs, and requires a grant for writes', () => {

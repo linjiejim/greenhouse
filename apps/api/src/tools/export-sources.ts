@@ -53,8 +53,3 @@ export function registerExportSources(defs: readonly ExtensionExportSource[]): v
 export function extensionExportSources(): readonly ExtensionExportSource[] {
   return sources;
 }
-
-/** Test hook — forget sources registered by a suite. */
-export function _resetExtensionExportSources(): void {
-  sources.length = 0;
-}

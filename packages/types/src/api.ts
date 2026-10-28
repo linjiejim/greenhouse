@@ -437,43 +437,6 @@ export interface AuthenticatedUser {
   features?: Record<string, boolean>;
 }
 
-// ─── Client Action Types ─────────────────────────────────
-
-/**
- * A frontend action the client advertises to the agent for the current turn.
- *
- * The browser Web client declares which UI actions are available on the current
- * screen — navigate, prefill a form, read the current view, etc. The backend turns
- * each into an agent tool whose execution round-trips back to that browser through
- * the legacy `local-tool-request` event and POST `/api/client-actions/tool-result`.
- * Only the serializable descriptor crosses the wire; the live `execute` handler stays
- * in the client.
- */
-export interface ClientActionDescriptor {
-  /** Tool name the agent calls, e.g. 'crm_navigate'. Must be unique per turn. */
-  name: string;
-  /** When the agent should use it + what it does. Becomes the tool description. */
-  description: string;
-  /** JSON Schema (object) describing the action's parameters. */
-  parameters: Record<string, unknown>;
-}
-
-/** Serializable page-scoped Client Actions captured for one chat turn. */
-export interface ClientActionSnapshot {
-  scopeId: string;
-  actions: ClientActionDescriptor[];
-}
-
-/** Mount prefix of the Client Action routes (see apps/api/src/index.ts). */
-export const CLIENT_ACTIONS_API_PREFIX = '/api/client-actions';
-
-/**
- * Where a client posts a Client Action result to resume the paused agent step.
- * Body: `{ session_id, toolCallId, output, error? }`. Clients import this —
- * never hand-write the path.
- */
-export const CLIENT_ACTION_RESULT_PATH = `${CLIENT_ACTIONS_API_PREFIX}/tool-result` as const;
-
 // ─── Chat Request (POST /api/chat) ───────────────────────
 
 /** One message in a POST /api/chat body. */
@@ -510,8 +473,6 @@ export interface DuplicateTurnError {
 export interface ChatRequestBody {
   session_id?: string;
   messages?: ChatRequestMessage[];
-  /** Per-turn snapshot of the page the user is looking at — reference data, never an instruction. */
-  ambient_context?: import('./agent-context.js').AmbientContextEnvelope;
   profile_id?: string;
   /**
    * Per-turn model choice. The agent's `model.id` is the default; headless
@@ -520,10 +481,6 @@ export interface ChatRequestBody {
   model?: string;
   /** Active workspace for the per-user tool proxy. */
   workspace_id?: string;
-  /** Client Actions available on the current screen; registered only with a persisted session. */
-  client_actions?: ClientActionDescriptor[];
-  /** Scope the actions were captured in; must equal `ambient_context.scope_id` when both are sent. */
-  client_action_scope_id?: string;
   /** Re-run the latest assistant reply instead of appending a user message (validated server-side). */
   regenerate_assistant_message_id?: unknown;
   /**
@@ -541,12 +498,9 @@ export interface ChatRequestBody {
 export const CHAT_REQUEST_BODY_KEYS = [
   'session_id',
   'messages',
-  'ambient_context',
   'profile_id',
   'model',
   'workspace_id',
-  'client_actions',
-  'client_action_scope_id',
   'regenerate_assistant_message_id',
   'rich_blocks',
 ] as const satisfies readonly (keyof ChatRequestBody)[];
@@ -554,18 +508,6 @@ export const CHAT_REQUEST_BODY_KEYS = [
 type UnlistedChatRequestKeys = Exclude<keyof ChatRequestBody, (typeof CHAT_REQUEST_BODY_KEYS)[number]>;
 /** Compile-time exhaustiveness check for CHAT_REQUEST_BODY_KEYS. */
 export const CHAT_REQUEST_BODY_KEYS_ARE_EXHAUSTIVE: [UnlistedChatRequestKeys] extends [never] ? true : never = true;
-
-/** Optional browser environment attached to a single chat turn. */
-export interface ChatTurnEnvironment {
-  ambientContext?: import('./agent-context.js').AmbientContextEnvelope;
-  clientActions?: ClientActionSnapshot;
-  /**
-   * Model for THIS turn. Omitted by every headless caller, which keeps the
-   * agent's own `model.id` — the picker beside the composer is the only thing
-   * that sets it (spec: 20260731-attachment-and-preset-convergence M3).
-   */
-  model?: string;
-}
 
 // ─── Streaming Types ─────────────────────────────────────
 
@@ -654,16 +596,6 @@ export interface SourceEvent {
   [key: string]: unknown;
 }
 
-/** Request the browser to execute a declared client action (legacy wire event name). */
-export interface LocalToolRequestEvent {
-  type: 'local-tool-request';
-  toolCallId: string;
-  toolId: string;
-  params: Record<string, unknown>;
-  /** Page scope that advertised the action; omitted for legacy callers. */
-  scopeId?: string;
-}
-
 /**
  * Keepalive filler. Carries no information — consumers ignore it.
  *
@@ -692,7 +624,6 @@ export type StreamingEvent =
   | StepFinishEvent
   | TitleEvent
   | SourceEvent
-  | LocalToolRequestEvent
   | PingEvent;
 
 // ─── Background Run Replay Envelope ──────────────────────
@@ -702,9 +633,8 @@ export type StreamingEvent =
  * client can resume exactly where it left off.
  *
  * `seq` is the monotonic cursor a client echoes back as `?after=`; `replayed`
- * marks events served from the buffer rather than live, which lets consumers
- * skip the side-effectful ones (re-running a client action after a refresh
- * would fire it against a page instance that no longer advertised it).
+ * marks events served from the buffer rather than live, so consumers can tell
+ * a catch-up from new output.
  *
  * Declared here — not on either side — because the api stamps these fields and
  * the browser reads them; two local definitions would drift silently.
@@ -731,26 +661,6 @@ export interface ChatRunInfo {
   next_seq: number;
 }
 
-// ─── Stream Event Callbacks ──────────────────────────────
-
-export interface StreamEventCallbacks {
-  onTextDelta?: (text: string) => void;
-  onReasoningDelta?: (text: string) => void;
-  onToolCallStart?: (id: string, toolName: string) => void;
-  onToolCallDelta?: (id: string, delta: string) => void;
-  onToolCallEnd?: (id: string) => void;
-  onToolCall?: (toolName: string, input: unknown, id?: string) => void;
-  onToolResult?: (id: string, toolName: string, output: unknown) => void;
-  onSession?: (sessionId: string) => void;
-  onFinish?: (finishReason?: string, usage?: FinishEvent['usage']) => void;
-  onError?: (error: string) => void;
-  onStepStart?: () => void;
-  onStepFinish?: (finishReason?: string, usage?: FinishEvent['usage']) => void;
-  onTitle?: (title: string) => void;
-  onSource?: (data: Record<string, unknown>) => void;
-  onLocalToolRequest?: (toolCallId: string, toolId: string, params: Record<string, unknown>, scopeId?: string) => void;
-}
-
 // ─── Formatting Utilities ────────────────────────────────
 
 export function formatTokens(n: number): string {
@@ -762,65 +672,6 @@ export function formatTokens(n: number): string {
 export function formatDuration(ms: number): string {
   if (ms >= 1000) return (ms / 1000).toFixed(1) + 's';
   return ms + 'ms';
-}
-
-// ─── Stream Event Dispatcher ─────────────────────────────
-
-/**
- * Dispatch a single streaming event to the appropriate callback.
- * UI-framework-agnostic dispatcher used by the browser Web client.
- */
-export function handleStreamEvent(event: StreamingEvent, cbs: StreamEventCallbacks): void {
-  switch (event.type) {
-    case 'text-delta':
-      cbs.onTextDelta?.(event.text);
-      break;
-    case 'reasoning-delta':
-      cbs.onReasoningDelta?.(event.text);
-      break;
-    case 'tool-call-start':
-      cbs.onToolCallStart?.(event.id, event.toolName);
-      break;
-    case 'tool-call-delta':
-      cbs.onToolCallDelta?.(event.id, event.delta);
-      break;
-    case 'tool-call-end':
-      cbs.onToolCallEnd?.(event.id);
-      break;
-    case 'tool-call':
-      cbs.onToolCall?.(event.toolName, event.input, event.id);
-      break;
-    case 'tool-result':
-      cbs.onToolResult?.(event.id, event.toolName, event.output);
-      break;
-    case 'session':
-      cbs.onSession?.(event.session_id);
-      break;
-    case 'finish':
-      cbs.onFinish?.(event.finishReason, event.usage);
-      break;
-    case 'error':
-      cbs.onError?.(event.error);
-      break;
-    case 'step-start':
-      cbs.onStepStart?.();
-      break;
-    case 'step-finish':
-      cbs.onStepFinish?.(event.finishReason, event.usage);
-      break;
-    case 'title':
-      cbs.onTitle?.(event.title);
-      break;
-    case 'source':
-      cbs.onSource?.(event as Record<string, unknown>);
-      break;
-    case 'local-tool-request':
-      cbs.onLocalToolRequest?.(event.toolCallId, event.toolId, event.params, event.scopeId);
-      break;
-    case 'ping':
-      // Keepalive filler — its only job was to put bytes on the wire.
-      break;
-  }
 }
 
 // ─── Scheduled Tasks ─────────────────────────────────────
@@ -914,68 +765,4 @@ export interface AutomationRunEntry {
      */
     outcome_unknown: boolean;
   } | null;
-}
-
-// ─── NDJSON Stream Reader ────────────────────────────────
-
-/**
- * Read a ReadableStream line-by-line, parse each line as JSON.
- * Platform-agnostic — uses ReadableStreamDefaultReader (available in Web and RN).
- */
-export async function* readNdjsonStream<T>(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<T> {
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    for (const line of lines) {
-      if (line.trim()) {
-        try {
-          yield JSON.parse(line);
-        } catch (_err) {
-          /* skip malformed lines */
-        }
-      }
-    }
-  }
-  if (buffer.trim()) {
-    try {
-      yield JSON.parse(buffer);
-    } catch (_err) {
-      /* skip */
-    }
-  }
-}
-
-/**
- * Chat-specific completion guard layered on top of the generic NDJSON parser.
- *
- * A transport can reach EOF after yielding valid partial JSON lines. That is
- * not a successful chat turn unless the server explicitly emitted `finish`.
- * Keeping this separate preserves readNdjsonStream for non-chat NDJSON users.
- */
-export async function* requireChatStreamFinish(events: AsyncIterable<StreamingEvent>): AsyncGenerator<StreamingEvent> {
-  let sawFinish = false;
-  let streamError: string | undefined;
-
-  for await (const event of events) {
-    yield event;
-    if (event.type === 'error') {
-      streamError = event.error || 'Chat stream failed before completion';
-    }
-    if (event.type === 'finish') {
-      sawFinish = true;
-    }
-  }
-
-  if (streamError) {
-    throw new Error(streamError);
-  }
-  if (!sawFinish) {
-    throw new Error('Chat stream ended before completion. Please retry.');
-  }
 }

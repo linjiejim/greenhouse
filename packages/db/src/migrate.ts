@@ -61,7 +61,7 @@ export class DatabaseGenerationError extends Error {
   }
 }
 
-export { CARRY_MARKER_TABLE, readCarryState, readCarryStateFromDb } from './carry-state.js';
+export { readCarryState, readCarryStateFromDb } from './carry-state.js';
 export type { CarryState } from './carry-state.js';
 
 const UPGRADE_VIA_3 = 'Upgrade it to Greenhouse 3.0.2 first, then to 4.0.';

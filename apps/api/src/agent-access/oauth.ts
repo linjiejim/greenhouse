@@ -45,10 +45,6 @@ export function oauthSupportedScopes(): OAuthScope[] {
   return [...OAUTH_ACTION_SCOPES, ...oauthResourceScopes()];
 }
 
-export function isResourceScope(scope: string): boolean {
-  return oauthResourceScopes().includes(scope);
-}
-
 /** The resource groups a scope set authorizes (order follows the registry). */
 export function resourceGroupsFromScopes(scopes: readonly OAuthScope[]): string[] {
   const granted = new Set<string>(scopes);

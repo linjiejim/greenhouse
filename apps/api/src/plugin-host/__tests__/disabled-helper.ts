@@ -32,7 +32,6 @@ export async function assertPluginDisabled(id: string, routes: string[], toolIds
       expect(extensions.fromExtensions(field)).toEqual([]);
     expect(extensions.fromExtensions('jobs')).toEqual([]);
     expect(extensions.fromExtensions('automationTools')).toEqual([]);
-    expect(extensions.fromExtensions('retiredToolAliases')).toEqual([]);
     expect(extensions.fromExtensions('hubContext')).toEqual([]);
     expect(extensions.fromExtensions('seeds')).toEqual([]);
     expect(extensions.fromExtensions('channels')).toEqual([]);

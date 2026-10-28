@@ -31,12 +31,6 @@ export interface PlatformHandlerContext {
   operation?: () => Promise<PlatformActionResult>;
 }
 
-export interface VisibleApplication {
-  manifest: ApplicationManifest;
-  allowedActionIds: string[];
-  allowedCapabilities: string[];
-}
-
 /**
  * Runtime authorization deliberately has no cache: user disable and explicit
  * permission revocation must take effect on the next request.
@@ -83,26 +77,6 @@ export class PlatformRuntime {
 
     const snapshot = await this.#db.platform.getAuthorizationSnapshot(userId, actor.orgId);
     return resolveCapability({ capability, ...snapshot });
-  }
-
-  async listVisibleApplications(actor: ActorContext): Promise<VisibleApplication[]> {
-    const visible: VisibleApplication[] = [];
-    for (const manifest of this.#registry.listManifests()) {
-      const decisions = await Promise.all(
-        Object.values(manifest.actions).map(async (action) => ({
-          action,
-          decision: await this.authorize(actor, action.capability),
-        })),
-      );
-      const allowed = decisions.filter((entry) => entry.decision.allowed);
-      if (allowed.length === 0) continue;
-      visible.push({
-        manifest,
-        allowedActionIds: allowed.map((entry) => entry.action.id),
-        allowedCapabilities: [...new Set(allowed.map((entry) => entry.action.capability))].sort(),
-      });
-    }
-    return visible;
   }
 
   async dispatch(

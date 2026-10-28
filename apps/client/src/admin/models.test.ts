@@ -346,11 +346,11 @@ describe('branding model', () => {
     expect(activePreset(draftOf(null))).toBe('greenhouse');
     const sunset = presetDraft('sunset');
     expect(activePreset(sunset)).toBe('sunset');
-    expect(tokensOf(sunset, { dark: { '--t-surface': '#000000' } })).toEqual({
+    expect(tokensOf(sunset, { dark: { '--gh-background': '#000000' } })).toEqual({
       brand: '#EA580C',
       fontSans: sunset.fontSans,
       radiusScale: 1.75,
-      dark: { '--t-surface': '#000000' },
+      dark: { '--gh-background': '#000000' },
     });
     expect(tokensOf(draftOf({ brand: '#235d4d' }), { brand: '#235d4d' })).toEqual({ brand: '#235D4D' });
     expect(tokensOf({ ...draftOf(null), fontScale: 3 }, null)).toEqual({ fontScale: 1.2 });

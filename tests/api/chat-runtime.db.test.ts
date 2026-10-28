@@ -39,7 +39,7 @@ describe('ordinary Chat Runtime trace', () => {
       transcript: [{ role: 'user', content: exact }],
       provider_message_projection: [{ role: 'user', content: 'safe projection' }],
     };
-    const session = await db.sessions.create('Runtime trace', 'team', user.id, undefined, 'web');
+    const session = await db.sessions.create('Runtime trace', 'sprouty', user.id, undefined, 'web');
     const trace = await startChatRuntimeTrace(db, {
       ownerUserId: user.id,
       sessionId: session.id,
@@ -95,7 +95,7 @@ describe('ordinary Chat Runtime trace', () => {
   });
 
   it('interrupts orphaned Chat traces at boot without claiming or replaying them', async () => {
-    const session = await db.sessions.create('Interrupted trace', 'team', user.id, undefined, 'web');
+    const session = await db.sessions.create('Interrupted trace', 'sprouty', user.id, undefined, 'web');
     const trace = await startChatRuntimeTrace(db, {
       ownerUserId: user.id,
       sessionId: session.id,

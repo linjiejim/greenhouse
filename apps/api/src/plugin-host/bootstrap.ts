@@ -160,7 +160,7 @@ async function addBaselineEntityPolicies(
 
   // The system roles' baseline policies are DERIVED from the manifest (super = full;
   // team = declared scopes with export disabled unless the capability is explicitly
-  // committed below), not admin-customized (custom roles + user overrides live in
+  // committed below), not admin-customized (custom roles live in
   // separate rows). So we re-upsert them every boot: this keeps their
   // field_policies in lockstep with the manifest when a new app version adds fields.
   // Without this, a field added to an already-bootstrapped app is denied on write and

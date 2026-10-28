@@ -38,7 +38,7 @@ function makeSession(id: string, userId = 'owner', updatedAt = '2026-07-31T00:00
     id,
     title: id,
     status: 'active',
-    profile_id: 'team',
+    profile_id: 'sprouty',
     user_id: userId,
     app_id: null,
     channel: 'web',

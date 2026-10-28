@@ -16,7 +16,7 @@ function task(): ScheduledTaskRow {
     id: '42',
     user_id: 'owner-1',
     name: 'Daily report',
-    profile_id: 'team',
+    profile_id: 'sprouty',
     task_prompt: 'Summarize today',
     schedule: '0 18 * * *',
     timezone: 'Asia/Hong_Kong',

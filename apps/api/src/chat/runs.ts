@@ -113,8 +113,8 @@ export class ChatRun {
 
   /**
    * Replay buffered events with seq > afterSeq, then follow live until the run
-   * ends. Replayed events are tagged `replayed: true` so clients can skip
-   * side-effectful ones (e.g. re-executing a client action on refresh).
+   * ends. Replayed events are tagged `replayed: true` so clients can tell a
+   * catch-up from new output.
    * Synchronous replay + single-threaded emit ⇒ no gaps, no duplicates.
    * Returns an unsubscribe function.
    */

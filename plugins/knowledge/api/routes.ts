@@ -639,7 +639,7 @@ const knowledgeRoutes = new Hono<AppEnv>()
       logger.warn('[Knowledge] Prompt injection indicators detected in generate request', { injection });
 
     const safePrompt = sanitizeForPrompt(prompt);
-    const result = await completeJson<KnowledgeAiResult>('team', {
+    const result = await completeJson<KnowledgeAiResult>('sprouty', {
       caller: 'knowledge-generate',
       userId: user.id,
       client: meteringClientForRequest(c),
@@ -676,7 +676,7 @@ const knowledgeRoutes = new Hono<AppEnv>()
     if (!injection.safe)
       logger.warn('[Knowledge] Prompt injection indicators detected in rewrite request', { injection });
 
-    const result = await completeJson<KnowledgeRewriteResult>('team', {
+    const result = await completeJson<KnowledgeRewriteResult>('sprouty', {
       caller: 'knowledge-rewrite',
       userId: user.id,
       client: meteringClientForRequest(c),
@@ -703,7 +703,7 @@ const knowledgeRoutes = new Hono<AppEnv>()
       return c.json({ error: 'Document not found' }, 404);
     }
 
-    const result = await completeJson<KnowledgeEnrichResult>('team', {
+    const result = await completeJson<KnowledgeEnrichResult>('sprouty', {
       caller: 'knowledge-enrich',
       userId: user.id,
       client: meteringClientForRequest(c),

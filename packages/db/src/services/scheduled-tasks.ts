@@ -138,7 +138,7 @@ export function createScheduledTaskService(db: Db) {
           id: newId('automation'),
           user_id: input.user_id,
           name: input.name,
-          profile_id: input.profile_id ?? 'team',
+          profile_id: input.profile_id ?? 'sprouty',
           task_prompt: input.task_prompt,
           schedule: input.schedule,
           timezone: input.timezone ?? 'UTC',

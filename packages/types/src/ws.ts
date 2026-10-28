@@ -7,15 +7,6 @@
 
 import type { ChatRunStatus } from './api.js';
 
-// ─── Online User ─────────────────────────────────────────
-
-export interface OnlineUser {
-  userId: string;
-  nickname: string;
-  role: string;
-  connectedAt: string; // ISO 8601
-}
-
 // ─── Server → Client Events ─────────────────────────────
 
 export type KnowledgeDocChangeKind = 'created' | 'updated' | 'archived';
@@ -43,9 +34,6 @@ export type ServerWsEvent =
       sharedByNickname: string;
       message?: string;
     }
-  | { type: 'presence:snapshot'; users: OnlineUser[] }
-  | { type: 'presence:join'; user: OnlineUser }
-  | { type: 'presence:leave'; userId: string }
   // Chat generation lifecycle: a turn started/ended for one of the owner's
   // sessions. Carries no content — clients attach to the run's NDJSON stream
   // (GET /api/chat/runs/:sessionId/stream) or refetch messages on end.

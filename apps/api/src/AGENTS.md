@@ -39,13 +39,10 @@
 - `client_turn_id` (8–64 `[A-Za-z0-9_-]`) dedupes resends: a known id is 409 `duplicate_turn` + `message_id`, nothing saved or run (`sessions.addUserTurn`, `uq_messages_session_client_turn`).
 - `routes/chat.ts` never imports `tools/registry.ts` (it loads every active plugin's tools at import; chat route tests mock `agent-runtime/tool-resolution`); tool-metadata logic lives in `tool-resolution.ts`.
 
-## Chat request and ambient context
+## Chat request
 
 - `ChatRequestBody` (`@greenhouse/types/api`, exhaustive `CHAT_REQUEST_BODY_KEYS`) is the only body definition; delete fields the server stops reading so stale clients fail to compile.
-- Admission lives in `chat/turn-environment.ts` (`admitTurnEnvironment`) with shared `AMBIENT_CONTEXT_LIMITS`; Client Action results use `CLIENT_ACTION_RESULT_PATH` under `CLIENT_ACTIONS_API_PREFIX`.
-- `ambient_context` is an optional per-turn page reference: never persisted, not user intent, no profile/tool/platform/record/field grant; `chat/ambient-context.ts` validates it and drops invalid context silently.
-- Its fixed prompt says it may be stale or irrelevant and is not a request or authorization; use it only when it relates to the message, ask when ambiguous.
-- Client Actions require `client_action_scope_id` (must equal the context scope, else no UI tools; the client fails closed); they only read, navigate and fill, while data writes stay on server tools and confirm gates.
+- A session turn sends `messages` (last one `user`) or `regenerate_assistant_message_id`; anything else is 400 before the session is read.
 - `channel='browser'` history sessions get a fail-closed face (`filterBrowserSessionToolIds`: proxy-read tools plus `ask_user`/`export_data`, never `mcp_call`), keyed on the stored channel, never a request flag.
 
 ## Chat context and digest
@@ -54,7 +51,7 @@
 - Declare the smallest `context_window` in the provider chain; undeclared models get `HISTORY_TOKEN_BUDGET` (80k); a sliding window breaks the prefix cache, so fold into the digest rather than widen it.
 - The system prompt holds only session-stable content (profile, user notes, plugin prompt context, tool guidance, language, digest); `buildSystemPromptWithUserNotes` is the only assembler.
 - `routes/__tests__/chat-prompt-cache.test.ts` pins a byte-identical system prompt across turns; never add per-turn content to it.
-- Per-turn content (time, ambient context, image and UI-action notes) is a tail block on the last user message (`chat/turn-context.ts`), sent to the model, never persisted.
+- Per-turn content (time, image note, reachable connectors) is a tail block on the last user message (`chat/turn-context.ts`), sent to the model, never persisted.
 - History rendering is a pure function of the transcript (`injectTimeContext` uses each message's own `created_at`; image hints on every image message); traces record exactly what the provider received.
 - `chat/digest.ts` folds everything before the last two exchanges once unfolded history passes `resolveDigestTriggerTokens(model)`: ≤24k tokens/pass, nothing under 4k, ≤3 passes, owner's budget, warn-only failures.
 - Digest: headings Goals / Decisions / Facts / Open items / Artifacts, ≤6000 chars, `sanitizeForPrompt` before injection; messages with `seq ≤ digest_upto_seq` leave the prompt; list reads exclude `digest`.
@@ -159,6 +156,7 @@
 - `resolveUserTools` is the only "which tools may this member use" (flag-owned tools included), used by profile create/update/fork and `GET /api/tools`; `resolveEffectiveTools` only narrows.
 - `meta.builtin` tools (`BUILTIN_AGENT_TOOL_IDS`) join the profile filter, never the effective result (`agent-runtime/__tests__/builtin-tools.db.test.ts`); a builtin has no own permission, cost or outbound channel.
 - Forking a system Agent seeds the member's allow-set, a custom Agent its declared tools; prompts never list tools dynamically and YAML names only guaranteed tools.
+- Stored tool ids are live ids: retiring one means a core migration that rewrites `run_profiles.tools` (and `prompts.expected_tools`) to its successors; there is no run-time alias, and a stored id whose plugin is off stays dormant.
 - `/api/agent` (`routes/agent-tools.ts`, `agentBearerAuthMiddleware`): tools = effective ∩ proxy sets; writes need `MUTATING_PROXY_ALLOWLIST`, write scope and `confirm:true` per call (else 400), each audited.
 - `call_llm` is lazy and session-scoped (never proxy/MCP): one-shot, no tools, 2-minute timeout, logged as `usage_events kind='audit'`, never fed back into context.
 - Bad tool-argument JSON is repaired deterministically (`createToolCallRepair`, loose then strict pass, strict only if it parses); tool names are never repaired; repairs warn.
@@ -256,7 +254,7 @@
 ## Usage counters and retention
 
 - Counters store only `(day, kind, key, client)` and never fail or block (`countUsage()`, never an awaited increment); tool calls count once inside the evidence wrapper or after all proxy checks.
-- Client Action names never become counter keys; `X-Greenhouse-Client` is a label for counters and metering only, never authentication, permissions or the stored channel.
+- `X-Greenhouse-Client` is a label for counters and metering only, never authentication, permissions or the stored channel.
 - `POST /api/usage/page-open` accepts only `PAGE_MODULE_IDS` or active `ext.<id>`; `GET /api/admin/usage/modules` accepts `days=7|30|90` only.
 - Retention rules live in `db.retention.run()` plus plugin `retention`; `scheduleRetention()` runs daily, skips within 20h of the last audited run and never throws.
 - Rate-limit buckets, OAuth login states and MCP outputs stay on the five-minute upkeep in `index.ts`, each sweep failing alone.

@@ -26,7 +26,6 @@ import type {
   ProviderAttemptHook,
 } from '@greenhouse/agent-core';
 import type { StreamTextResult, ToolSet } from 'ai';
-import type { ClientActionBridge } from '../tools/client-action-bridge.js';
 import type { AgentProfile } from '../profiles/profile.js';
 import { persistChatResult } from './persist.js';
 import { chatRunRegistry, type ChatRun } from './runs.js';
@@ -108,7 +107,6 @@ export interface ChatTurnArgs {
   userId: string;
   userLocale?: string;
   titlePromise: Promise<string> | null;
-  clientActionBridge: ClientActionBridge | null;
   replaceAssistantMessageId?: string;
   expectedTail?: {
     id: string;
@@ -146,7 +144,6 @@ export async function pumpChatTurn(args: ChatTurnArgs): Promise<void> {
     userId,
     userLocale,
     titlePromise,
-    clientActionBridge,
     replaceAssistantMessageId,
     expectedTail,
     providerAttemptHook,
@@ -174,12 +171,6 @@ export async function pumpChatTurn(args: ChatTurnArgs): Promise<void> {
       .then(() => checkpointChatRuntimeStream(getDb(), runtimeTrace, sequence, snapshot))
       .catch((error) => logger.error('[chat-runtime] stream checkpoint failed', error));
   };
-
-  // Client-action requests are emitted by the bridge from inside a tool's
-  // execute(); routing them through the run reaches every attached client.
-  if (clientActionBridge) {
-    clientActionBridge.setWriter(async (event) => run.emit(event));
-  }
 
   if (run.sessionId) {
     connectionManager.sendToUser(userId, {

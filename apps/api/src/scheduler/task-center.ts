@@ -28,7 +28,7 @@ import {
   type ScheduledTaskRow,
   type ScheduledTaskUpdateInput,
 } from '@greenhouse/db';
-import { resolveProfileAsync } from '../profiles/profile.js';
+import { DEFAULT_PROFILE_ID, resolveProfileAsync } from '../profiles/profile.js';
 import { pinProfileIdForUser, ProfileAccessError } from '../profiles/access.js';
 import { sanitizeForPrompt } from '../security/security.js';
 import { getScheduler } from './index.js';
@@ -320,7 +320,7 @@ async function resolveTaskProfile(
     if (error instanceof ProfileAccessError && error.status === 403) {
       return err('forbidden', `The automation's owner cannot use this run profile: ${error.message}`);
     }
-    return err('invalid', `Profile "${rawProfileId ?? 'team'}" not found`);
+    return err('invalid', `Profile "${rawProfileId ?? DEFAULT_PROFILE_ID}" not found`);
   }
 }
 

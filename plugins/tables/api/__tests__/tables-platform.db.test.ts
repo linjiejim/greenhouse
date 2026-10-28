@@ -113,7 +113,7 @@ describe('Tables Platform application', () => {
       headers: { 'x-test-user': outsider.id },
     });
     expect(privateRead.status).toBe(404);
-    const outsiderSession = await db.sessions.create('Denied Tables export', 'team', outsider.id);
+    const outsiderSession = await db.sessions.create('Denied Tables export', 'sprouty', outsider.id);
     const deniedExport = (await executeTool(
       createExportDataTool(db, { userId: outsider.id, sessionId: outsiderSession.id }),
       {
@@ -231,7 +231,7 @@ describe('Tables Platform application', () => {
       headers: { 'content-type': 'application/json', 'x-test-user': owner.id },
       body: JSON.stringify({ values: { [primaryId]: '可导出的记录' } }),
     });
-    const session = await db.sessions.create('Tables export', 'team', owner.id);
+    const session = await db.sessions.create('Tables export', 'sprouty', owner.id);
 
     const artifact = (await executeTool(createExportDataTool(db, { userId: owner.id, sessionId: session.id }), {
       source: { type: 'tables_records', table_id: created.schema.table.id },

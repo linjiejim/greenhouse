@@ -2,8 +2,9 @@
 
 Standalone theme values and the bridge for trusted Greenhouse plugin frontends.
 `themeTokens.light/dark` and `tokenNames` come from `packages/ui/src/tokens`;
-regenerate with `pnpm tokens:build`. `resolveThemeTokens()` fills both token naming
-sets (the CSS names and the client aliases) from whichever one the host sends.
+regenerate with `pnpm tokens:build`. Every name is a `--gh-*` client palette key (or the
+shared ramp, type, radius and motion variables); `resolveThemeTokens()` lays the host's
+overrides over the defaults.
 
 ```ts
 import { connectGreenhouse } from '@greenhouse/ui-tokens';

@@ -56,7 +56,7 @@ function task(overrides: Partial<ScheduledTaskRow> = {}): ScheduledTaskRow {
     id: '1',
     user_id: 'owner-1',
     name: 'Hourly check',
-    profile_id: 'team',
+    profile_id: 'sprouty',
     task_prompt: 'Review the latest internal updates',
     schedule: '0 * * * *',
     timezone: 'UTC',

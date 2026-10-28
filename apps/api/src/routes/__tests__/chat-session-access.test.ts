@@ -55,7 +55,7 @@ function makeSession(ownerId = 'owner'): SessionRow {
     id: 'session-1',
     title: 'Existing title',
     status: 'active',
-    profile_id: 'team',
+    profile_id: 'sprouty',
     user_id: ownerId,
     app_id: null,
     channel: 'web',
@@ -154,6 +154,21 @@ describe('POST /api/chat session authorization', () => {
       error: 'You do not have access to this custom profile',
     });
     expect(mocks.sessions.addMessage).not.toHaveBeenCalled();
+    expect(mocks.sessions.buildChatMessages).not.toHaveBeenCalled();
+  });
+
+  it('refuses a session turn with neither a new message nor a regeneration target', async () => {
+    const response = await createApp().request('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-user-id': 'owner', 'x-user-role': 'team' },
+      body: JSON.stringify({ session_id: 'session-1' }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'A session turn needs messages or regenerate_assistant_message_id',
+    });
+    expect(mocks.sessions.getById).not.toHaveBeenCalled();
     expect(mocks.sessions.buildChatMessages).not.toHaveBeenCalled();
   });
 

@@ -11,7 +11,6 @@ import { Hono } from 'hono';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import type { AppEnv } from '../../../../apps/api/src/app-env.js';
 import projectsRoutes from '../routes.js';
-import platformRoutes from '../../../../apps/api/src/routes/platform.js';
 import platformAdminRoutes from '../../../../apps/api/src/routes/platform-admin.js';
 import { bootstrapPlatform } from '../../../../apps/api/src/plugin-host/bootstrap.js';
 import { projectsRegistration } from '../platform/application.js';
@@ -101,7 +100,6 @@ function createPlatformHttpApp(users: Record<string, UserRow>) {
     c.set('user', { id: user.id, role: user.role });
     return next();
   });
-  app.route('/api/platform', platformRoutes);
   app.route('/api/admin/platform', platformAdminRoutes);
   return app;
 }
@@ -412,18 +410,10 @@ describe('Projects Platform Kernel migration', () => {
     expect(typeof summary.progress_percent).toBe('number');
   });
 
-  it('exposes a fail-closed catalog and super-only permission management API', async () => {
+  it('exposes a super-only permission management API', async () => {
     await setupActors();
     const superUser = await createUser('platform-super@test.com', 'super');
     const app = createPlatformHttpApp({ owner, outsider, superUser });
-
-    const visible = await app.request('/api/platform/apps', {
-      headers: { 'x-test-user': 'owner' },
-    });
-    expect(visible.status).toBe(200);
-    expect((await visible.json()).applications.map((application: { id: string }) => application.id)).toEqual([
-      'projects',
-    ]);
 
     const forbiddenAdmin = await app.request('/api/admin/platform/roles', {
       headers: { 'x-test-user': 'owner' },
@@ -541,12 +531,5 @@ describe('Projects Platform Kernel migration', () => {
         field_policies: expect.objectContaining({ title: { read: 'masked', write: true, export: false } }),
       }),
     );
-  });
-
-  it('no longer serves the retired workbench preferences', async () => {
-    await setupActors();
-    const app = createPlatformHttpApp({ owner });
-    const res = await app.request('/api/platform/me/workbench', { headers: { 'x-test-user': 'owner' } });
-    expect(res.status).toBe(404);
   });
 });

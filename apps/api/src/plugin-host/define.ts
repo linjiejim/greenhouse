@@ -175,8 +175,6 @@ export interface GreenhouseExtension {
   rateLimits?: import('../security/extension-rate-limits.js').ExtensionRateLimit[];
   /** Tools the owner may explicitly grant to unattended automations. */
   automationTools?: import('@greenhouse/types/automation-tools').AutomationOptInTool[];
-  /** Stored profile tool ids retired into this plugin's current tool ids. */
-  retiredToolAliases?: Record<string, readonly string[]>;
   /** MCP group descriptions and hints, cut to the caller's reachable tools. */
   hubContext?: Array<{
     group: string;

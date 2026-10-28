@@ -82,27 +82,6 @@ const SPECIAL_METAS: ToolMeta[] = [];
 /** Single source of truth for all tool metadata. */
 export const TOOL_DEFINITIONS: ToolMeta[] = [...TOOL_MODULES.map((m) => m.meta), ...SPECIAL_METAS];
 
-/**
- * Retired tool ids → their successors. Custom profiles persist tool id arrays in
- * the DB, so a retirement must keep old rows meaningful: resolveEffectiveTools
- * expands these before intersecting. External callers (proxy, MCP) must use
- * the live ids.
- *
- * Core retires none (a core migration rewrites stored ids instead). Optional
- * modules contribute their aliases only while enabled, like their tools.
- */
-const retiredAliases: Record<string, readonly string[]> = {};
-for (const aliases of fromExtensions('retiredToolAliases')) {
-  for (const [retired, successors] of Object.entries(aliases)) {
-    if (retired in retiredAliases || TOOL_DEFINITIONS.some((tool) => tool.id === retired))
-      throw new Error(`Retired tool alias "${retired}" collides with an existing tool or alias`);
-    if (!successors.length || successors.some((id) => !TOOL_DEFINITIONS.some((tool) => tool.id === id)))
-      throw new Error(`Retired tool alias "${retired}" must name live successor tools`);
-    retiredAliases[retired] = successors;
-  }
-}
-export const RETIRED_TOOL_ALIASES: Readonly<Record<string, readonly string[]>> = retiredAliases;
-
 // ─── Derived exposure sets (single source: each tool's `meta.surface`) ──────
 //
 // The proxy/MCP allowlists and the lazy-tool set are DERIVED from the catalog —
@@ -190,13 +169,6 @@ export const LAZY_TOOL_IDS = new Set<string>([
 // ─── Lookup Helpers ──────────────────────────────────────
 
 const toolMetaMap = new Map(TOOL_DEFINITIONS.map((t) => [t.id, t]));
-
-/** Get tool description for use in AI SDK tool({ description }). Single source of truth. */
-export function getToolDescription(id: string): string {
-  const meta = toolMetaMap.get(id);
-  if (!meta) throw new Error(`Unknown tool ID: ${id}`);
-  return meta.description;
-}
 
 /** Get metadata for a single tool by ID. */
 export function getToolMeta(id: string): ToolMeta | undefined {

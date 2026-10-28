@@ -145,7 +145,7 @@ export function createCustomProfileService(db: Db) {
           user_id: input.user_id,
           name: input.name,
           description: input.description ?? null,
-          base_profile_id: input.base_profile_id ?? 'team',
+          base_profile_id: input.base_profile_id ?? 'sprouty',
           model_id: input.model_id ?? null,
           tools: input.tools,
           connectors: input.connectors ?? null,

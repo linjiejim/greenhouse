@@ -168,7 +168,7 @@ describe('E2E: Prompt Injection Vectors', () => {
       const sessionRes = await fetch(`${BASE_URL}/api/sessions`, {
         method: 'POST',
         headers: headers(),
-        body: JSON.stringify({ profile_id: 'team' }),
+        body: JSON.stringify({ profile_id: 'sprouty' }),
       });
       const session = await sessionRes.json();
 

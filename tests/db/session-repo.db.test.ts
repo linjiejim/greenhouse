@@ -26,10 +26,10 @@ describe('Session Repository', () => {
   // ─── Session CRUD ──────────────────────────────────────
 
   it('creates a session and retrieves by id', async () => {
-    const session = await db.sessions.create('Test Session', 'team', 'user-1');
+    const session = await db.sessions.create('Test Session', 'sprouty', 'user-1');
     expect(session.id).toBeTruthy();
     expect(session.title).toBe('Test Session');
-    expect(session.profile_id).toBe('team');
+    expect(session.profile_id).toBe('sprouty');
 
     const found = await db.sessions.getById(session.id);
     expect(found).toBeDefined();
@@ -37,15 +37,15 @@ describe('Session Repository', () => {
   });
 
   it('creates a session without title', async () => {
-    const session = await db.sessions.create(undefined, 'team');
+    const session = await db.sessions.create(undefined, 'sprouty');
     expect(session.id).toBeTruthy();
     expect(session.title).toBeNull();
   });
 
   it('lists sessions with pagination', async () => {
-    await db.sessions.create('S1', 'team', 'u1');
-    await db.sessions.create('S2', 'team', 'u1');
-    await db.sessions.create('S3', 'team', 'u1');
+    await db.sessions.create('S1', 'sprouty', 'u1');
+    await db.sessions.create('S2', 'sprouty', 'u1');
+    await db.sessions.create('S3', 'sprouty', 'u1');
 
     const all = await db.sessions.list({ limit: 10 });
     expect(all.length).toBe(3);
@@ -55,8 +55,8 @@ describe('Session Repository', () => {
   });
 
   it('lists each conversation with the start of its newest member or assistant message', async () => {
-    const talked = await db.sessions.create('Talked', 'team', 'u1');
-    const quiet = await db.sessions.create('Quiet', 'team', 'u1');
+    const talked = await db.sessions.create('Talked', 'sprouty', 'u1');
+    const quiet = await db.sessions.create('Quiet', 'sprouty', 'u1');
     await db.sessions.addMessage({ session_id: talked.id, role: 'user', content: 'First question' });
     await db.sessions.addMessage({ session_id: talked.id, role: 'assistant', content: 'A'.repeat(300) });
     await db.sessions.addMessage({ session_id: talked.id, role: 'tool', content: 'tool output' });
@@ -67,8 +67,8 @@ describe('Session Repository', () => {
   });
 
   it('hides excluded channels but keeps them reachable by explicit filter', async () => {
-    await db.sessions.create('Chat', 'team', 'u1', undefined, 'web');
-    await db.sessions.create('[workflow] node-a #1', 'team', 'u1', undefined, 'workflow');
+    await db.sessions.create('Chat', 'sprouty', 'u1', undefined, 'web');
+    await db.sessions.create('[workflow] node-a #1', 'sprouty', 'u1', undefined, 'workflow');
 
     const visible = await db.sessions.list({ excludeChannels: ['workflow'] });
     expect(visible.map((s) => s.title)).toEqual(['Chat']);
@@ -81,7 +81,7 @@ describe('Session Repository', () => {
   });
 
   it('updates session title', async () => {
-    const session = await db.sessions.create(undefined, 'team');
+    const session = await db.sessions.create(undefined, 'sprouty');
     await db.sessions.updateTitle(session.id, 'New Title');
 
     const found = await db.sessions.getById(session.id);
@@ -89,7 +89,7 @@ describe('Session Repository', () => {
   });
 
   it('updates session status', async () => {
-    const session = await db.sessions.create('Test', 'team');
+    const session = await db.sessions.create('Test', 'sprouty');
     await db.sessions.updateStatus(session.id, 'archived');
 
     const found = await db.sessions.getById(session.id);
@@ -97,7 +97,7 @@ describe('Session Repository', () => {
   });
 
   it('updates session with multiple fields', async () => {
-    const session = await db.sessions.create('Test', 'team');
+    const session = await db.sessions.create('Test', 'sprouty');
     const updated = await db.sessions.update(session.id, {
       title: 'Renamed',
       metadata: { task_id: 'task-1' },
@@ -111,7 +111,7 @@ describe('Session Repository', () => {
   });
 
   it('deletes a session', async () => {
-    const session = await db.sessions.create('Delete Me', 'team');
+    const session = await db.sessions.create('Delete Me', 'sprouty');
     await db.sessions.delete(session.id);
 
     const found = await db.sessions.getById(session.id);
@@ -126,7 +126,7 @@ describe('Session Repository', () => {
   // ─── Messages ──────────────────────────────────────────
 
   it('adds and retrieves messages', async () => {
-    const session = await db.sessions.create('Chat', 'team');
+    const session = await db.sessions.create('Chat', 'sprouty');
 
     const msg1 = await db.sessions.addMessage({
       session_id: session.id,
@@ -150,7 +150,7 @@ describe('Session Repository', () => {
   });
 
   it('adds a server-owned message idempotently by stable id', async () => {
-    const session = await db.sessions.create('Outcome', 'team');
+    const session = await db.sessions.create('Outcome', 'sprouty');
     const id = 'cloud-agent-outcome:car_test';
     const first = await db.sessions.addMessageOnce(id, {
       session_id: session.id,
@@ -168,7 +168,7 @@ describe('Session Repository', () => {
   });
 
   it('pages backward by exclusive sequence cursor without gaps or duplicates', async () => {
-    const session = await db.sessions.create('Paged chat', 'team');
+    const session = await db.sessions.create('Paged chat', 'sprouty');
     const inserted: MessageRow[] = [];
     for (let index = 0; index < 6; index++) {
       inserted.push(
@@ -215,7 +215,7 @@ describe('Session Repository', () => {
   });
 
   it('counts messages', async () => {
-    const session = await db.sessions.create('Chat', 'team');
+    const session = await db.sessions.create('Chat', 'sprouty');
 
     await db.sessions.addMessage({ session_id: session.id, role: 'user', content: 'A' });
     await db.sessions.addMessage({ session_id: session.id, role: 'assistant', content: 'B' });
@@ -226,7 +226,7 @@ describe('Session Repository', () => {
   });
 
   it('builds chat messages for LLM context', async () => {
-    const session = await db.sessions.create('Chat', 'team');
+    const session = await db.sessions.create('Chat', 'sprouty');
 
     await db.sessions.addMessage({
       session_id: session.id,
@@ -248,7 +248,7 @@ describe('Session Repository', () => {
   });
 
   it('validates, excludes, and atomically replaces only the selected tail assistant', async () => {
-    const session = await db.sessions.create('Regenerate', 'team');
+    const session = await db.sessions.create('Regenerate', 'sprouty');
     const user = await db.sessions.addMessage({
       session_id: session.id,
       role: 'user',
@@ -315,7 +315,7 @@ describe('Session Repository', () => {
   });
 
   it('does not delete a stale assistant selection when a newer turn exists', async () => {
-    const session = await db.sessions.create('Stale regenerate', 'team');
+    const session = await db.sessions.create('Stale regenerate', 'sprouty');
     await db.sessions.addMessage({ session_id: session.id, role: 'user', content: 'First' });
     const staleAssistant = await db.sessions.addMessage({
       session_id: session.id,
@@ -341,7 +341,7 @@ describe('Session Repository', () => {
   });
 
   it('appends an assistant only while the exact transcript tail is unchanged', async () => {
-    const session = await db.sessions.create('Tail CAS', 'team');
+    const session = await db.sessions.create('Tail CAS', 'sprouty');
     const user = await db.sessions.addMessage({
       session_id: session.id,
       role: 'user',
@@ -373,7 +373,7 @@ describe('Session Repository', () => {
   });
 
   it('edits a user message and truncates every dependent turn atomically', async () => {
-    const session = await db.sessions.create('Edit', 'team');
+    const session = await db.sessions.create('Edit', 'sprouty');
     const user = await db.sessions.addMessage({
       session_id: session.id,
       role: 'user',
@@ -411,7 +411,7 @@ describe('Session Repository', () => {
   });
 
   it('updates message content', async () => {
-    const session = await db.sessions.create('Chat', 'team');
+    const session = await db.sessions.create('Chat', 'sprouty');
     const msg = await db.sessions.addMessage({
       session_id: session.id,
       role: 'assistant',
@@ -426,7 +426,7 @@ describe('Session Repository', () => {
   });
 
   it('deletes messages after sequence number', async () => {
-    const session = await db.sessions.create('Chat', 'team');
+    const session = await db.sessions.create('Chat', 'sprouty');
 
     const m1 = await db.sessions.addMessage({ session_id: session.id, role: 'user', content: 'Keep 1' });
     await db.sessions.addMessage({ session_id: session.id, role: 'assistant', content: 'Keep 2' });
@@ -440,7 +440,7 @@ describe('Session Repository', () => {
   });
 
   it('forks a session through an Agent reply without sharing mutable message ids', async () => {
-    const source = await db.sessions.create('Source', 'team', 'source-owner');
+    const source = await db.sessions.create('Source', 'sprouty', 'source-owner');
     await db.sessions.addMessage({ session_id: source.id, role: 'user', content: 'Question 1' });
     const firstReply = await db.sessions.addMessage({
       session_id: source.id,
@@ -462,7 +462,7 @@ describe('Session Repository', () => {
     expect(fork).toMatchObject({
       title: 'Source (Fork)',
       user_id: 'fork-owner',
-      profile_id: 'team',
+      profile_id: 'sprouty',
       channel: 'web',
     });
     expect(fork!.metadata).toEqual({
@@ -482,7 +482,7 @@ describe('Session Repository', () => {
   // ─── Session Usage ─────────────────────────────────────
 
   it('returns zero usage for empty session', async () => {
-    const session = await db.sessions.create('Empty', 'team');
+    const session = await db.sessions.create('Empty', 'sprouty');
     const usage = await db.sessions.getUsage(session.id);
     expect(Number(usage.messageCount)).toBe(0);
     expect(Number(usage.totalInputTokens)).toBe(0);
@@ -505,10 +505,10 @@ describe('Session Repository', () => {
         nickname: 'Bob',
         role: 'team',
       });
-      const mine = await db.sessions.create('Mine', 'team', alice.id);
-      const theirs = await db.sessions.create('Theirs', 'team', bob.id);
+      const mine = await db.sessions.create('Mine', 'sprouty', alice.id);
+      const theirs = await db.sessions.create('Theirs', 'sprouty', bob.id);
       // Owner-less sessions are real: historical rows and engine-created ones.
-      const ownerless = await db.sessions.create('Ownerless', 'team');
+      const ownerless = await db.sessions.create('Ownerless', 'sprouty');
       return { alice, bob, mine, theirs, ownerless };
     }
 
@@ -527,7 +527,7 @@ describe('Session Repository', () => {
 
     it('returns sessions shared directly and team-wide, but never your own', async () => {
       const { alice, bob, mine, theirs } = await scopeFixture();
-      const teamWide = await db.sessions.create('Team wide', 'team', bob.id);
+      const teamWide = await db.sessions.create('Team wide', 'sprouty', bob.id);
 
       await db.sessionShares.createMany([
         { session_id: theirs.id, shared_with: alice.id, shared_by: bob.id },

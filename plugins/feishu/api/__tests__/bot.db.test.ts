@@ -20,7 +20,7 @@ let db: DatabaseProvider;
 let owner: UserRow;
 
 async function feishuSession(title: string): Promise<string> {
-  const session = await db.sessions.create(title, 'team', owner.id, undefined, 'feishu');
+  const session = await db.sessions.create(title, 'sprouty', owner.id, undefined, 'feishu');
   return session.id;
 }
 

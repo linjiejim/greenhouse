@@ -84,7 +84,7 @@ describe('E2E: Profile Access in Chat and Sessions', () => {
     const res = await fetch(`${BASE_URL}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-forwarded-for': '192.0.2.40' },
-      body: JSON.stringify({ messages: [{ role: 'user', content: 'hello' }], profile_id: 'team' }),
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'hello' }], profile_id: 'sprouty' }),
     });
     expect(res.status).toBe(401);
   });
@@ -107,7 +107,7 @@ describe('E2E: Profile Access in Chat and Sessions', () => {
     expect(res.status).toBe(403);
   });
 
-  it('maps the removed default profile ID to team for legacy session data', async () => {
+  it('maps a retired profile ID a caller sends to sprouty at the API edge', async () => {
     const res = await fetch(`${BASE_URL}/api/sessions`, {
       method: 'POST',
       headers: authHeaders(memberToken),

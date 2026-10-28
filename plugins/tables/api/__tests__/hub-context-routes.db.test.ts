@@ -1,29 +1,21 @@
 import { services as knowledgeServices } from '../../../knowledge/api/services.js';
-import { services as tableServices } from '../services.js';
 /**
  * The v1.7 HTTP surfaces behind the same guards `index.ts` mounts them with:
- * Administration › Team context and the retro button (super only), the data
- * catalog page (any internal member, their own permissions) and the connect
- * wizard's "检查连接" (the member's own connections only).
+ * Administration › Team context and the retro button (super only) and the
+ * connect wizard's "检查连接" (the member's own connections only).
  */
 
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
-import type {
-  AgentConnectionsCheck,
-  DataCatalog,
-  RetroResult,
-  TeamContextSettingsView,
-} from '@greenhouse/types/hub-context';
+import type { AgentConnectionsCheck, RetroResult, TeamContextSettingsView } from '@greenhouse/types/hub-context';
 
 import type { AppEnv } from '../../../../apps/api/src/app-env.js';
 import { requireInternal, requireSuper } from '../../../../apps/api/src/auth/middleware.js';
 import { createInternalTestUser } from '../../../../tests/helpers/internal-user.js';
 import { adminTeamContextRoutes } from '../../../../apps/api/src/routes/admin-team-context.js';
 import adminRetroRoutes from '../../../retro/api/routes.js';
-import dataCatalogRoutes from '../../../../apps/api/src/routes/data-catalog.js';
 import { createAgentAccessRoutes } from '../../../../apps/api/src/routes/agent-access.js';
 import { invalidateWorkspaceConfigCache } from '../../../../apps/api/src/settings/workspace-config.js';
 import {
@@ -57,8 +49,6 @@ function app() {
   hono.use('/api/admin/*', requireSuper());
   hono.route('/api/admin/team-context', adminTeamContextRoutes);
   hono.route('/api/admin/retro', adminRetroRoutes);
-  hono.use('/api/data-catalog', requireInternal());
-  hono.route('/api/data-catalog', dataCatalogRoutes);
   hono.use('/api/agent-access/*', requireInternal());
   hono.route('/api/agent-access', createAgentAccessRoutes());
   return hono;
@@ -167,23 +157,6 @@ describe('retro button', () => {
     expect(result.month).toBe(new Date().toISOString().slice(0, 7));
     expect(result.doc_id).toBe(`team-retro-${result.month}`);
     expect((await call(admin, 'POST', '/api/admin/retro', { month: 'last' })).status).toBe(400);
-  });
-});
-
-describe('data catalog page', () => {
-  it('serves the member their own catalog', async () => {
-    const base = await tableServices(db).tables.createBase({
-      name: 'Mine',
-      visibility: 'private',
-      owner_id: member.id,
-      created_by: member.id,
-    });
-    await tableServices(db).tables.createTable({ base_id: base.id, name: 'Rows', created_by: member.id });
-    const res = await call(member, 'GET', '/api/data-catalog');
-    expect(res.status).toBe(200);
-    const catalog = res.json as DataCatalog;
-    expect(catalog.bases.map((entry) => entry.id)).toContain(base.id);
-    expect(catalog.bases.find((entry) => entry.id === base.id)!.reach[0]!.tool).toBe('tables_query');
   });
 });
 

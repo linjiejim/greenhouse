@@ -46,7 +46,9 @@ async function inventory(url: string) {
   const out: Record<string, { count: number; hash: string }> = {};
   for (const table of tables) {
     const where = table === 'extension_migrations' ? `WHERE extension_id IN ('crm', 'sellfox')` : '';
-    const rows = await queryRows(url, `SELECT to_jsonb(t)::text AS row FROM "${table}" t ${where} ORDER BY 1`);
+    // Core migration 0003 rewrites retired profile ids (canonical-profile-ids.db-commit.test.ts).
+    const row = table === 'conversations' ? `to_jsonb(t) - 'profile_id'` : 'to_jsonb(t)';
+    const rows = await queryRows(url, `SELECT ${row}::text AS row FROM "${table}" t ${where} ORDER BY 1`);
     out[table] = { count: rows.length, hash: createHash('sha256').update(JSON.stringify(rows)).digest('hex') };
   }
   out['drizzle.greenhouse_carry'] = {
@@ -78,6 +80,7 @@ describe('3.x → 4.0 in-place bridge', () => {
       expect(Object.fromEntries(Object.keys(before).map((table) => [table, after[table]]))).toEqual(before);
       // The only new tables are 4.0's own core addition and the Example lane's (3.0.2 never had either).
       expect(Object.keys(after).filter((table) => !(table in before))).toEqual(['client_reports', 'ext_example_notes']);
+      expect(await queryRows(url, `SELECT DISTINCT profile_id FROM conversations`)).toEqual([{ profile_id: 'sprouty' }]);
 
       // No constraint was left unvalidated; the legacy values are still there.
       expect(

@@ -1,18 +1,12 @@
 /**
  * Which MCP tools a member reaches — the per-request platform visibility rule
- * (`filterMcpToolIdsByPlatform`) and, for surfaces that describe the MCP server
- * to the member (the data catalog page), the tools a full grant would reach.
+ * (`filterMcpToolIdsByPlatform`).
  *
  * Lives outside routes/mcp.ts so hub-context can ask the same question without
  * importing the route module; routes/mcp.ts re-exports it unchanged.
  */
 
-import type { UserRole } from '@greenhouse/db';
-import { resolveProfileAsync } from '../profiles/profile.js';
 import type { AgentIdentity } from './api-auth.js';
-import { resolveEffectiveTools } from './tool-resolution.js';
-import { MUTATING_PROXY_ALLOWLIST, resolveProxyToolIds } from './tool-proxy.js';
-import { MCP_EXPOSED_TOOL_IDS } from '../tools/registry.js';
 import { delegatedAgentActor } from '../plugin-host/actor.js';
 import { getPlatformRuntime } from '../plugin-host/runtime.js';
 import { extensionPlatformToolCapabilities } from '../plugin-host/boot.js';
@@ -64,18 +58,4 @@ export async function filterMcpToolIdsByPlatform(
     }),
   );
   return visibility.filter((entry) => entry.visible).map((entry) => entry.toolId);
-}
-
-/**
- * The MCP tools this member would reach with a grant of every resource group
- * and `mcp:write` — their own permissions, nothing more. What a real token
- * reaches is this set narrowed by its scopes (routes/mcp.ts composeMcpContext).
- */
-export async function memberMcpToolIds(userId: string, userRole: Exclude<UserRole, 'external'>): Promise<Set<string>> {
-  const profile = await resolveProfileAsync(MCP_PROFILE_ID);
-  const { effectiveTools } = await resolveEffectiveTools({ userId, userRole, profile, profileId: MCP_PROFILE_ID });
-  const ids = resolveProxyToolIds(effectiveTools, { allowedWriteTools: [...MUTATING_PROXY_ALLOWLIST] }).filter((id) =>
-    MCP_EXPOSED_TOOL_IDS.has(id),
-  );
-  return new Set(await filterMcpToolIdsByPlatform({ userId }, ids));
 }

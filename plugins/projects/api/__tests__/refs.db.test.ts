@@ -295,7 +295,7 @@ describe('POST /api/refs/resolve', () => {
   it('resolves conversations for their owner only', async () => {
     const token = marker();
     const { owner, stranger, app } = await people(token);
-    const session = await db.sessions.create(`${token} weekly sync`, 'team', owner.id, undefined, 'web');
+    const session = await db.sessions.create(`${token} weekly sync`, 'sprouty', owner.id, undefined, 'web');
     const url = `#/chat?session=${session.id}`;
     expect(titleOf((await resolve(app, owner.id, [url])).body, url)).toBe(`${token} weekly sync`);
     expect(titleOf((await resolve(app, stranger.id, [url])).body, url)).toBeNull();

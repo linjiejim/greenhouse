@@ -42,7 +42,7 @@ describe('active persisted discriminator writes', () => {
     await expect(db.runtime.createRun(input)).rejects.toThrow('Unregistered runKinds');
     registerDiscriminators({ runKinds: ['ext:fixture:sync'] });
     expect(await db.runtime.createRun(input)).toMatchObject({ kind: 'ext:fixture:sync' });
-    const session = await db.sessions.create('Fixture', 'team', user.id);
+    const session = await db.sessions.create('Fixture', 'sprouty', user.id);
     const receipt = {
       id: 'fixture-receipt',
       session_id: session.id,
