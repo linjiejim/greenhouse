@@ -36,6 +36,30 @@
 .gh-admin-grid tr[data-muted] td {
   color: var(--gh-tertiary);
 }
+/* a row's detail under it (Client errors: the latest report) */
+.gh-admin-grid tr[data-detail] td {
+  height: auto;
+  padding: 8px 12px 14px 32px;
+  white-space: normal;
+  background: var(--gh-sunken);
+}
+.gh-admin-latest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--gh-secondary);
+}
+.gh-admin-latest strong {
+  color: var(--gh-text);
+  font-weight: 500;
+}
+.gh-admin-latest-title {
+  width: 100%;
+  color: var(--gh-text);
+  font-weight: 600;
+}
 .gh-admin-grid .gh-admin-actions {
   width: 1%;
   text-align: right;

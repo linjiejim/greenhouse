@@ -142,6 +142,34 @@ describe('retention cleanup', () => {
     expect(report.auth_refresh_tokens).toBeGreaterThanOrEqual(1);
   });
 
+  it('keeps client error reports 90 days and at most the newest 10,000', async () => {
+    const t = tag();
+    const insert = (id: string, at: string) =>
+      db.executeRaw(sql`
+        INSERT INTO client_reports (id, user_id, client_report_id, fingerprint, fatal, source, name, message, platform, occurred_at, created_at)
+        VALUES (${id}, 'u', ${id}, 'f', false, 'global', 'Error', 'm', 'ios', ${at}::timestamptz, ${at}::timestamptz)`);
+    await insert(`old_${t}`, daysAgo(91));
+    await insert(`new_${t}`, daysAgo(89));
+    const report = await db.retention.run({ now: NOW });
+    expect(await exists('client_reports', 'id', `old_${t}`)).toBe(false);
+    expect(await exists('client_reports', 'id', `new_${t}`)).toBe(true);
+    expect(report.client_reports).toBeGreaterThanOrEqual(1);
+
+    // a crash storm: the oldest rows beyond the cap go, however recent
+    await db.executeRaw(sql`
+      INSERT INTO client_reports (id, user_id, client_report_id, fingerprint, fatal, source, name, message, platform, occurred_at, created_at)
+      SELECT ${`cap_${t}_`} || g, 'u', ${`cap_${t}_`} || g, 'f', false, 'global', 'Error', 'm', 'ios', now(),
+             ${daysAgo(10)}::timestamptz + g * interval '1 second'
+      FROM generate_series(1, 10005) g`);
+    await db.retention.run({ now: NOW, batchSize: 2000 });
+    const left = await db.executeRaw(sql`SELECT count(*)::int AS n FROM client_reports`);
+    expect(Number(left[0].n)).toBeLessThanOrEqual(10_000);
+    expect(await exists('client_reports', 'id', `new_${t}`)).toBe(false);
+    for (const g of [1, 2, 3, 4, 5]) expect(await exists('client_reports', 'id', `cap_${t}_${g}`)).toBe(false);
+    expect(await exists('client_reports', 'id', `cap_${t}_6`)).toBe(true);
+    expect(await exists('client_reports', 'id', `cap_${t}_10005`)).toBe(true);
+  });
+
   it('deletes in bounded batches until the backlog is gone', async () => {
     const t = tag();
     await db.executeRaw(sql`

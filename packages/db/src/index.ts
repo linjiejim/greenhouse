@@ -100,6 +100,7 @@ export * from './services/gateway-keys.js';
 export * from './services/workspace-settings.js';
 export * from './services/retention.js';
 export * from './services/mcp-connectors.js';
+export * from './services/client-reports.js';
 
 // ─── Configuration ───────────────────────────────────────
 

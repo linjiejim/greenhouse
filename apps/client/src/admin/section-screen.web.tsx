@@ -18,6 +18,7 @@ const SECTIONS: Record<CoreSectionId, React.LazyExoticComponent<React.ComponentT
   activity: lazy(() => import('./activity.web')),
   'team-context': lazy(() => import('./team-context.web')),
   branding: lazy(() => import('./branding.web')),
+  'client-errors': lazy(() => import('./client-errors.web')),
 };
 
 export default function AdminSectionScreen() {

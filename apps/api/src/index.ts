@@ -97,6 +97,7 @@ import { createNotificationRoutes } from './routes/notifications.js';
 import pushDeviceRoutes from './routes/push-devices.js';
 import adminMeteringRoutes from './routes/admin-metering.js';
 import usageRoutes from './routes/usage.js';
+import { adminClientReportRoutes, clientReportRoutes } from './routes/client-reports.js';
 import toolsRoutes from './routes/tools.js';
 import driveRoutes from './routes/drive.js';
 import chatFileRoutes from './routes/chat-files.js';
@@ -207,6 +208,7 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/admin/platform', platformAdminRoutes)
       .route('/api/admin/operations', costValueRoutes)
       .route('/api/admin/metering', adminMeteringRoutes)
+      .route('/api/admin/client-reports', adminClientReportRoutes)
       .route('/api/admin', adminRoutes)
       .route('/api/admin/settings', adminSettingsRoutes)
       .route('/api/admin/team-context', adminTeamContextRoutes)
@@ -248,6 +250,10 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/data-catalog', dataCatalogRoutes)
       .use('/api/usage/*', requireInternal())
       .route('/api/usage', usageRoutes)
+      // Client error reports — a member's app sends what it caught; the bare path is the endpoint.
+      .use('/api/client-reports', requireInternal())
+      .use('/api/client-reports/*', requireInternal())
+      .route('/api/client-reports', clientReportRoutes)
       // Tool metadata — authenticated internal users
       .route('/api/tools', toolsRoutes)
       // WebSocket endpoint — internal users only (auth via query token)

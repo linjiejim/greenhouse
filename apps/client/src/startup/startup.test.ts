@@ -160,6 +160,7 @@ vi.mock('../api/client', () => ({ setOnUnauthorized: vi.fn(), setTransport: vi.f
 vi.mock('../settings/account-language', () => ({ useAccountLanguage: () => {} }));
 vi.mock('../settings/text-size', () => ({ useAccountTextSize: () => {} }));
 vi.mock('../store/outbox', () => ({ useOutboxFlush: () => {} }));
+vi.mock('../reports/client-reports', () => ({ useClientReports: () => {} }));
 vi.mock('../push/use-push', () => ({ usePushBridge: () => {} }));
 vi.mock('../ui/loading-state', () => ({
   LoadingState: () => test.React.createElement('div', { role: 'progressbar' }),

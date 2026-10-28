@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import type { ClientErrorGroup } from '../shared/client-reports';
+import { appLine, clientErrorTotals, errorHeadline } from './client-errors-model';
 import {
   formatDuration,
   formatTokens,
@@ -359,5 +361,29 @@ describe('branding model', () => {
     expect(logoProblem({ type: 'image/gif', size: 10 })).toBe('type');
     expect(logoProblem({ type: 'image/png', size: 300 * 1024 })).toBe('size');
     expect(logoProblem({ type: 'image/svg+xml', size: 1024 })).toBeNull();
+  });
+});
+
+describe('client errors model', () => {
+  it('reads a group as its error, without repeating the name', () => {
+    expect(errorHeadline({ name: 'TypeError', message: "Cannot read property 'title' of undefined" })).toBe(
+      "TypeError: Cannot read property 'title' of undefined",
+    );
+    expect(errorHeadline({ name: 'Error', message: 'Network request failed' })).toBe('Network request failed');
+    expect(errorHeadline({ name: 'UncleanExit', message: 'UncleanExit: the app ended' })).toBe(
+      'UncleanExit: the app ended',
+    );
+    expect(errorHeadline({ name: 'RangeError', message: ' ' })).toBe('RangeError');
+  });
+  it('says which app build reported it and counts the window', () => {
+    expect(appLine({ app_version: '4.0.0', app_build: '41 ota 1a2b3c4d' })).toBe('4.0.0 (41 ota 1a2b3c4d)');
+    expect(appLine({ app_version: '4.0.0', app_build: null })).toBe('4.0.0');
+    expect(appLine({ app_version: null, app_build: null })).toBeNull();
+    const group = { fatal: false } as ClientErrorGroup;
+    expect(clientErrorTotals({ total: 9, groups: [group, { ...group, fatal: true }] })).toEqual({
+      reports: 9,
+      kinds: 2,
+      fatal: 1,
+    });
   });
 });

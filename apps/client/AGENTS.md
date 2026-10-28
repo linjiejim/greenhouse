@@ -49,6 +49,7 @@
 - Custom agents (run profiles) in the Automations place: `GET /api/profiles/custom` (mine plus the team's; a super's list also holds members' private ones, left out), `POST`, `PUT /:id` (changed fields only; every save raises the version), `DELETE /:id`, super-only `PUT /:id/sharing` `{ is_shared }`; models from `/api/profiles` `models`, tools from `/api/tools` (built-ins left out), connectors from `/api/me/connectors`. Rules in src/automations/agents.ts; a duplicate keeps only tools I hold and connectors I can use.
 - Feedback: `POST /api/me/feedback` `{ message, context }` (src/feedback); a 404 means the Feedback plugin is disabled.
 - Plugin pages (src/plugins/<id>/api.ts): Email `/api/email/accounts` (`POST`, `PUT /:id` changed fields only, `POST /:id/test`, `DELETE /:id`; saves test first and a refusal carries `test`; the password is sent only when typed and never comes back) and `/api/email/presets`; Memory `/api/auth/me/memories` (`PATCH /:id`, `DELETE /:id`; no create, only the `memory` tool writes new ones); Computer `/api/computer`, `POST /start`, `POST /stop`.
+- Client error reports: `POST /api/client-reports` `{ reports }` (src/reports, ≤20 per batch, the active station's own); 2xx, 400, 403 and 413 settle a batch, anything else keeps it on the device. Supers read them in Admin › Client errors (`GET /api/admin/client-reports?days=7|30|90`).
 - Search: `GET /api/search?q=&kind=` (conversations, projects, documents) and `/api/drive/search`; my tasks are matched from the saved copy. Runs: `GET /api/runtime/runs/:id`. My agents: `/api/agent-access/connections`.
 - Folders and files: `POST /api/drive/folders`, `PUT /folders/:id` `{ name?, parent_id? }`, `DELETE /folders/:id` (409 when not empty), `PUT /files/:id` `{ name?, folder_id? }`, `DELETE /files/:id`; documents `POST /api/knowledge/docs`, `PUT /docs/:id` `{ title?, folder_id? }`. Moves never cross shelves.
 - Access: a 403 means a role, feature or capability gate (EmptyState without retry); a 404 means gone or not visible to this member (src/data/access.ts).
@@ -238,6 +239,17 @@
 - The secondary column lists core sections (src/admin/sections.ts) and the station manifest's pages with `parent: 'administration'`: settings forms and native screens a plugin owns in `src/plugins/<id>/admin.web.tsx`, indexed by `src/plugins/admin-screens.web.ts`. Core admin code never names a plugin.
 - Sections are routes (`/admin/<section>`, `/admin/p/<plugin>/<page>`); an unknown key shows the missing-section notice.
 - Sections use src/admin/kit.web.tsx (AdminPage on Place, Tabs, Card, Badge, Switch, FlagSwitch, Field, Callout, fixed-size AdminDialog), `useWrite` for identity-bound writes, the shared Controls classes in src/shell/client.css (src/admin/admin.css holds admin layout only), and copy only in the `admin` catalog block. Rules that can be pure live in `*-model.ts` with tests.
+
+## Error reports
+
+- The root layouts import src/reports/client-reports.ts first; it installs the handlers (ErrorUtils on native, window `error` / `unhandledrejection` on the web). Error boundaries call `reportError`.
+- A report is written to the device before the handler returns and sent on launch, sign-in and foreground; never send from inside a handler.
+- Reports carry the error, route, app, OS and station API level only, never message or document text; redaction is packages/types/src/client-reports.ts (vendored, parity-tested).
+- Release builds keep a session mark: a launch that ended in the foreground with nothing caught is reported as `unclean_exit` (native aborts, such as a worklet error, never reach JS).
+
+## Sheet transitions
+
+- Close a sheet and open the next screen with `closeThen` (src/shell/close-then.ts): keyboard down, close, wait `AFTER_DISMISS_MS`, open. Never close and push in the same tick, and keep toasts out of the transition.
 
 ## Client polish
 

@@ -76,8 +76,8 @@ describe('3.x → 4.0 in-place bridge', () => {
       expect(result.bridged?.archived.at(-1)).toBe('0009_knowledge_plugin_ownership');
       const after = await inventory(url);
       expect(Object.fromEntries(Object.keys(before).map((table) => [table, after[table]]))).toEqual(before);
-      // The only new table is the Example lane's own (3.0.2 never had it), and it is empty.
-      expect(Object.keys(after).filter((table) => !(table in before))).toEqual(['ext_example_notes']);
+      // The only new tables are 4.0's own core addition and the Example lane's (3.0.2 never had either).
+      expect(Object.keys(after).filter((table) => !(table in before))).toEqual(['client_reports', 'ext_example_notes']);
 
       // No constraint was left unvalidated; the legacy values are still there.
       expect(

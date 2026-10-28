@@ -28,6 +28,10 @@
       "import": "./src/push.ts",
       "types": "./src/push.ts"
     },
+    "./client-reports": {
+      "import": "./src/client-reports.ts",
+      "types": "./src/client-reports.ts"
+    },
     "./api": {
       "import": "./src/api.ts",
       "types": "./src/api.ts"

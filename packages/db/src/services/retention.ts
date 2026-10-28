@@ -7,6 +7,7 @@
  *   request_log              30 days
  *   budget_ledger            13 months
  *   notification_deliveries  7 days after reaching a terminal state
+ *   client_reports           90 days, and never more than the newest 10,000
  *   expired credentials      refresh tokens, OAuth codes / tokens, login states,
  *                            rate-limit buckets, password links (30 days past expiry)
  *
@@ -26,6 +27,8 @@ export const RETENTION_POLICY = {
   ledgerMonths: 13,
   deliveriesDays: 7,
   expiredPasswordLinkDays: 30,
+  clientReportDays: 90,
+  clientReportMaxRows: 10_000,
 } as const;
 
 export type RetentionTarget =
@@ -34,6 +37,7 @@ export type RetentionTarget =
   | 'request_log'
   | 'budget_ledger'
   | 'notification_deliveries'
+  | 'client_reports'
   | 'auth_refresh_tokens'
   | 'oauth_codes'
   | 'oauth_tokens'
@@ -120,6 +124,18 @@ export function createRetentionService(db: Db) {
         'id',
         sql`status IN ${TERMINAL_DELIVERIES} AND updated_at < ${daysBefore(now, RETENTION_POLICY.deliveriesDays)}::timestamptz`,
       );
+      // Age first, then the row cap: a crash loop on many phones must not grow the table without bound.
+      report.client_reports =
+        (await go(
+          'client_reports',
+          'id',
+          sql`created_at < ${daysBefore(now, RETENTION_POLICY.clientReportDays)}::timestamptz`,
+        )) +
+        (await go(
+          'client_reports',
+          'id',
+          sql`id IN (SELECT id FROM client_reports ORDER BY created_at DESC, id DESC OFFSET ${RETENTION_POLICY.clientReportMaxRows})`,
+        ));
       report.auth_refresh_tokens = await go('auth_refresh_tokens', 'id', sql`expires_at <= ${nowIso}::timestamptz`);
       report.oauth_codes = await go('oauth_codes', 'code_hash', sql`expires_at <= ${nowIso}::timestamptz`);
       report.oauth_tokens = await go('oauth_tokens', 'id', sql`expires_at <= ${nowIso}::timestamptz`);

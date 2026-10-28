@@ -14,6 +14,7 @@ export type SectionGroup = (typeof SECTION_GROUPS)[number];
 export const CORE_SECTIONS = [
   { id: 'users', icon: 'users', group: 'members' },
   { id: 'activity', icon: 'runs', group: 'members' },
+  { id: 'client-errors', icon: 'alertCircle', group: 'members' },
   { id: 'usage', icon: 'bar', group: 'spend' },
   { id: 'services', icon: 'pricing', group: 'spend' },
   { id: 'team-context', icon: 'building', group: 'workspace' },
