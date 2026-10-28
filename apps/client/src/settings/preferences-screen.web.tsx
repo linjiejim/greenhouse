@@ -16,7 +16,7 @@ export default function PreferencesScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <div className="gh-settings-content">
         <h1>{t('places.settings')}</h1>
-        <h3>{t('places.appearance')}</h3>
+        <h2>{t('places.appearance')}</h2>
         <section>
           <div className="gh-settings-row">
             <strong>{t('settings.theme')}</strong>
@@ -60,7 +60,7 @@ export default function PreferencesScreen() {
             </select>
           </label>
         </section>
-        <h3>{t('places.conversation')}</h3>
+        <h2>{t('places.conversation')}</h2>
         <section>
           <label className="gh-settings-row">
             <strong>{t('settings.homeRecent')}</strong>

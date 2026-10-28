@@ -79,7 +79,8 @@ export function RailMore({ label, title, apps, width }: { label: string; title: 
         id="more"
         label={label}
         icon="grid"
-        selected={selected || !!at}
+        selected={selected}
+        expanded={!!at}
         width={width}
         onPress={() => {
           if (at) return setAt(null);

@@ -15,7 +15,7 @@ export function HeaderTitle({ title, subtitle, state }: { title: string; subtitl
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, maxWidth: width - 208 }}>
       <AssistantAvatar size={SMALL} state={state} animate />
       <View style={{ minWidth: 0, flexShrink: 1 }}>
-        <Text numberOfLines={1} accessibilityRole="header" style={{ ...typo.title3, color: c.label }}>
+        <Text numberOfLines={1} accessibilityRole="header" aria-level={1} style={{ ...typo.title3, color: c.label }}>
           {title}
         </Text>
         {subtitle ? (

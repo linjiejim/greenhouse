@@ -247,17 +247,18 @@ function KnowledgeDesktop() {
                       json={draft.json}
                       onChange={(markdown, json) => setDraft({ markdown, json })}
                       labels={[
-                        'editor',
-                        'bold',
-                        'italic',
-                        'bullets',
-                        'numbered list',
-                        'quote',
-                        'code',
+                        t('knowledge.editor.body'),
+                        t('knowledge.editor.bold'),
+                        t('knowledge.editor.italic'),
+                        t('knowledge.editor.bullets'),
+                        t('knowledge.editor.numbered'),
+                        t('knowledge.editor.quote'),
+                        t('knowledge.editor.code'),
                         t('nav.tables'),
                         t('composer.photos'),
-                        'undo',
-                        'redo',
+                        t('knowledge.editor.undo'),
+                        t('knowledge.editor.redo'),
+                        t('knowledge.editor.link'),
                       ]}
                       onLink={(previous) => promptText({ title: 'URL', defaultValue: previous || 'https://' })}
                       onSearchDocs={async (query) => {

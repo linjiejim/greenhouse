@@ -5,7 +5,7 @@
  * blocked, skipped) also get a badge, and VoiceOver hears every state.
  */
 import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import type { StepItem, StepStatus, StepsData } from '../../shared/rich-output';
 import { useT, type TranslationKey } from '../../lib/i18n';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../theme';
@@ -71,6 +71,8 @@ function Step({ item, last }: { item: StepItem; last: boolean }) {
     <View
       style={styles.row}
       accessible
+      // the web needs a role for the label; native reads the accessible View as is
+      role={Platform.OS === 'web' ? 'group' : undefined}
       accessibilityLabel={[item.title, status, item.time, item.detail].filter(Boolean).join(', ')}
     >
       <View style={styles.rail}>

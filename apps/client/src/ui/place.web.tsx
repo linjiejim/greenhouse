@@ -33,7 +33,10 @@ export function Place({
                 <Icon name="menu" size={18} />
               </button>
             ) : null}
-            <strong>{title}</strong>
+            {/* the page's title: the sidebar's place name is a level below */}
+            <strong role="heading" aria-level={1}>
+              {title}
+            </strong>
           </div>
           <div className="gh-place-actions">{actions}</div>
         </header>

@@ -134,7 +134,7 @@ export function DocShareDialog({ docId, close }: { docId: string; close: () => v
                       <tr>
                         <th>{t('knowledge.share.name')}</th>
                         <th>{t('knowledge.share.role')}</th>
-                        <th aria-label={t('knowledge.share.remove')} />
+                        <th><span className="gh-sr-only">{t('knowledge.share.remove')}</span></th>
                       </tr>
                     </thead>
                     <tbody>

@@ -72,6 +72,7 @@ function Tile({ item, divider, compact }: { item: StatItem; divider: boolean; co
     <View
       style={[styles.tile, divider && styles.tileDivider]}
       accessible
+      role="group"
       accessibilityLabel={[item.label, formatValue(item.value), item.unit, delta, item.hint].filter(Boolean).join(' ')}
     >
       <Text style={styles.label} numberOfLines={1}>

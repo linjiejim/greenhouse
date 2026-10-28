@@ -6,7 +6,7 @@
  * separate: a rising cost is bad news, so colour appears only when the model said what it means.
  */
 import { useMemo } from 'react';
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import type { StatItem, StatsData } from '../../shared/rich-output';
 import { makeStyles, radius, space, squircle, typo, useTheme, weight } from '../../theme';
 import { Icon } from '../../ui/core';
@@ -68,6 +68,8 @@ function Tile({ item, divider, compact }: { item: StatItem; divider: boolean; co
     <View
       style={[styles.tile, divider && styles.tileDivider]}
       accessible
+      // the web needs a role for the label; native reads the accessible View as is
+      role={Platform.OS === 'web' ? 'group' : undefined}
       accessibilityLabel={[item.label, formatValue(item.value), item.unit, delta, item.hint].filter(Boolean).join(' ')}
     >
       <Text style={styles.label} numberOfLines={1}>

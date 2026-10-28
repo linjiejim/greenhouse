@@ -142,7 +142,7 @@ function Requests() {
               <th>{t('admin.ext.feedback.priority')}</th>
               <th>{t('admin.ext.feedback.by')}</th>
               <th>{t('admin.ext.feedback.when')}</th>
-              <th aria-label={t('admin.actions')} />
+              <th><span className="gh-sr-only">{t('admin.actions')}</span></th>
             </tr>
           </thead>
           <tbody>

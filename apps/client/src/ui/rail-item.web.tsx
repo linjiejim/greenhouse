@@ -12,6 +12,7 @@ export function RailItem({
   label,
   icon,
   selected = false,
+  expanded,
   width,
   onPress,
 }: {
@@ -19,17 +20,23 @@ export function RailItem({
   label: string;
   icon: IconName;
   selected?: boolean;
+  /** Set on an entry that opens a menu (More): whether it is open. It draws like a selected entry. */
+  expanded?: boolean;
   width: number;
   onPress: () => void;
 }) {
   const { hex: c } = useTheme();
-  const tint = selected ? c.accentText : c.secondaryLabel;
+  const lit = selected || !!expanded;
+  const tint = lit ? c.accentText : c.secondaryLabel;
   return (
     <Pressable
       testID={`rail-${id}`}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected }}
+      // the web reads these, not accessibilityState
+      aria-current={selected ? 'page' : undefined}
+      {...(expanded === undefined ? null : { 'aria-haspopup': 'menu', 'aria-expanded': expanded })}
       onPress={onPress}
       style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({
         alignItems: 'center',
@@ -39,7 +46,7 @@ export function RailItem({
         marginHorizontal: 5,
         marginVertical: 1,
         borderRadius: 12,
-        backgroundColor: selected ? c.sidebarSelection : pressed || hovered ? c.fill : 'transparent',
+        backgroundColor: lit ? c.sidebarSelection : pressed || hovered ? c.fill : 'transparent',
       })}
     >
       <Icon name={icon} size={21} color={tint} />

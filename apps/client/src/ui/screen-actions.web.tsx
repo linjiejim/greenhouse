@@ -8,6 +8,7 @@ import { Icon } from './core.web';
 import { SettingsWindowContext } from './settings-frame';
 import { useShortcut } from './use-shortcut.web';
 import { Tooltip } from './popover.web';
+import { useT } from '../lib/i18n';
 import type { ScreenAction, ScreenActionsProps } from './screen-action-types';
 export type { ScreenAction } from './screen-action-types';
 function menuItem(a: ScreenAction): MenuItem {
@@ -33,6 +34,7 @@ function ActionShortcut({ action }: { action: ScreenAction }) {
   );
 }
 export function Controls({ actions, maxVisible = 3 }: { actions: readonly ScreenAction[]; maxVisible?: number }) {
+  const t = useT();
   const items = actions.filter((a) => !a.hidden && a.busy === undefined);
   const visible = items.slice(0, maxVisible),
     overflow = items.slice(maxVisible);
@@ -81,7 +83,7 @@ export function Controls({ actions, maxVisible = 3 }: { actions: readonly Screen
       ))}
       {overflow.length ? (
         <NativeMenu items={overflow.map(menuItem)} onSelect={find}>
-          <Pressable accessibilityRole="button" accessibilityLabel="More actions" style={{ padding: 4 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel={t('client.moreActions')} style={{ padding: 4 }}>
             <Icon name="more" size={20} />
           </Pressable>
         </NativeMenu>

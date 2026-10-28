@@ -247,7 +247,7 @@ export default function McpKeysSection() {
                     <th>{t('admin.mcp.scopes')}</th>
                     <th>{t('admin.metering.status')}</th>
                     <th>{t('admin.mcp.createdAt')}</th>
-                    <th aria-label={t('admin.actions')} />
+                    <th><span className="gh-sr-only">{t('admin.actions')}</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -293,7 +293,7 @@ export default function McpKeysSection() {
                     <th>{t('admin.mcp.authorized')}</th>
                     <th>{t('admin.metering.status')}</th>
                     <th>{t('admin.mcp.createdAt')}</th>
-                    <th aria-label={t('admin.actions')} />
+                    <th><span className="gh-sr-only">{t('admin.actions')}</span></th>
                   </tr>
                 </thead>
                 <tbody>

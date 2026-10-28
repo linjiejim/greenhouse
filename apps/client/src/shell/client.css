@@ -15,6 +15,19 @@ body {
   outline: 2px solid var(--gh-focus);
   outline-offset: 2px;
 }
+/* a modal panel only holds focus for its dialog; its controls draw the visible ring */
+[role='dialog'][aria-modal='true'][tabindex='-1']:focus-visible {
+  outline: none;
+}
+/* read by screen readers, not drawn (a header cell for a column of row actions) */
+.gh-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 button,
 input,
 select,
@@ -920,7 +933,7 @@ textarea.gh-input,
   min-width: 0;
   overflow: auto;
 }
-.gh-kanban-column h3 {
+.gh-kanban-column h2 {
   font-size: 14px;
   margin: 4px 4px 12px;
   display: flex;
@@ -1059,7 +1072,7 @@ textarea.gh-input,
   font-size: 28px;
   margin: 0 0 28px;
 }
-.gh-settings-content h3 {
+.gh-settings-content h2 {
   font-size: 14px;
   color: var(--gh-secondary);
   margin: 24px 16px 12px;

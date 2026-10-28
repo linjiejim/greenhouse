@@ -30,7 +30,7 @@ export function Avatar({ name, size = 34 }: { name: string; size?: number }) {
         alignItems: 'center',
         justifyContent: 'center',
       }}
-      accessibilityElementsHidden
+      accessibilityElementsHidden aria-hidden
       importantForAccessibility="no-hide-descendants"
     >
       {/* sized with the circle: at large text sizes the letter shrinks to fit its disc */}

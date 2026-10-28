@@ -13,7 +13,7 @@ export function Skeleton({ rows = 3 }: { rows?: number }) {
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   return (
-    <View style={styles.card} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <View style={styles.card} accessibilityElementsHidden aria-hidden importantForAccessibility="no-hide-descendants">
       {Array.from({ length: rows }, (_, index) => (
         <View key={index} style={styles.row}>
           <View style={styles.dot} />

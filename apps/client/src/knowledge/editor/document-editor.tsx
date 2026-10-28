@@ -104,7 +104,7 @@ export default function DocumentEditor({
                 if (kind === 'codeBlock') chain.toggleCodeBlock().run();
               }}
             >
-              {['B', 'I', '•', '1.', '❝', '⌘'][i]}
+              <span aria-hidden="true">{['B', 'I', '•', '1.', '❝', '⌘'][i]}</span>
             </button>
           ))}
           <button onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>H2</button>
@@ -112,7 +112,7 @@ export default function DocumentEditor({
             {labels[7]}
           </button>
           <button
-            aria-label="Link"
+            aria-label={labels[11]}
             onClick={() =>
               void (async () => {
                 const url = await onLink(String(editor.getAttributes('link').href ?? ''));
@@ -122,14 +122,14 @@ export default function DocumentEditor({
               })()
             }
           >
-            ↗
+            <span aria-hidden="true">↗</span>
           </button>
           <button onClick={() => pick.current?.click()}>{labels[8]}</button>
           <button aria-label={labels[9]} onClick={() => editor.chain().focus().undo().run()}>
-            ↶
+            <span aria-hidden="true">↶</span>
           </button>
           <button aria-label={labels[10]} onClick={() => editor.chain().focus().redo().run()}>
-            ↷
+            <span aria-hidden="true">↷</span>
           </button>
           <input
             ref={pick}

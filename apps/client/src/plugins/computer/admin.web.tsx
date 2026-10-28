@@ -117,7 +117,7 @@ function ComputersScreen({ title }: AdminScreenProps) {
                     <th>{t('admin.ext.computer.startedAt')}</th>
                     <th>{t('admin.ext.computer.lastUsedAt')}</th>
                     <th className="gh-number">{t('admin.ext.computer.minutes')}</th>
-                    <th aria-label={t('admin.actions')} />
+                    <th><span className="gh-sr-only">{t('admin.actions')}</span></th>
                   </tr>
                 </thead>
                 <tbody>

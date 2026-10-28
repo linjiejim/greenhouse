@@ -62,6 +62,7 @@ export function PendingBlock({ lang }: { lang: string }) {
       style={[styles.wrap, { minHeight: PENDING_HEIGHT[lang] ?? 64 }]}
       accessible
       accessibilityRole="progressbar"
+      accessibilityLabel={t(PENDING_LABEL[lang] ?? 'chat.pendingBlock')}
     >
       <Spinner />
       <Text style={styles.label}>{t(PENDING_LABEL[lang] ?? 'chat.pendingBlock')}</Text>

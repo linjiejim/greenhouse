@@ -40,7 +40,7 @@ export function EmptyState({
   const below = action ?? (onRetry ? <NativeButton label={t('common.retry')} icon="refresh" onPress={onRetry} /> : null);
   return (
     <View style={[styles.root, style]}>
-      <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <View accessibilityElementsHidden aria-hidden importantForAccessibility="no-hide-descendants">
         <AssistantAvatar size={64} state={onRetry ? 'error' : 'sleep'} animate={false} />
       </View>
       <Text style={styles.title} accessibilityRole="header">

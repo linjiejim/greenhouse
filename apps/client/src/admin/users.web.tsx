@@ -154,7 +154,7 @@ export default function UsersSection() {
               <th className="gh-number">{t('admin.users.monthTokens')}</th>
               <th className="gh-number">{t('admin.users.calls')}</th>
               <th className="gh-number">{t('admin.users.lastLogin')}</th>
-              <th aria-label={t('admin.actions')} />
+              <th><span className="gh-sr-only">{t('admin.actions')}</span></th>
             </tr>
           </thead>
           <tbody>

@@ -17,7 +17,7 @@ test('P3 knowledge tree, Tiptap Markdown save, keyboard and dark document', asyn
   await page.keyboard.press('ArrowUp');
   await page.keyboard.press('Enter');
   await page.getByRole('button', { name: '编辑', exact: true }).click();
-  const editor = page.getByRole('textbox', { name: 'editor', exact: true });
+  const editor = page.getByRole('textbox', { name: '正文', exact: true });
   await expect(editor).toBeVisible();
   await expect(editor.locator('h2').first()).toHaveCSS('font-size', '20px');
   await expect(editor).toHaveCSS('line-height', '28px');

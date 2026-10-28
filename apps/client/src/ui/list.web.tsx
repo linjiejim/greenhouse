@@ -98,19 +98,19 @@ export function Section({
   const styles = useStyles(c);
   const rows = Children.toArray(children).filter(isValidElement);
   return (
-    <View accessibilityRole="list" style={[variant === 'inset' ? styles.insetWrap : null, style]}>
+    <View style={[variant === 'inset' ? styles.insetWrap : null, style]}>
       {header ? (
         <Text accessibilityRole="header" style={[styles.header, variant === 'plain' && styles.headerPlain]}>
           {header}
         </Text>
       ) : null}
-      <View style={variant === 'inset' ? styles.insetCard : styles.plainCard}>
-        {rows.map((row, i) =>
-          React.cloneElement(row as React.ReactElement<RowProps>, {
-            key: row.key ?? i,
-            last: i === rows.length - 1,
-          }),
-        )}
+      {/* only rows are list items: the header and footer stay outside the list */}
+      <View role="list" style={variant === 'inset' ? styles.insetCard : styles.plainCard}>
+        {rows.map((row, i) => (
+          <View key={row.key ?? i} role="listitem">
+            {React.cloneElement(row as React.ReactElement<RowProps>, { last: i === rows.length - 1 })}
+          </View>
+        ))}
       </View>
       {footer ? <Text style={styles.footer}>{footer}</Text> : null}
     </View>
@@ -338,7 +338,13 @@ function RowTarget({
     );
   }
   return (
-    <View accessible accessibilityRole={menuTrigger && !disabled ? 'button' : undefined} {...a11y} style={style}>
+    <View
+      accessible
+      // a labelled information row is a named group (aria-label needs a role on the web)
+      role={menuTrigger && !disabled ? 'button' : accessibilityLabel ? 'group' : undefined}
+      {...a11y}
+      style={style}
+    >
       {children}
     </View>
   );

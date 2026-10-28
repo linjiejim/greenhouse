@@ -158,7 +158,7 @@ export default function ConnectorsSection() {
               <th>{t('admin.connectors.tools')}</th>
               <th>{t('admin.metering.status')}</th>
               <th>{t('admin.connectors.listed')}</th>
-              <th aria-label={t('admin.actions')} />
+              <th><span className="gh-sr-only">{t('admin.actions')}</span></th>
             </tr>
           </thead>
           <tbody>

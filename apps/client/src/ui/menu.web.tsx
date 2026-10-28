@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Overlay } from './overlay.web';
 import { Icon } from './core.web';
 import type { MenuItem } from './menu-items';
 export { menuSections, type MenuItem } from './menu-items';
+const FOCUSABLE = 'button, a[href], input, select, textarea, [tabindex="0"]';
 export function NativeMenu({
   items,
   onSelect,
@@ -25,6 +26,19 @@ export function NativeMenu({
   testID?: string;
 }) {
   const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
+  const wrap = useRef<HTMLDivElement>(null);
+  // A trigger that holds its own control (a button) leaves focus and the popup semantics to it;
+  // only a passive child makes the wrapper the tab stop, or keyboard users meet a nameless stop.
+  const [ownStop, setOwnStop] = useState(trigger === 'tap');
+  useLayoutEffect(() => {
+    if (trigger !== 'tap') return;
+    const inner = wrap.current?.querySelector<HTMLElement>(FOCUSABLE);
+    if (inner) {
+      inner.setAttribute('aria-haspopup', 'menu');
+      inner.setAttribute('aria-expanded', String(!!point));
+    }
+    setOwnStop(!inner);
+  }, [trigger, point, children]);
   const open = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -36,9 +50,12 @@ export function NativeMenu({
   };
   return (
     <div
+      ref={wrap}
       data-testid={testID}
-      tabIndex={trigger === 'tap' ? 0 : undefined}
-      aria-haspopup="menu"
+      tabIndex={ownStop ? 0 : undefined}
+      role={ownStop ? 'button' : undefined}
+      aria-haspopup={ownStop ? 'menu' : undefined}
+      aria-expanded={ownStop ? !!point : undefined}
       onKeyDown={(e) => {
         if (!e.currentTarget.contains(e.target as Node)) return;
         if ((trigger === 'tap' && (e.key === 'Enter' || e.key === ' ')) || (e.shiftKey && e.key === 'F10')) {

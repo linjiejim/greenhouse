@@ -25,7 +25,7 @@ export function LoadingState({ style }: { style?: StyleProp<ViewStyle> }) {
       accessibilityLabel={t('common.loading')}
       accessibilityState={{ busy: true }}
     >
-      <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.rows}>
+      <View accessibilityElementsHidden aria-hidden importantForAccessibility="no-hide-descendants" style={styles.rows}>
         {[0, 1, 2].map((row) => (
           <View key={row} style={styles.row}>
             <View style={styles.icon} />

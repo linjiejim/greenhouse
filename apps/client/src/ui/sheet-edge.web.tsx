@@ -5,7 +5,8 @@ import { useRouter } from 'expo-router';
 import { useNavigationState } from 'expo-router/react-navigation';
 import { SheetFrame } from './sheet-actions';
 import { useTheme } from '../theme';
-import { DIALOG_SIZES, Overlay, hasInteractiveOverlay } from './overlay.web';
+import { DIALOG_SIZES, Overlay, hasInteractiveOverlay, labelByHeading, trapTabIn } from './overlay.web';
+import { useT } from '../lib/i18n';
 import { INSPECTOR_MAX, INSPECTOR_MIN, INSPECTOR_WIDTH, wideLayout } from '../shell/wide-model';
 import { boundedInspectorWidth, inspectorRoute, inspectorCount } from '../shell/inspector-model';
 import { useInspector } from '../shell/inspector.web';
@@ -22,6 +23,7 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
   const layout = wideLayout(width);
   const router = useRouter();
   const { hex: c, isDark } = useTheme();
+  const t = useT();
   const state = useNavigationState((s) => s);
   const top = state.routes[state.index];
   const topParams = (top?.params ?? {}) as Record<string, string>;
@@ -57,13 +59,40 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
     // NativeStack's web Screen hides every unfocused route from accessibility.
     // Our visible main pane remains usable alongside a wide inspector, so adapt
     // only its owning Screen; deeper inspectors and phone sheets stay hidden.
-    const screen = mainFrame.current?.parentElement?.closest('[aria-hidden]');
+    // NativeStack drops aria-hidden when the route is shown again, so look for our inert as well
+    const screen = mainFrame.current?.parentElement?.closest('[aria-hidden], [inert]');
     if (!screen) return;
     const main = activeInspector && layout.wide && state.routes[state.index - depth]?.key === route.key;
-    screen.setAttribute('aria-hidden', String(!(isTop || main)));
+    const hidden = !(isTop || main);
+    screen.setAttribute('aria-hidden', String(hidden));
+    // hidden routes also leave the tab order, so focus cannot land behind a sheet
+    screen.toggleAttribute('inert', hidden);
   }, [state, route.key, activeInspector, layout.wide, depth, isTop]);
   const docked = inspector && layout.wide && !layout.floatInspector;
   const frame = useRef<View>(null);
+  const panel = useRef<View>(null);
+  // a centered dialog or a phone sheet is modal; a wide inspector sits beside a usable main pane
+  const modal = overlay && !promoted && (!inspector || !layout.wide);
+  useEffect(() => {
+    if (!modal || !isTop) return;
+    const root = panel.current as unknown as HTMLElement | null;
+    if (!root) return;
+    const previous = document.activeElement as HTMLElement | null;
+    if (!root.contains(document.activeElement)) root.focus();
+    const unlabel = labelByHeading(root);
+    const key = (event: KeyboardEvent) => {
+      if (!hasInteractiveOverlay()) trapTabIn(root, event);
+    };
+    window.addEventListener('keydown', key, true);
+    return () => {
+      unlabel();
+      window.removeEventListener('keydown', key, true);
+      // the covered route leaves `inert` in the same commit; return focus to what opened the sheet
+      requestAnimationFrame(() => {
+        if (previous?.isConnected && !previous.closest('[inert]') && !root.isConnected) previous.focus();
+      });
+    };
+  }, [modal, isTop]);
   useLayoutEffect(() => {
     // The stack wraps every screen in full-size layers; beside a docked inspector they would
     // swallow clicks meant for the main pane, so they pass them through (the panel stays live).
@@ -134,7 +163,14 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
     );
   if (route.name === 'me' && layout.wide)
     return (
-      <Overlay testID="settings-overlay" initialFocus="panel" size="xl" onClose={close} panelStyle={{ flexDirection: 'row' }}>
+      <Overlay
+        testID="settings-overlay"
+        label={t('settings.title')}
+        initialFocus="panel"
+        size="xl"
+        onClose={close}
+        panelStyle={{ flexDirection: 'row' }}
+      >
         <SheetFrame>{children}</SheetFrame>
       </Overlay>
     );
@@ -152,13 +188,19 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
     >
       {!inspector || !layout.wide || layout.floatInspector ? (
         <Pressable
-          accessibilityLabel="Close"
+          // a pointer affordance only: Esc and the sheet's own close button serve keyboards and screen readers
+          aria-hidden
+          tabIndex={-1}
           onPress={close}
           style={{ position: 'absolute', inset: 0, backgroundColor: inspector ? 'transparent' : c.scrim }}
         />
       ) : null}
       <View
+        ref={panel}
         testID={inspector ? 'client-inspector' : 'client-sheet'}
+        role={modal ? 'dialog' : undefined}
+        aria-modal={modal || undefined}
+        tabIndex={modal ? -1 : undefined}
         style={
           inspector || !layout.wide
             ? {
@@ -188,7 +230,7 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
         {inspector && layout.wide ? (
           <div
             role="separator"
-            aria-label="Inspector width"
+            aria-label={t('client.inspectorWidth')}
             aria-orientation="vertical"
             tabIndex={0}
             aria-valuemin={INSPECTOR_MIN}

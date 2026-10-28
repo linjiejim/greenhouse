@@ -14,7 +14,6 @@ export function Tooltip({ children, label }: { children: React.ReactNode; label:
         setPoint({ x: r.left, y: r.bottom + 4 });
       }}
       onBlur={() => setPoint(null)}
-      aria-label={label}
     >
       {children}
       {point ? (
