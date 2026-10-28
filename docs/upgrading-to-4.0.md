@@ -178,7 +178,7 @@ behind them mostly remain; use chat, an agent or the API, or wait for a later re
 | Saved prompts management (SkillHub › My prompts) and the composer's `/` picker | Save prompts from chat's task-capture card; `/api/prompts` and MCP `prompt-*` prompts remain. |
 | The composer's per-turn model picker | Chat uses the Agent's default model; custom agents pin their own model; `POST /api/chat` still accepts `model`. |
 | A member's own activity log page with CSV export | Supers: Admin › Activity log (filters and CSV export). Members: team activity in the notification center; agent writes in Me › My Agents. |
-| Creating or editing email accounts, memories and the cloud computer | Read-only lists in the client. Memories: ask Sprouty (`memory` tool). Computer: a member's MCP agent (`computer_*` tools). Email accounts: `/api/email/accounts`. |
+| Writing a memory by hand | Memories come only from the assistant: ask Sprouty to remember something (`memory` tool). The Memory page edits, pins, archives and deletes them; the Email page adds, edits, tests and removes mailboxes; the Computer page starts and stops the cloud computer. |
 | Skill upload, version history and report-template editing | Read-only lists; publish skills with `skill_mutation` (chat or MCP); templates through `/api/report-templates`. |
 | The agent-connection wizard (Settings › Agent access › Connect) | Point the MCP client at `<origin>/api/mcp`; OAuth discovery and the consent page (`/oauth-consent`) work as before. |
 | Adding personal connectors | Supers add team connectors in Admin › Team connectors; members connect them in Me › Connections. |

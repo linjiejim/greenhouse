@@ -12,7 +12,7 @@ other ids), then restart. Credentials alone do not enable it; disabling preserve
 | Owned tables | `member_computers` |
 | Tools | `computer_exec`, `computer_files`, `computer_transfer`, `computer_stop` (members' agents over MCP and the Agent API only) |
 | Routes | `/api/computer`, `/api/admin/computers` |
-| Client | A read-only Computer status page and the Admin › Computer section. |
+| Client | The Computer page (state, this month's minutes and their price, the idle rule, start and stop) and the Admin › Computer section. |
 
 Registers the computer billable service and sweep job; enablement alone does not bypass
 credentials, budget or the workspace switch.
