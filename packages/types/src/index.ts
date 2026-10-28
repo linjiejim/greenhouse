@@ -62,15 +62,6 @@ export { registerMcpResourceGroups, allMcpResourceGroups } from './mcp.js';
 // WebSocket message protocol
 export type { ServerWsEvent, ClientWsEvent } from './ws.js';
 
-// Agent context types (frontend-specific but shared for type safety)
-export type {
-  PageContext,
-  PageContextType,
-  ContextOfType,
-  QuickAction,
-  ContextProviderDescriptor,
-} from './agent-context.js';
-
 // Workspace settings (DB-backed, admin-editable deployment config). Runtime
 // values are safe to re-export here — the module is dependency-free (no zod).
 export type {

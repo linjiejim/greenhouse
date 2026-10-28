@@ -57,8 +57,6 @@ import peopleRoutes from './routes/people.js';
 import profileRoutes from './routes/profiles.js';
 import sessionRoutes from './routes/sessions.js';
 import { createChatRoute } from './routes/chat.js';
-import clientActionRoutes from './routes/client-actions.js';
-import { CLIENT_ACTIONS_API_PREFIX } from '@greenhouse/types/api';
 import { createAgentRoutes } from './routes/agent-tools.js';
 import { createMcpRoutes } from './routes/mcp.js';
 import { createAnthropicGatewayRoutes, createGatewayRoutes } from './routes/gateway.js';
@@ -250,9 +248,6 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/tools', toolsRoutes)
       // WebSocket endpoint — internal users only (auth via query token)
       .route('/api/ws', wsRoutes)
-      // Browser client-action results — internal user-bound and part of the typed contract
-      .use(`${CLIENT_ACTIONS_API_PREFIX}/*` as const, requireInternal())
-      .route(CLIENT_ACTIONS_API_PREFIX, clientActionRoutes)
       // ── Registry-dependent routes (need DB-backed toolRegistry) ──
       .route('/api/chat', createChatRoute(toolRegistry))
       .use('/api/tasks/*', requireInternal())

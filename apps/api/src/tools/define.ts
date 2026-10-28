@@ -121,9 +121,7 @@ export interface ToolMeta {
    * - 'trace' (default) — a row inside the collapsible "N tool calls" block.
    * - 'artifact' — a rich card rendered inline in the message body.
    * The client's card rules (apps/client/src/chat/parts.ts) are the authoritative
-   * render source; this flag declares the same intent at the tool source (note:
-   * client actions have no ToolMeta, so the client — not this flag — is the
-   * complete list).
+   * render source; this flag declares the same intent at the tool source.
    */
   presentation?: 'trace' | 'artifact';
 }

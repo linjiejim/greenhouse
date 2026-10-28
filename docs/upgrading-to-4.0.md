@@ -165,6 +165,7 @@ database.
 | `POST /api/chat` with a `session_id` but neither `messages` nor `regenerate_assistant_message_id` (a continuation of the stored transcript) is refused with 400. | Send the new user message, regenerate with `regenerate_assistant_message_id`, or reattach to a live reply with `GET /api/chat/runs/:sessionId/stream`. |
 | `GET /api/platform/apps`, `GET /api/platform/me/permissions`, `GET /api/data-catalog` and `GET /api/admin/operations/cost-value` are removed; no client read them. | Agents read the data catalog with the MCP `data_catalog` tool; supers read usage and spend in Admin › Usage and Services & pricing (`/api/admin/metering`). |
 | `/api/ws` no longer sends supers the `presence:snapshot`, `presence:join` and `presence:leave` events; kit `connectionManager` drops `getOnlineUsers`, `getOnlineCount` and `broadcastToSuper`. | Nothing in Greenhouse read them; drop listeners in your own clients. |
+| `POST /api/chat` ignores `ambient_context`, `client_actions` and `client_action_scope_id`; `POST /api/client-actions/tool-result` and the `local-tool-request` stream event are removed, as are `@greenhouse/types/agent-context` and the page-context types. | Put page details in the message text; nothing in the universal client sent them. |
 
 What now breaks: installed iOS/Android apps from the 3.x line must be updated before they can use
 a 4.0 station; 4.0 clients (web, iOS, Android and desktop) cannot reach a 3.x station and ask for

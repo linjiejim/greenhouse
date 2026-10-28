@@ -27,7 +27,6 @@ export default defineConfig({
       '@greenhouse/types/api': resolve(__dirname, 'packages/types/src/api.ts'),
       '@greenhouse/types/session': resolve(__dirname, 'packages/types/src/session.ts'),
       '@greenhouse/types/source': resolve(__dirname, 'packages/types/src/source.ts'),
-      '@greenhouse/types/agent-context': resolve(__dirname, 'packages/types/src/agent-context.ts'),
       '@greenhouse/types/features': resolve(__dirname, 'packages/types/src/features.ts'),
       '@greenhouse/types/config': resolve(__dirname, 'packages/types/src/config.ts'),
       '@greenhouse/types/config-schema': resolve(__dirname, 'packages/types/src/config-schema.ts'),

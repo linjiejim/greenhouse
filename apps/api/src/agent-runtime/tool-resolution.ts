@@ -5,9 +5,6 @@
  * are the per-request lazy server tools assembled". Used by both `/api/chat`
  * (session-authenticated) and `/api/agent/*` (API-key authenticated) so the two
  * never fork their permission logic.
- *
- * NOTE: browser client actions are not handled here — they carry route-specific
- * UX (NDJSON bridge writers) and stay in the chat route.
  */
 
 import type { DatabaseProvider } from '@greenhouse/db';
@@ -135,8 +132,7 @@ export interface LazyServerToolContext {
  * Assemble the per-request lazy *server* tools that both the chat route and the
  * agent proxy share (feature_request, knowledge_query, session_query, …).
  *
- * Returns a partial registry the caller merges into its tool set. Does NOT
- * include browser client actions (route-specific).
+ * Returns a partial registry the caller merges into its tool set.
  */
 /**
  * Tools denied in every UNATTENDED context — scheduled-task runs, where no

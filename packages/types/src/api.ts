@@ -437,43 +437,6 @@ export interface AuthenticatedUser {
   features?: Record<string, boolean>;
 }
 
-// ─── Client Action Types ─────────────────────────────────
-
-/**
- * A frontend action the client advertises to the agent for the current turn.
- *
- * The browser Web client declares which UI actions are available on the current
- * screen — navigate, prefill a form, read the current view, etc. The backend turns
- * each into an agent tool whose execution round-trips back to that browser through
- * the legacy `local-tool-request` event and POST `/api/client-actions/tool-result`.
- * Only the serializable descriptor crosses the wire; the live `execute` handler stays
- * in the client.
- */
-export interface ClientActionDescriptor {
-  /** Tool name the agent calls, e.g. 'crm_navigate'. Must be unique per turn. */
-  name: string;
-  /** When the agent should use it + what it does. Becomes the tool description. */
-  description: string;
-  /** JSON Schema (object) describing the action's parameters. */
-  parameters: Record<string, unknown>;
-}
-
-/** Serializable page-scoped Client Actions captured for one chat turn. */
-export interface ClientActionSnapshot {
-  scopeId: string;
-  actions: ClientActionDescriptor[];
-}
-
-/** Mount prefix of the Client Action routes (see apps/api/src/index.ts). */
-export const CLIENT_ACTIONS_API_PREFIX = '/api/client-actions';
-
-/**
- * Where a client posts a Client Action result to resume the paused agent step.
- * Body: `{ session_id, toolCallId, output, error? }`. Clients import this —
- * never hand-write the path.
- */
-export const CLIENT_ACTION_RESULT_PATH = `${CLIENT_ACTIONS_API_PREFIX}/tool-result` as const;
-
 // ─── Chat Request (POST /api/chat) ───────────────────────
 
 /** One message in a POST /api/chat body. */
@@ -510,8 +473,6 @@ export interface DuplicateTurnError {
 export interface ChatRequestBody {
   session_id?: string;
   messages?: ChatRequestMessage[];
-  /** Per-turn snapshot of the page the user is looking at — reference data, never an instruction. */
-  ambient_context?: import('./agent-context.js').AmbientContextEnvelope;
   profile_id?: string;
   /**
    * Per-turn model choice. The agent's `model.id` is the default; headless
@@ -520,10 +481,6 @@ export interface ChatRequestBody {
   model?: string;
   /** Active workspace for the per-user tool proxy. */
   workspace_id?: string;
-  /** Client Actions available on the current screen; registered only with a persisted session. */
-  client_actions?: ClientActionDescriptor[];
-  /** Scope the actions were captured in; must equal `ambient_context.scope_id` when both are sent. */
-  client_action_scope_id?: string;
   /** Re-run the latest assistant reply instead of appending a user message (validated server-side). */
   regenerate_assistant_message_id?: unknown;
   /**
@@ -541,12 +498,9 @@ export interface ChatRequestBody {
 export const CHAT_REQUEST_BODY_KEYS = [
   'session_id',
   'messages',
-  'ambient_context',
   'profile_id',
   'model',
   'workspace_id',
-  'client_actions',
-  'client_action_scope_id',
   'regenerate_assistant_message_id',
   'rich_blocks',
 ] as const satisfies readonly (keyof ChatRequestBody)[];
@@ -554,18 +508,6 @@ export const CHAT_REQUEST_BODY_KEYS = [
 type UnlistedChatRequestKeys = Exclude<keyof ChatRequestBody, (typeof CHAT_REQUEST_BODY_KEYS)[number]>;
 /** Compile-time exhaustiveness check for CHAT_REQUEST_BODY_KEYS. */
 export const CHAT_REQUEST_BODY_KEYS_ARE_EXHAUSTIVE: [UnlistedChatRequestKeys] extends [never] ? true : never = true;
-
-/** Optional browser environment attached to a single chat turn. */
-export interface ChatTurnEnvironment {
-  ambientContext?: import('./agent-context.js').AmbientContextEnvelope;
-  clientActions?: ClientActionSnapshot;
-  /**
-   * Model for THIS turn. Omitted by every headless caller, which keeps the
-   * agent's own `model.id` — the picker beside the composer is the only thing
-   * that sets it (spec: 20260731-attachment-and-preset-convergence M3).
-   */
-  model?: string;
-}
 
 // ─── Streaming Types ─────────────────────────────────────
 
@@ -654,16 +596,6 @@ export interface SourceEvent {
   [key: string]: unknown;
 }
 
-/** Request the browser to execute a declared client action (legacy wire event name). */
-export interface LocalToolRequestEvent {
-  type: 'local-tool-request';
-  toolCallId: string;
-  toolId: string;
-  params: Record<string, unknown>;
-  /** Page scope that advertised the action; omitted for legacy callers. */
-  scopeId?: string;
-}
-
 /**
  * Keepalive filler. Carries no information — consumers ignore it.
  *
@@ -692,7 +624,6 @@ export type StreamingEvent =
   | StepFinishEvent
   | TitleEvent
   | SourceEvent
-  | LocalToolRequestEvent
   | PingEvent;
 
 // ─── Background Run Replay Envelope ──────────────────────
@@ -702,9 +633,8 @@ export type StreamingEvent =
  * client can resume exactly where it left off.
  *
  * `seq` is the monotonic cursor a client echoes back as `?after=`; `replayed`
- * marks events served from the buffer rather than live, which lets consumers
- * skip the side-effectful ones (re-running a client action after a refresh
- * would fire it against a page instance that no longer advertised it).
+ * marks events served from the buffer rather than live, so consumers can tell
+ * a catch-up from new output.
  *
  * Declared here — not on either side — because the api stamps these fields and
  * the browser reads them; two local definitions would drift silently.
@@ -748,7 +678,6 @@ export interface StreamEventCallbacks {
   onStepFinish?: (finishReason?: string, usage?: FinishEvent['usage']) => void;
   onTitle?: (title: string) => void;
   onSource?: (data: Record<string, unknown>) => void;
-  onLocalToolRequest?: (toolCallId: string, toolId: string, params: Record<string, unknown>, scopeId?: string) => void;
 }
 
 // ─── Formatting Utilities ────────────────────────────────
@@ -813,9 +742,6 @@ export function handleStreamEvent(event: StreamingEvent, cbs: StreamEventCallbac
       break;
     case 'source':
       cbs.onSource?.(event as Record<string, unknown>);
-      break;
-    case 'local-tool-request':
-      cbs.onLocalToolRequest?.(event.toolCallId, event.toolId, event.params, event.scopeId);
       break;
     case 'ping':
       // Keepalive filler — its only job was to put bytes on the wire.

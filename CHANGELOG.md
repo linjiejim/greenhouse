@@ -52,6 +52,9 @@ Read [Upgrading to 4.0](docs/upgrading-to-4.0.md) before upgrading.
 - `GET /api/platform/apps`, `GET /api/platform/me/permissions`, `GET /api/data-catalog` and
   `GET /api/admin/operations/cost-value` are removed; the MCP `data_catalog` tool remains.
 - `/api/ws` no longer sends supers online-presence events (`presence:*`).
+- Chat turns no longer take page context or browser Client Actions: `ambient_context`,
+  `client_actions`, `client_action_scope_id`, `POST /api/client-actions/tool-result`, the
+  `local-tool-request` event and `@greenhouse/types/agent-context` are removed.
 - `GET /api/sessions` caps every page at 200 and no longer accepts `include_eval`.
   `GET /api/feishu/login-available` (use `/api/auth/providers`), `GET /api/profiles/custom/:id/versions`,
   the custom Agent `change_log` field and the team activity feed's plain ISO `before` are removed. Automations

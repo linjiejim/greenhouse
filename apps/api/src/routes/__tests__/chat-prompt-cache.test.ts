@@ -3,8 +3,8 @@
  *
  * DeepSeek and the OpenAI-compatible providers cache prompt prefixes
  * automatically, so the system prompt must be byte-identical from one turn to
- * the next. Per-turn content — the clock, the page the user is on, the
- * attached-images note, the UI-actions note — closes the newest user message
+ * the next. Per-turn content — the clock and the attached-images note — closes
+ * the newest user message
  * instead, and the Runtime trace records exactly what the provider receives.
  * The rolling digest closes the system prompt and replaces the messages it
  * folded.
@@ -165,7 +165,7 @@ async function sendTurn(body: unknown): Promise<ProviderInput> {
   return mocks.recordChatRuntimeProviderInput.mock.calls[0]![2] as ProviderInput;
 }
 
-/** A plain turn: no page, no images, no client actions. */
+/** A plain turn: no images. */
 async function plainTurn(): Promise<ProviderInput> {
   mocks.modelSupportsVision.mockReturnValue(false);
   mocks.sessions.buildChatMessages.mockResolvedValue([
@@ -175,8 +175,8 @@ async function plainTurn(): Promise<ProviderInput> {
   return sendTurn({ session_id: 'session-1', messages: [{ role: 'user', content: 'And the green one?' }] });
 }
 
-/** A turn from a page, with an image the vision model sees and the page's Client Actions. */
-async function pageTurnWithImage(): Promise<ProviderInput> {
+/** A turn with an image the vision model sees. */
+async function imageTurn(): Promise<ProviderInput> {
   mocks.modelSupportsVision.mockReturnValue(true);
   const latest = {
     role: 'user',
@@ -203,22 +203,6 @@ async function pageTurnWithImage(): Promise<ProviderInput> {
   return sendTurn({
     session_id: 'session-1',
     messages: [{ role: 'user', content: 'Compare it with this screenshot' }],
-    ambient_context: {
-      version: 1,
-      scope_id: 'scope-page-1',
-      source: 'current-page',
-      label: 'Plans',
-      route: '#/tables/plans',
-      hint: 'PAGE-CONTEXT-MARKER',
-    },
-    client_action_scope_id: 'scope-page-1',
-    client_actions: [
-      {
-        name: 'read_current_view',
-        description: 'Read the table the user is looking at',
-        parameters: { type: 'object', properties: {} },
-      },
-    ],
   });
 }
 
@@ -293,11 +277,11 @@ beforeEach(() => {
 });
 
 describe('POST /api/chat — cache-first prompt', () => {
-  it('keeps the system prompt byte-identical across turns with different page context and images', async () => {
+  it('keeps the system prompt byte-identical across turns with and without images', async () => {
     const plain = await plainTurn();
-    const fromPage = await pageTurnWithImage();
+    const withImage = await imageTurn();
 
-    expect(fromPage.system_prompt).toBe(plain.system_prompt);
+    expect(withImage.system_prompt).toBe(plain.system_prompt);
     // The stable parts are all there…
     expect(plain.system_prompt).toContain('PROFILE PROMPT');
     expect(plain.system_prompt).toContain('Use metric units.');
@@ -305,7 +289,7 @@ describe('POST /api/chat — cache-first prompt', () => {
     expect(plain.system_prompt).toContain('## Tool Guidance');
     expect(plain.system_prompt).toContain('## Response Language');
     // …and nothing that varies per turn.
-    for (const perTurn of ['Current Time', 'PAGE-CONTEXT-MARKER', '## Attached Images', '## UI Actions']) {
+    for (const perTurn of ['Current Time', '## Attached Images']) {
       expect(plain.system_prompt).not.toContain(perTurn);
     }
   });
@@ -326,31 +310,29 @@ describe('POST /api/chat — cache-first prompt', () => {
 
   it('closes the newest user message with the per-turn block, leaving earlier messages untouched', async () => {
     const plain = await plainTurn();
-    const fromPage = await pageTurnWithImage();
+    const withImage = await imageTurn();
 
     // History renders the same bytes in both requests (deterministic stamps).
-    expect(fromPage.messages.slice(0, 2)).toEqual(plain.messages.slice(0, 2));
+    expect(withImage.messages.slice(0, 2)).toEqual(plain.messages.slice(0, 2));
 
-    const closing = lastUserText(fromPage);
+    const closing = lastUserText(withImage);
     expect(closing).toContain('Compare it with this screenshot');
     expect(closing).toContain('[Turn context — added by Greenhouse');
     expect(closing).toContain('[Current Time: ');
-    expect(closing).toContain('PAGE-CONTEXT-MARKER');
     expect(closing).toContain('## Attached Images');
-    expect(closing).toContain('## UI Actions');
-    expect(lastUserText(plain)).not.toContain('PAGE-CONTEXT-MARKER');
+    expect(lastUserText(plain)).not.toContain('## Attached Images');
 
     // The trace records exactly what the engine was handed, closing block included.
     const engineInput = mocks.createChatStreamAsync.mock.calls.at(-1)![0] as {
       systemPrompt: string;
       messages: unknown[];
     };
-    expect(engineInput.systemPrompt).toBe(fromPage.system_prompt);
-    expect(JSON.stringify(engineInput.messages)).toContain('PAGE-CONTEXT-MARKER');
+    expect(engineInput.systemPrompt).toBe(withImage.system_prompt);
+    expect(JSON.stringify(engineInput.messages)).toContain('## Attached Images');
   });
 
   it('never persists the closing block', async () => {
-    await pageTurnWithImage();
+    await imageTurn();
     expect(mocks.sessions.addMessage).toHaveBeenCalledWith(
       expect.objectContaining({ role: 'user', content: 'Compare it with this screenshot' }),
     );
@@ -366,11 +348,11 @@ describe('POST /api/chat — rolling digest in the prompt', () => {
 
   it('replaces folded messages with the digest at the end of a still-stable system prompt', async () => {
     const plain = await plainTurn();
-    const fromPage = await pageTurnWithImage();
+    const withImage = await imageTurn();
 
     expect(mocks.sessions.buildChatMessages).toHaveBeenCalledWith('session-1', { afterSeq: 7 });
     expect(plain.system_prompt.endsWith(formatDigestSection(DIGEST, { canSearch: true }))).toBe(true);
-    expect(fromPage.system_prompt).toBe(plain.system_prompt);
+    expect(withImage.system_prompt).toBe(plain.system_prompt);
 
     const traceInput = mocks.startChatRuntimeTrace.mock.calls.at(-1)![1] as { input: { digest: unknown } };
     expect(traceInput.input.digest).toEqual({ upto_seq: 7, text: DIGEST });

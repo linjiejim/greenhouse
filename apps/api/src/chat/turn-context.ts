@@ -6,8 +6,8 @@
  * away the cache from that point on. The system prompt therefore holds only
  * what is stable for a session (profile prompt, user notes, memory index, tool
  * guidance, response language, the rolling digest), and everything that varies
- * per turn — the current time, the page the user is on, the attached-images
- * note, the UI-actions note — rides a closing block appended to the newest
+ * per turn — the current time, the attached-images note, the reachable
+ * connectors — rides a closing block appended to the newest
  * user message, for the model only. The block is never persisted, so on the
  * next turn that message renders without it: the shared prefix still reaches
  * the end of the user's own text.
@@ -19,9 +19,7 @@
  */
 
 import { formatCurrentTimeLine, type EngineMessage } from '@greenhouse/agent-core';
-import type { AmbientContextEnvelope } from '@greenhouse/types/agent-context';
 import { sanitizeForPrompt } from '../security/security.js';
-import { formatAmbientContextPrompt } from './ambient-context.js';
 
 /** First line of the closing block — tells the model who wrote what follows. */
 export const TURN_CONTEXT_HEADER =
@@ -30,11 +28,8 @@ export const TURN_CONTEXT_HEADER =
 export interface TurnContextInput {
   /** Defaults to the wall clock; injectable for tests. */
   now?: Date;
-  ambientContext?: AmbientContextEnvelope;
   /** Images the vision path inlined as pixels this turn. */
   visionInlinedImages?: number;
-  /** Names of the browser Client Actions registered for this turn. */
-  clientActionNames?: string[];
   /** The connectors mcp_call can reach this turn (tools/mcp-call.ts buildConnectorsContext). */
   connectorsBlock?: string;
 }
@@ -42,10 +37,6 @@ export interface TurnContextInput {
 /** The per-turn closing block appended to the newest user message. */
 export function buildTurnContextBlock(input: TurnContextInput): string {
   let block = `\n\n---\n${TURN_CONTEXT_HEADER}\n${formatCurrentTimeLine(input.now ?? new Date())}`;
-
-  if (input.ambientContext) {
-    block += formatAmbientContextPrompt(input.ambientContext);
-  }
 
   // Vision models see attached images directly, but analyze_image's own
   // description commands "call this for each attached image" — verified
@@ -58,19 +49,6 @@ export function buildTurnContextBlock(input: TurnContextInput): string {
       `The user's attached images are embedded in this conversation — you can see them directly. ` +
       `Do NOT call analyze_image for images you can already see, and never invent an image ID or URL. ` +
       `analyze_image is only for a public HTTPS image URL, or an image ID explicitly listed in the message text.`;
-  }
-
-  // Nudge the model to actually drive the UI when a request maps to a client
-  // action, instead of only describing the steps in prose.
-  if (input.clientActionNames && input.clientActionNames.length > 0) {
-    block +=
-      `\n\n## UI Actions (operate the user's current screen)\n` +
-      `These tools operate the screen the user is currently looking at: ${input.clientActionNames.join(', ')}. ` +
-      `When the user asks you to open, navigate to, show, or fill something that maps to one of these actions, ` +
-      `CALL the tool to do it for them rather than only telling them where to click. ` +
-      `Use the matching read action (e.g. *_get_current_view) when you need to know what is on screen. ` +
-      `After a UI action succeeds, briefly confirm what you did. These actions only affect the UI — ` +
-      `real data changes still go through the normal confirmed mutation tools.`;
   }
 
   if (input.connectorsBlock) block += input.connectorsBlock;

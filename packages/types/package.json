@@ -76,10 +76,6 @@
       "import": "./src/session.ts",
       "types": "./src/session.ts"
     },
-    "./agent-context": {
-      "import": "./src/agent-context.ts",
-      "types": "./src/agent-context.ts"
-    },
     "./ws": {
       "import": "./src/ws.ts",
       "types": "./src/ws.ts"

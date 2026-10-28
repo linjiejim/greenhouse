@@ -24,9 +24,6 @@ import {
   LAZY_TOOL_IDS,
   resolveEffectiveTools,
 } from '../agent-runtime/tool-resolution.js';
-import { createClientActionBridge } from '../tools/client-action-bridge.js';
-import type { ClientActionBridge } from '../tools/client-action-bridge.js';
-import { createClientActionTools } from '../tools/client-actions.js';
 import {
   CLIENT_TURN_ID_PATTERN,
   type ChatRequestBody,
@@ -57,7 +54,6 @@ import type { EngineMessage } from '@greenhouse/agent-core';
 import { inlineImagesForVision } from '../chat/vision.js';
 import { generateSessionTitle } from '../llm/title.js';
 import { canWriteSession } from '../sessions/access.js';
-import { admitTurnEnvironment } from '../chat/turn-environment.js';
 import { appendImageIdHints, appendTurnContext, buildTurnContextBlock } from '../chat/turn-context.js';
 import { buildConnectorsContext } from '../tools/mcp-call.js';
 import { formatDigestSection, scheduleDigestFold } from '../chat/digest.js';
@@ -443,12 +439,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
                 transcript: exactChatMessages,
                 digest: sessionDigest ? { upto_seq: sessionDigest.uptoSeq, text: sessionDigest.text } : null,
                 provider_message_projection: engineMessages,
-                request_context: {
-                  workspace_id: body.workspace_id ?? null,
-                  ambient_context: body.ambient_context ?? null,
-                  client_actions: body.client_actions ?? [],
-                  client_action_scope_id: body.client_action_scope_id ?? null,
-                },
+                request_context: { workspace_id: body.workspace_id ?? null },
               },
             });
           }
@@ -468,9 +459,7 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
 
           // Catalog tools (static + per-request lazy: feature_request,
           // knowledge_query, session_query, …) count one `tool_call` per
-          // execution under the client that ran the turn. Client actions are
-          // added after this and stay uncounted — their names come from the
-          // browser, so they must never become counter keys.
+          // execution under the client that ran the turn.
           // Metering: every paid call this turn makes (the model itself, web
           // search, images, …) is charged to this member and labelled with the
           // client the turn came from. Shared tools learn the member from this scope.
@@ -503,24 +492,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           );
           const tools = bindMeteringScope(countedTools, meteringScope);
 
-          // Snapshot before the page's Client Actions join: the system prompt is
-          // decided on these alone so it does not change with the page.
-          const serverTools: ToolRegistry = { ...tools };
-
-          // ── Client actions: wire a bridge so execution round-trips to the client ──
-          // Browser-declared actions (navigate/prefill/...) ride the legacy
-          // `local-tool-request` event: the bridge emits the request and awaits the
-          // result posted to /api/client-actions/tool-result before the agent resumes.
-          let clientActionBridge: ClientActionBridge | null = null;
-          const { ambientContext, clientActions, clientActionScopeId, usesClientActions } = admitTurnEnvironment(
-            body,
-            sessionId,
-          );
-          if (usesClientActions && sessionId) {
-            clientActionBridge = createClientActionBridge(userId, sessionId, clientActionScopeId);
-            Object.assign(tools, createClientActionTools(clientActions, clientActionBridge));
-          }
-
           // Runtime evidence belongs at the actual AI SDK execute boundary.
           // The wrapper awaits a durable `running` ToolCall before invoking the
           // tool, and settles exact output/error before releasing it to the
@@ -539,29 +510,23 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           // Cache-first prompt (chat/turn-context.ts): the system prompt holds
           // only what is stable for this session, so DeepSeek/OpenAI-style
           // automatic prefix caching keeps hitting turn after turn. Per-turn
-          // content — time, page context, the attached-images and UI-actions
-          // notes — closes the newest user message instead, for the model only.
+          // content — time, the attached-images note, reachable connectors —
+          // closes the newest user message instead, for the model only.
           //
           // Prompt-side tool guidance never lists tool names — the LLM already gets
           // full definitions via `tools[]`, and a prompt-side list can diverge from
           // the profile-narrowed set actually registered (leaking internal tool names
-          // into profile-narrowed sessions). We only nudge proactive use. Decided
-          // on the server tools alone: Client Actions vary with the page.
-          const systemPrompt = await buildSystemPromptWithUserNotes(
-            profile,
-            Object.keys(serverTools).length > 0,
-            userId,
-            {
-              digest: sessionDigest?.text,
-              toolIds: Object.keys(serverTools),
-              canSearchConversation: Boolean(sessionId) && 'session_query' in serverTools,
-              // The blocks this screen draws (absent → the default set); the guide teaches only these.
-              richBlocks: admitRichBlocks(body.rich_blocks),
-            },
-          );
+          // into profile-narrowed sessions). We only nudge proactive use.
+          const systemPrompt = await buildSystemPromptWithUserNotes(profile, Object.keys(tools).length > 0, userId, {
+            digest: sessionDigest?.text,
+            toolIds: Object.keys(tools),
+            canSearchConversation: Boolean(sessionId) && 'session_query' in tools,
+            // The blocks this screen draws (absent → the default set); the guide teaches only these.
+            richBlocks: admitRichBlocks(body.rich_blocks),
+          });
           // Connectors change with the member's connections, so they ride the turn context.
           const connectorsBlock =
-            'mcp_call' in serverTools
+            'mcp_call' in tools
               ? await buildConnectorsContext({
                   db: getDb(),
                   userId,
@@ -572,10 +537,8 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
           const providerMessages = appendTurnContext(
             engineMessages,
             buildTurnContextBlock({
-              ambientContext,
               visionInlinedImages,
               ...(connectorsBlock ? { connectorsBlock } : {}),
-              ...(usesClientActions ? { clientActionNames: clientActions.map((a) => a.name) } : {}),
             }),
           );
 
@@ -672,7 +635,6 @@ export function createChatRoute(toolRegistry: ToolRegistry) {
             userId,
             userLocale: user?.locale ?? undefined,
             titlePromise,
-            clientActionBridge,
             replaceAssistantMessageId: regenerationTargetId,
             expectedTail: expectedAssistantTail,
             providerAttemptHook,
