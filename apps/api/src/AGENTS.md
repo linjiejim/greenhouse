@@ -73,6 +73,7 @@
 - `assertAuthEnv()` at startup requires `TOKEN_SIGNING_KEY` (64 hex chars, no fallback) everywhere; `authMiddleware` always requires a named internal account's Bearer, with no dev or anonymous bypass.
 - Every request rereads status, role and `auth_version` (deleted, disabled, `external`, pre-reset tokens fail); refresh tokens are versioned and single-use; resets bump and revoke in one transaction.
 - Those contracts are pinned by `tests/api/token.test.ts`, `auth/__tests__/internal-only.test.ts` and `routes/__tests__/auth-version.test.ts`.
+- First-admin boot runs after platform bootstrap, uses `users.create` + `syncLegacyRoleBinding` + invite links, and never promotes/revives another account. Active/reset-required supers make it inert; `setup_pending` fails closed.
 - Only super issues invite/reset links; the public surface is exactly `POST /api/auth/password-link/{inspect,complete}` with 4KB bodies, IP + token-hash limits, one invalid error and `no-store`.
 - Link tokens match by hash; inspect never consumes; complete consumes once under a DB lock; a reset sets `reset_required` and `suspendUserRuntime` stops chat, WS and automations (cleanup failures only log).
 - Feature gates use `userHasFeature` (role, defaults, grants), never a raw `user_features` read.
@@ -92,8 +93,8 @@
 
 ## Uploads and storage
 
-- `storage/uploads.ts` is the only storage layer (chat and generated images, Files objects); never touch disk or the object store directly. `storage/s3-lite.ts` is a standalone signer that uploads do not use.
-- Backend: Tencent COS when `TENCENT_CLOUD_COS_SECRET_ID/SECRET_KEY/BUCKET/REGION` are all set, else local `data/uploads` (single host only); `getUpload` falls back to disk on a COS 404.
+- `storage/uploads.ts` is the only storage layer (chat and generated images, Files objects); never touch disk or the object store directly. `storage/s3-lite.ts` signs S3-compatible requests for uploads and plugin stores.
+- Backend: complete COS or `STORAGE_S3_*`, else local `data/uploads`; partial S3 or both object backends fails at module load. S3 presign returns null (proxy paths); only `getUpload` falls back to disk on an object-store 404.
 - `putUpload/getUpload` accept only server-made flat image ids (`timestamp + full UUID`; legacy 8-hex ids read-only) and check path, size and magic bytes; tools never join `UPLOADS_DIR`.
 - `TENCENT_CLOUD_COS_PREFIX`/`_DRIVE_PREFIX` pass `normalizeKeyPrefix()` at module load (bad values fail boot); never make them lazy. Generated images use the fixed `generate/` prefix.
 - Changing a prefix orphans every object (key = prefix + id): inventory `messages.content`, `messages.parts` and plugin rows embedding `/api/upload/<id>` first.
@@ -102,7 +103,7 @@
 ## Files and attachments
 
 - Files (`/api/drive`, `files_*`) is core; `cabinetDriveScope()` uses a plugin cabinet (Knowledge `kb`) when active, else core scope `drive`; `drive/kb-cabinet.ts` is the agent-facing implementation.
-- Every node passes `resolveDriveAccess`; moves stay in one cabinet (`sameDriveCabinet`); renames rerun `validateDriveUpload`; agent uploads ≤5MB; download links only with an object store.
+- Every node passes `resolveDriveAccess`; moves stay in one cabinet (`sameDriveCabinet`); renames rerun `validateDriveUpload`; agent uploads ≤5MB; direct download links require COS presigning (S3/local use the authenticated Files proxy).
 - Drive writes record platform audit after success (`drive/audit.ts`, `app_id='drive'`); audit failure only warns.
 - `POST /api/chat-files/upload` takes any type (≤100MB, 5GB per member); only the session owner uploads; share recipients read through `GET /api/chat-files/:id/content` (presigned 302, `no-store`).
 - Only images use the public `/api/upload` exemption (`routes/__tests__/attachment-boundary.test.ts`); the chat-files upload sits at `/upload` because `/api/chat-files/*` misses the bare path.
@@ -280,6 +281,7 @@
 
 ## Hosting, embeds and client links
 
+- Load `config/env` before static imports that validate infrastructure. `MIGRATE_ON_START` uses the CLI migration sources with `allowV3Bridge: false` before `initDatabase`; failures exit non-zero. Listener and OAuth fallback share `resolveApiPort` (`API_PORT` → `PORT` → 3000).
 - `hosting.ts` serves the universal client from `public/app`; `/api`, `/ext`, `/oauth`, `/.well-known` and `/health` never fall through to SPA HTML.
 - Hashed `/_expo` and `/assets` files are immutable, HTML is no-cache, and the `.br`/`.gz` copies `pnpm app:build` writes are served by Accept-Encoding.
 - Server-made browser links use `@greenhouse/types/client-routes`, with secrets in the fragment (`clientRouteUrl(..., { fragment })`).

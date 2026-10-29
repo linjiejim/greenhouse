@@ -1,0 +1,41 @@
+# Render Blueprint: one web service from the published image + Render Postgres.
+# Deploy: https://render.com/deploy?repo=https://github.com/linjiejim/greenhouse
+# Details and the other platforms: deploy/README.md.
+#
+# The two keys must be 64 hex characters, which Render's generateValue does not
+# produce, so the Blueprint asks for them: run `openssl rand -hex 32` twice.
+# Uploads live on the attached disk; to run without a disk, delete `disk` and set
+# the STORAGE_S3_* variables instead.
+services:
+  - type: web
+    name: greenhouse
+    runtime: image
+    image:
+      url: ghcr.io/linjiejim/greenhouse:latest
+    plan: standard
+    healthCheckPath: /health
+    disk:
+      name: greenhouse-data
+      mountPath: /app/data
+      sizeGB: 5
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: greenhouse-db
+          property: connectionString
+      - key: TOKEN_SIGNING_KEY
+        sync: false
+      - key: PROVIDER_TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: MIGRATE_ON_START
+        value: '1'
+
+databases:
+  - name: greenhouse-db
+    databaseName: greenhouse
+    user: greenhouse
+    plan: basic-256mb

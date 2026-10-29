@@ -1,0 +1,35 @@
+# Fly.io: the published image, one always-on machine, a volume for uploads.
+# Steps are in deploy/README.md (fly launch --copy-config, secrets, Postgres).
+app = 'greenhouse'
+primary_region = 'nrt'
+
+[build]
+  image = 'ghcr.io/linjiejim/greenhouse:latest'
+
+[env]
+  PORT = '8080'
+  MIGRATE_ON_START = '1'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Chat runs, schedules and sockets live in the process: never stop the machine
+  # and never run more than one.
+  auto_stop_machines = 'off'
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = '60s'
+    interval = '30s'
+    method = 'GET'
+    path = '/health'
+    timeout = '5s'
+
+[[mounts]]
+  source = 'greenhouse_data'
+  destination = '/app/data'
+
+[[vm]]
+  memory = '1gb'
+  cpus = 1

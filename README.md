@@ -104,6 +104,16 @@ For a published image, set `GREENHOUSE_IMAGE=ghcr.io/linjiejim/greenhouse:<publi
 `.env`, then use `docker compose -f docker-compose.ghcr.yml up -d`. Pin an exact version;
 `4.0.0-rc.1` becomes available only after the maintainer publishes it.
 
+### Cloud platforms
+
+The image runs on any container platform with a PostgreSQL database: Render
+([`render.yaml`](render.yaml), one-click), Railway, Fly.io, Zeabur, Sealos, DigitalOcean,
+Azure Container Apps, Cloud Run and Cloudflare Containers. Set `MIGRATE_ON_START=1` and
+`BOOTSTRAP_ADMIN_EMAIL`, take the activation link from the service log, and use a volume or
+an S3-compatible bucket for files. Steps per platform are in
+[deploy/README.md](deploy/README.md); `node scripts/deploy-smoke.mjs --build` checks the
+same setup locally.
+
 ## Local development
 
 Prerequisites: Node.js 22+, pnpm 11, PostgreSQL 16 (or Docker).
@@ -149,6 +159,61 @@ See [.env.example](.env.example) and [EXTENDING.md](EXTENDING.md). Model definit
 active plugins' `billableServices`. Runtime permissions use `super` and `team`; there is no
 anonymous or guest account. The model gateway, mobile push and plugin-specific switches still
 need their own configuration after plugin enablement.
+
+### Startup and first administrator
+
+The API listens on `API_PORT`, then `PORT`, then `3000`. `MIGRATE_ON_START=1` (or
+`true`) applies the core migrations and active plugin lanes before opening the database,
+under the same advisory lock as `pnpm db:migrate`. It accepts empty and 4.0 databases;
+failed migrations stop startup with a non-zero exit. For 3.x, back up first and run
+`pnpm db:migrate` manually. Compose keeps its separate migration service.
+
+Set `BOOTSTRAP_ADMIN_EMAIL` to create the first super administrator without a container
+shell. `BOOTSTRAP_ADMIN_NAME` is optional. Startup logs a one-time activation link at
+warn level; open it to set the password. Set `PUBLIC_BASE_URL` to the instance's http(s)
+URL for a complete link; otherwise the log gives `/activate#token=…` and a configuration
+hint. The link uses the existing 72-hour account invitation flow, stores only a token
+hash, and is not emailed. Protect access to service logs while setup is pending.
+
+Until activation, each restart issues a new link and revokes the old one. An email owned
+by any account other than an invited super is left untouched. Once a super is active
+(or resetting their password), the bootstrap variables have no effect. Alternatively,
+run `pnpm cli users create --role super`. The sign-in page shows the setup instructions
+while no established super exists; the public bootstrap response exposes only
+`setup_pending`, never the email or link.
+
+### Persistent storage
+
+For a container without a persistent volume, configure `STORAGE_S3_ENDPOINT`,
+`STORAGE_S3_BUCKET`, `STORAGE_S3_ACCESS_KEY_ID` and `STORAGE_S3_SECRET_ACCESS_KEY` for an
+existing S3-compatible bucket. `STORAGE_S3_REGION` defaults to `us-east-1` (use `auto`
+for R2); `STORAGE_S3_FORCE_PATH_STYLE` defaults to `true` (set `false` for virtual-host
+addressing). Credentials need object read/write/delete and bucket list access. Partial
+S3 configuration or simultaneous complete COS and S3 configuration refuses startup.
+
+Chat images, generated images, Files, attachments, exports and oversized MCP results
+use this backend. S3 uploads and downloads proxy through the API, without presigned URLs
+or bucket CORS configuration. Agent `files.download_url` is unavailable with S3/local
+storage; download through the authenticated Files page. Existing COS deployments keep their behavior. Both object
+backends use `TENCENT_CLOUD_COS_PREFIX` (default `uploads/`) and
+`TENCENT_CLOUD_COS_DRIVE_PREFIX` (default `drive/`); generated images use `generate/`.
+Changing a prefix does not move existing objects. Image reads fall back to local disk
+only when the object store returns 404; other failures remain errors.
+
+Skill bundles prefer dedicated `SKILLS_S3_*` configuration, otherwise use the core S3
+bucket under `skills/`, otherwise `data/skills/`. Partial dedicated configuration fails
+plugin boot. Stored skill version keys remain unchanged; moving an existing installation
+to a bucket requires copying its bundles to the selected prefix. Files and skills do
+not fall back to disk when their bucket object is missing.
+
+Without object storage, persist `data/uploads/` and `data/skills/` across container
+replacement. With core S3 configured, runtime content in these stores survives replacement
+through PostgreSQL and the bucket. System profile YAML, model configuration and content
+packs are release/deployment inputs: bake them into the image or mount them. Custom Agent
+profiles are stored in PostgreSQL. Report rendering uses an in-memory font filesystem;
+Computer files belong to its external sandbox provider. These are not additional API
+container data volumes. Chat runs and presence remain process-local, so this contract
+is for a single API replica.
 
 ## Upgrading
 
