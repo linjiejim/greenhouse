@@ -5,6 +5,18 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0-rc.3](https://github.com/linjiejim/greenhouse/compare/v4.0.0-rc.2...v4.0.0-rc.3) (2026-10-29)
+
+
+### Added
+
+* one-click deploy to container platforms (S3 storage, migrate on start, first admin from env) ([#91](https://github.com/linjiejim/greenhouse/issues/91)) ([a99c0c4](https://github.com/linjiejim/greenhouse/commit/a99c0c4c36bad64649e4e17c772334e6eddc8758))
+
+
+### Fixed
+
+* **docker:** NPM_REGISTRY reaches pnpm 11 ([#93](https://github.com/linjiejim/greenhouse/issues/93)) ([ef47e39](https://github.com/linjiejim/greenhouse/commit/ef47e39fb9c7f5b369f610c6fa2f377027690d95))
+
 ## [Unreleased]
 
 ### Added
