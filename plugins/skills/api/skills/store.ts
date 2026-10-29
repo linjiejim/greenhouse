@@ -10,19 +10,16 @@
  *   back to disk would strand new bundles outside the store the admin asked for.
  * - Local disk under data/skills/ (default) — zero config, single-instance.
  *
- * Why not the uploads storage (storage/uploads.ts): that path is the COS-backed
- * UPLOADS backend with its own key layout and fallback semantics. Skills need
- * an independently-configured backend without hijacking uploads; only the
- * put/get/delete *shape* is mirrored here. Local disk is the default here
- * (D13 in docs/specs/20260715-greenhouse-backport-and-slim.md) — the S3 driver
- * ships but stays unwired until the SKILLS_S3_* env vars are set.
+ * Without dedicated SKILLS_S3_* configuration, use core STORAGE_S3_* with
+ * prefix skills/. The persisted key stays <name>/<version>.json on every backend.
+ * This store retains its own key validation and has no local read fallback.
  */
 
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { DATA_DIR } from '@greenhouse/api/extension-kit';
 const SKILLS_DIR = resolve(DATA_DIR, 'skills');
-import { createS3Client, type S3LiteClient } from '@greenhouse/api/extension-kit';
+import { createS3Client, resolveStorageS3Config, type S3LiteClient } from '@greenhouse/api/extension-kit';
 
 export interface SkillStore {
   backend: 'local' | 's3';
@@ -103,7 +100,10 @@ const S3_VARS = [
 /** Exported for the doctor/tests — resolves which backend the env selects. */
 export function resolveSkillStoreFromEnv(env: NodeJS.ProcessEnv = process.env): SkillStore {
   const present = S3_VARS.filter((v) => (env[v] ?? '').trim() !== '');
-  if (present.length === 0) return createLocalSkillStore();
+  if (present.length === 0) {
+    const core = resolveStorageS3Config(env);
+    return core ? createS3SkillStore(createS3Client(core), 'skills/') : createLocalSkillStore();
+  }
   if (present.length < S3_VARS.length) {
     const missing = S3_VARS.filter((v) => !present.includes(v));
     throw new Error(`Skill store: partial SKILLS_S3_* config — missing ${missing.join(', ')}`);

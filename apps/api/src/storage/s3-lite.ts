@@ -1,18 +1,17 @@
 /**
  * s3-lite — minimal, dependency-free S3-compatible client (SigV4).
  *
- * Exactly the three verbs the skill store needs (PUT/GET/DELETE an object),
+ * PUT/GET/HEAD/DELETE objects and paginated ListObjectsV2,
  * signed with AWS Signature V4. Works against AWS S3, MinIO, Cloudflare R2,
  * Tencent COS, … — anything S3-compatible. Path-style URLs by default (what
  * MinIO/self-hosted stores expect); virtual-host style is opt-out via
  * `forcePathStyle: false`.
  *
- * Why not @aws-sdk/client-s3: three verbs don't justify a multi-megabyte
+ * Why not @aws-sdk/client-s3: these operations don't justify a multi-megabyte
  * dependency tree. The signing algorithm is deterministic and pinned by a unit
- *test against the official AWS SigV4 test-suite vector (s3-lite.test.ts).
+ * test against the official AWS SigV4 test-suite vector (s3-lite.test.ts).
  *
- * Limitations (deliberate): no query-string operations (no presign, no
- * multipart, no list) — objects are small JSON bundles addressed by exact key.
+ * Limitations (deliberate): no presign or multipart; callers proxy bytes.
  */
 
 import { createHash, createHmac } from 'node:crypto';
@@ -106,6 +105,11 @@ export interface S3LiteClient {
   putObject(key: string, body: Buffer | string, contentType: string): Promise<void>;
   /** null when the object does not exist (404). */
   getObject(key: string): Promise<Buffer | null>;
+  getObjectWithMetadata(key: string): Promise<{ buffer: Buffer; contentType: string | null } | null>;
+  /** Verified Content-Length, or null on 404. Invalid metadata is an error. */
+  headObjectSize(key: string): Promise<number | null>;
+  /** All matching keys, following opaque ListObjectsV2 continuation tokens. */
+  listObjectKeys(prefix: string): Promise<string[]>;
   /** Idempotent — a missing object is not an error. */
   deleteObject(key: string): Promise<void>;
 }
@@ -117,24 +121,60 @@ function amzNow(): string {
     .replace(/\.\d{3}/, '');
 }
 
+/** Validate infrastructure without putting endpoint credentials in an error message. */
+export function parseS3Endpoint(raw: string): URL {
+  let endpoint: URL;
+  try {
+    endpoint = new URL(raw);
+  } catch {
+    throw new Error('S3 endpoint must be an absolute http(s) URL');
+  }
+  if (
+    !['http:', 'https:'].includes(endpoint.protocol) ||
+    endpoint.username ||
+    endpoint.password ||
+    endpoint.search ||
+    endpoint.hash
+  ) {
+    throw new Error('S3 endpoint must be an http(s) URL without credentials, query or fragment');
+  }
+  if (endpoint.pathname !== '/' && endpoint.pathname !== '') {
+    throw new Error('S3 endpoint must not carry a path');
+  }
+  return endpoint;
+}
+
+/** The response fields we read are XML text, never markup or external entities. */
+function xmlText(value: string): string {
+  return value.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, entity: string) => {
+    if (entity.startsWith('#')) {
+      const hex = entity[1].toLowerCase() === 'x';
+      return String.fromCodePoint(parseInt(entity.slice(hex ? 2 : 1), hex ? 16 : 10));
+    }
+    return ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" } as Record<string, string>)[entity];
+  });
+}
+
 /** `fetchImpl` is a test seam — production uses global fetch. */
 export function createS3Client(cfg: S3LiteConfig, fetchImpl: typeof fetch = fetch): S3LiteClient {
-  const endpoint = new URL(cfg.endpoint);
+  const endpoint = parseS3Endpoint(cfg.endpoint);
   const pathStyle = cfg.forcePathStyle !== false;
-  if (endpoint.pathname !== '/' && endpoint.pathname !== '') {
-    throw new Error(`SKILLS_S3_ENDPOINT must not carry a path (got "${endpoint.pathname}")`);
-  }
 
   async function request(
-    method: 'PUT' | 'GET' | 'DELETE',
+    method: 'PUT' | 'GET' | 'HEAD' | 'DELETE',
     key: string,
     body?: Buffer,
     contentType?: string,
+    params: Record<string, string> = {},
   ): Promise<Response> {
     const host = pathStyle ? endpoint.host : `${cfg.bucket}.${endpoint.host}`;
     const path = pathStyle ? `/${encodeRfc3986(cfg.bucket)}/${encodeS3Key(key)}` : `/${encodeS3Key(key)}`;
     const amzDate = amzNow();
     const payloadHash = sha256Hex(body ?? '');
+    const query = Object.entries(params)
+      .map(([k, v]) => `${encodeRfc3986(k)}=${encodeRfc3986(v)}`)
+      .sort()
+      .join('&');
 
     const headers: Record<string, string> = {
       host,
@@ -146,6 +186,7 @@ export function createS3Client(cfg: S3LiteConfig, fetchImpl: typeof fetch = fetc
     const { authorization } = signV4({
       method,
       path,
+      query,
       headers,
       payloadHash,
       accessKeyId: cfg.accessKeyId,
@@ -157,11 +198,25 @@ export function createS3Client(cfg: S3LiteConfig, fetchImpl: typeof fetch = fetc
 
     // `host` is set by fetch itself from the URL; send the rest + Authorization.
     const { host: _host, ...sendHeaders } = headers;
-    return fetchImpl(`${endpoint.protocol}//${host}${path}`, {
+    return fetchImpl(`${endpoint.protocol}//${host}${path}${query ? `?${query}` : ''}`, {
       method,
       headers: { ...sendHeaders, authorization },
       body: body as BodyInit | undefined,
+      redirect: 'error',
     });
+  }
+
+  async function getObjectWithMetadata(key: string) {
+    const res = await request('GET', key);
+    if (res.status === 404) {
+      await res.body?.cancel();
+      return null;
+    }
+    if (!res.ok) await fail('GET', key, res);
+    return {
+      buffer: Buffer.from(await res.arrayBuffer()),
+      contentType: res.headers.get('content-type')?.split(';')[0].trim() || null,
+    };
   }
 
   async function fail(op: string, key: string, res: Response): Promise<never> {
@@ -178,13 +233,56 @@ export function createS3Client(cfg: S3LiteConfig, fetchImpl: typeof fetch = fetc
     },
 
     async getObject(key) {
-      const res = await request('GET', key);
+      return (await getObjectWithMetadata(key))?.buffer ?? null;
+    },
+
+    getObjectWithMetadata,
+
+    async headObjectSize(key) {
+      const res = await request('HEAD', key);
       if (res.status === 404) {
         await res.body?.cancel();
         return null;
       }
-      if (!res.ok) await fail('GET', key, res);
-      return Buffer.from(await res.arrayBuffer());
+      if (!res.ok) await fail('HEAD', key, res);
+      await res.body?.cancel();
+      const length = res.headers.get('content-length');
+      if (length === null || !/^\d+$/.test(length) || !Number.isSafeInteger(Number(length))) {
+        throw new Error('S3 HEAD returned invalid Content-Length');
+      }
+      return Number(length);
+    },
+
+    async listObjectKeys(prefix) {
+      const keys: string[] = [];
+      const seenTokens = new Set<string>();
+      let token: string | undefined;
+      for (;;) {
+        const res = await request('GET', '', undefined, undefined, {
+          'list-type': '2',
+          'max-keys': '1000',
+          prefix,
+          ...(token ? { 'continuation-token': token } : {}),
+        });
+        if (!res.ok) await fail('LIST', prefix, res);
+        const xml = await res.text();
+        const truncated = /<IsTruncated>\s*(true|false)\s*<\/IsTruncated>/.exec(xml)?.[1];
+        if (!/<ListBucketResult(?:\s[^>]*)?>/.test(xml) || !xml.includes('</ListBucketResult>') || !truncated) {
+          throw new Error('S3 LIST returned an invalid ListObjectsV2 response');
+        }
+        for (const entry of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
+          const raw = /<Key>([\s\S]*?)<\/Key>/.exec(entry[1])?.[1];
+          if (raw === undefined) throw new Error('S3 LIST returned an object without a key');
+          // Raw keys (no encoding-type=url): servers disagree on how they encode `+` and spaces.
+          keys.push(xmlText(raw));
+        }
+        if (truncated === 'false') return keys;
+        const next = /<NextContinuationToken>([\s\S]*?)<\/NextContinuationToken>/.exec(xml)?.[1];
+        token = next ? xmlText(next) : undefined;
+        if (!token || seenTokens.has(token))
+          throw new Error('S3 LIST returned a missing or repeated continuation token');
+        seenTokens.add(token);
+      }
     },
 
     async deleteObject(key) {
