@@ -2,7 +2,7 @@
  * User service — internal user account CRUD (PostgreSQL).
  */
 
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { nowIso } from '@greenhouse/utils/date';
 
 import type { Db } from '../client.js';
@@ -174,6 +174,16 @@ export function createUserService(db: Db) {
     async count(): Promise<number> {
       const row = (await db.select({ cnt: sql<number>`COUNT(*)` }).from(users))[0];
       return Number(row?.cnt ?? 0);
+    },
+
+    /** A password reset does not make an owned instance eligible for first-run setup again. */
+    async hasEstablishedSuper(): Promise<boolean> {
+      const rows = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.role, 'super'), inArray(users.status, ['active', 'reset_required'])))
+        .limit(1);
+      return rows.length > 0;
     },
 
     /** Hard-delete a user and cascade related data. */

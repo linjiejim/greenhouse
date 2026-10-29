@@ -123,10 +123,17 @@ export function createAccountPasswordLinkService(db: Db) {
       userId: string,
       createdBy: string,
       expiresAt?: string,
+      options?: { requiredRole: 'super' },
     ): Promise<IssuedAccountPasswordLink | null> {
       return db.transaction(async (tx) => {
         const user = await lockUser(tx, userId);
-        if (!user || user.status !== 'invited' || user.role === 'external') return null;
+        if (
+          !user ||
+          user.status !== 'invited' ||
+          user.role === 'external' ||
+          (options && user.role !== options.requiredRole)
+        )
+          return null;
         return issueLocked(tx, user, 'invite', createdBy, expiresAt);
       });
     },

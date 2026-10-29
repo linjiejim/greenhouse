@@ -47,7 +47,7 @@ export default function Login() {
   );
   const readEmail = useCallback(() => emailState.get(), [emailState]);
   const readPassword = useCallback(() => passwordState.get(), [passwordState]);
-  const { station, productName, error, connectionError, retry, busy, submit, clearError, openStations, feishu, signInWithFeishu } = useLogin({
+  const { station, productName, setupPending, error, connectionError, retry, busy, submit, clearError, openStations, feishu, signInWithFeishu } = useLogin({
     email: readEmail,
     password: readPassword,
   });
@@ -63,7 +63,7 @@ export default function Login() {
           </View>
         </RNHostView>
 
-        <FormSection>
+        <FormSection footer={setupPending ? t('login.setupPending') : undefined}>
           <FormNavRow
             label={t('login.station')}
             value={station ? station.name : t('station.addFirst')}

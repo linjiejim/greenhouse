@@ -135,6 +135,7 @@ export const zh: Catalog = {
     no: '否',
   },
   login: {
+    setupPending: '这个实例尚未设置管理员。请到服务日志中查找激活链接，或设置 BOOTSTRAP_ADMIN_EMAIL 后重启。',
     station: '工作站',
     noStation: '请先添加工作站',
     emailPlaceholder: '邮箱',

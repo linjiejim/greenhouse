@@ -28,6 +28,7 @@ export function useLogin(fields: { email: () => string | undefined; password: ()
   const router = useRouter();
   const station = useActiveStation();
   // the station's own name before sign-in (`/api/bootstrap`), else the product's
+  const setupPending = useAuth((s) => s.station?.setup_pending === true);
   const productName = useAuth((s) => s.station?.product_name) || 'Greenhouse';
   const [error, setError] = useState<string | null>(null);
   const loginWithFeishu = useAuth((s) => s.loginWithFeishu);
@@ -113,6 +114,7 @@ export function useLogin(fields: { email: () => string | undefined; password: ()
   return {
     station,
     productName,
+    setupPending,
     error,
     connectionError,
     retry,

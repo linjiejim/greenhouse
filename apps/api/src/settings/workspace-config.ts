@@ -263,7 +263,7 @@ export async function getWorkspaceSettingViews(): Promise<WorkspaceSettingView[]
 // ─── Bootstrap payload (public, pre-login) ───────────────
 /** Non-sensitive personalization for GET /api/bootstrap. Fails open to
  *  defaults — the login page must render even if the DB is unreachable. */
-export async function getWorkspaceBootstrap(): Promise<WorkspaceBootstrap> {
+export async function getWorkspaceBootstrap(): Promise<Omit<WorkspaceBootstrap, 'setup_pending' | 'mobile_api'>> {
   try {
     const productName = (await getWorkspaceValue('branding.product_name')) as string | undefined;
     const logo = (await getWorkspaceValue('branding.logo')) as string | undefined;

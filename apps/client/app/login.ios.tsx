@@ -64,6 +64,7 @@ export default function Login() {
   const {
     station,
     productName,
+    setupPending,
     error,
     connectionError,
     retry,
@@ -83,6 +84,7 @@ export default function Login() {
       <Stack.Screen options={{ headerShown: false }} />
       <NativeForm background={hex.brandCanvas}>
         <Section
+          footer={<Text>{setupPending ? t('login.setupPending') : ''}</Text>}
           header={
             <RNHostView matchContents>
               <View style={[styles.brand, { width: width - 40 }]}>

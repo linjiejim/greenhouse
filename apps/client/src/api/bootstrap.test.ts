@@ -21,8 +21,9 @@ describe('is the station new enough for this app', () => {
   it('reads the branding, dropping what is not usable', () => {
     expect(
       parseBootstrap({ product_name: 'Acme', logo: 'https://x/logo.png', theme_tokens: { primary: '#123456' }, mobile_api: 4 }),
-    ).toEqual({ product_name: 'Acme', logo: null, theme_tokens: { primary: '#123456' }, mobile_api: 4 });
+    ).toEqual({ setup_pending: false, product_name: 'Acme', logo: null, theme_tokens: { primary: '#123456' }, mobile_api: 4 });
     expect(parseBootstrap({ product_name: '  ', logo: 'data:image/png;base64,AA', theme_tokens: null })).toEqual({
+      setup_pending: false,
       product_name: null,
       logo: 'data:image/png;base64,AA',
       theme_tokens: null,
@@ -30,4 +31,12 @@ describe('is the station new enough for this app', () => {
     expect(parseBootstrap({ name: 'Acme' })).toBeNull();
     expect(parseBootstrap(null)).toBeNull();
   });
+});
+
+
+it('shows first-run setup only for an explicit true from the station', () => {
+  for (const value of [undefined, false, null, 'true', 1]) {
+    expect(parseBootstrap({ product_name: null, setup_pending: value })?.setup_pending).toBe(false);
+  }
+  expect(parseBootstrap({ product_name: null, setup_pending: true })?.setup_pending).toBe(true);
 });
