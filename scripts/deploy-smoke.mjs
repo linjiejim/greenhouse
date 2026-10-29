@@ -14,7 +14,7 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -132,8 +132,14 @@ const PNG = Buffer.from(
 );
 
 /** Runs one `weed shell` command in the S3 container; returns its output, or '' on failure. */
+let lastShellOutput = '';
 function s3Shell(command) {
-  const r = spawnSync('docker', ['exec', '-i', S3, 'weed', 'shell'], { input: `${command}\n`, encoding: 'utf8' });
+  const r = spawnSync('docker', ['exec', '-i', S3, 'weed', 'shell'], {
+    input: `${command}\n`,
+    encoding: 'utf8',
+    timeout: 30_000,
+  });
+  lastShellOutput = `exit ${r.status}: ${r.stdout ?? ''}${r.stderr ?? ''}`.slice(-2000);
   return r.status === 0 ? `${r.stdout}${r.stderr}` : '';
 }
 
@@ -184,6 +190,9 @@ async function main() {
       ],
     }),
   );
+  // mkdtemp makes the directory 0700; the image may run as a non-root user that must read it.
+  chmodSync(s3Dir, 0o755);
+  chmodSync(join(s3Dir, 's3.json'), 0o644);
   docker(
     'run',
     '-d',
@@ -206,8 +215,11 @@ async function main() {
   );
   await waitFor(
     'S3 bucket',
-    () => s3Shell(`s3.bucket.create -name ${BUCKET}`) && s3Shell('s3.bucket.list').includes(BUCKET),
-    120_000,
+    () => {
+      if (docker('inspect', '-f', '{{.State.Running}}', S3) !== 'true') fail('S3 container exited');
+      return s3Shell(`s3.bucket.create -name ${BUCKET}`) && s3Shell('s3.bucket.list').includes(BUCKET);
+    },
+    180_000,
   );
 
   step('first boot: empty database, no volume, platform env only');
@@ -282,6 +294,11 @@ async function main() {
 main()
   .catch((err) => {
     console.error(`\n✗ deploy smoke failed: ${err instanceof Error ? err.message : String(err)}`);
+    if (spawnSync('docker', ['inspect', S3], { stdio: 'ignore' }).status === 0) {
+      const r = spawnSync('docker', ['logs', '--tail', '40', S3], { encoding: 'utf8' });
+      console.error(`\n--- S3 log (tail) ---\n${r.stdout}${r.stderr}`);
+      console.error(`--- weed shell s3.bucket.list ---\n${lastShellOutput}`);
+    }
     if (spawnSync('docker', ['inspect', APP], { stdio: 'ignore' }).status === 0) {
       console.error(`\n--- app log (tail) ---\n${appLogs().slice(-6000)}`);
     }
