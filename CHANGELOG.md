@@ -5,6 +5,13 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+extension-kit: export `resolveStorageS3Config` so plugin stores can reuse the validated core
+S3 backend; extend `S3LiteClient` with metadata reads, HEAD and paginated listing.
+
 ## [4.0.0-rc.2](https://github.com/linjiejim/greenhouse/compare/v4.0.0-rc.1...v4.0.0-rc.2) (2026-10-28)
 
 

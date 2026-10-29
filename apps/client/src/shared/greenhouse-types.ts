@@ -46,15 +46,35 @@ export interface ErrorBody {
 
 // ─── workspace (/api/bootstrap, public) ─────────────────────────────
 
-/** Pre-sign-in branding plus the mobile API level (routes/bootstrap.ts). */
-export interface Bootstrap {
-  product_name: string | null;
-  /** A data URL (or null). */
-  logo: string | null;
-  theme_tokens: Record<string, string> | null;
-  /** The level of the API the client relies on (absent when the body is not a 4.0 station's). */
+/** verbatim: packages/types/src/workspace-settings.ts */
+export interface WorkspaceBootstrap {
+  /** True only when no established super administrator exists; false if the check fails. */
+  setup_pending: boolean;
+  /** API level; absent on older stations. */
   mobile_api?: number;
+  product_name: string | null;
+  /** Logo data URL, or null to use the built-in mark. */
+  logo: string | null;
+  theme_tokens: ThemeTokens | null;
 }
+
+/** verbatim: packages/types/src/workspace-settings.ts */
+export interface ThemeTokens {
+  /** Brand color hex (#rrggbb) — regenerates the --primary-* palette. */
+  brand?: string;
+  /** Font stacks (CSS font-family lists). */
+  fontSans?: string;
+  fontMono?: string;
+  /** Multiplier applied to the Tailwind --text-* sizes (0.8–1.2). */
+  fontScale?: number;
+  /** Multiplier applied to the Tailwind --radius-* sizes (0–2). */
+  radiusScale?: number;
+  /** Per-mode CSS variable overrides (hex values). */
+  light?: Record<string, string>;
+  dark?: Record<string, string>;
+}
+
+export type Bootstrap = WorkspaceBootstrap;
 
 // ─── notifications (/api/notifications) ─────────────────────────────
 

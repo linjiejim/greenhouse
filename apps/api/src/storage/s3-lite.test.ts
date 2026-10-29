@@ -146,3 +146,78 @@ describe('createS3Client', () => {
     expect(() => createS3Client({ ...CFG, endpoint: 'http://127.0.0.1:9000/minio' })).toThrow(/must not carry a path/);
   });
 });
+
+describe('HEAD and ListObjectsV2', () => {
+  it('HEAD returns sizes including zero, null on 404, and rejects failures or invalid lengths', async () => {
+    for (const size of ['0', '125']) {
+      const fetcher = (async (_url, init) => {
+        expect(init?.method).toBe('HEAD');
+        return new Response(null, { headers: { 'content-length': size } });
+      }) as typeof fetch;
+      expect(await createS3Client(CFG, fetcher).headObjectSize('file')).toBe(Number(size));
+    }
+    expect(await createS3Client(CFG, mockFetch(404).impl).headObjectSize('file')).toBeNull();
+    await expect(createS3Client(CFG, mockFetch(403).impl).headObjectSize('file')).rejects.toThrow(/HTTP 403/);
+    await expect(createS3Client(CFG, mockFetch(200).impl).headObjectSize('file')).rejects.toThrow(/Content-Length/);
+  });
+
+  it('signs canonical query strings, follows opaque tokens and decodes URL/XML keys', async () => {
+    const calls: string[] = [];
+    const fetcher = (async (url, init) => {
+      const request = new URL(String(url));
+      calls.push(request.href);
+      const headers = init?.headers as Record<string, string>;
+      const signed = signV4({
+        method: 'GET',
+        path: request.pathname,
+        query: request.search.slice(1),
+        headers: {
+          host: request.host,
+          'x-amz-date': headers['x-amz-date'],
+          'x-amz-content-sha256': EMPTY_HASH,
+        },
+        payloadHash: EMPTY_HASH,
+        accessKeyId: CFG.accessKeyId,
+        secretAccessKey: CFG.secretAccessKey,
+        region: CFG.region,
+        service: 's3',
+        amzDate: headers['x-amz-date'],
+      });
+      expect(headers.authorization).toBe(signed.authorization);
+      return new Response(
+        calls.length === 1
+          ? '<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><IsTruncated>true</IsTruncated><Contents><Key>drive/中 &amp; %.txt</Key></Contents><NextContinuationToken>a+/=&amp;&#x25;</NextContinuationToken></ListBucketResult>'
+          : '<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>drive/a&amp;b.txt</Key></Contents></ListBucketResult>',
+      );
+    }) as typeof fetch;
+    expect(await createS3Client(CFG, fetcher).listObjectKeys('drive/a &')).toEqual([
+      'drive/中 & %.txt',
+      'drive/a&b.txt',
+    ]);
+    expect(calls[0]).toContain('?list-type=2&max-keys=1000&prefix=drive%2Fa%20%26');
+    expect(calls[1]).toContain('?continuation-token=a%2B%2F%3D%26%25&list-type=2');
+  });
+
+  it('lists an empty bucket in virtual-host style', async () => {
+    const fetcher = (async (url) => {
+      expect(String(url)).toContain('https://example-bucket.s3.example/?');
+      return new Response('<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>');
+    }) as typeof fetch;
+    expect(
+      await createS3Client({ ...CFG, endpoint: 'https://s3.example', forcePathStyle: false }, fetcher).listObjectKeys(
+        '',
+      ),
+    ).toEqual([]);
+  });
+
+  it('surfaces access errors and malformed/truncated pages instead of silently ending the sweep', async () => {
+    await expect(createS3Client(CFG, mockFetch(403).impl).listObjectKeys('drive/')).rejects.toThrow(/HTTP 403/);
+    for (const xml of [
+      '<Error/>',
+      '<ListBucketResult><IsTruncated>true</IsTruncated></ListBucketResult>',
+      '<ListBucketResult><IsTruncated>true</IsTruncated><NextContinuationToken>same</NextContinuationToken></ListBucketResult>',
+    ]) {
+      await expect(createS3Client(CFG, mockFetch(200, xml).impl).listObjectKeys('drive/')).rejects.toThrow(/S3 LIST/);
+    }
+  });
+});

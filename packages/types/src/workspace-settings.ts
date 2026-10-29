@@ -354,6 +354,10 @@ export interface WorkspaceFlagState extends WorkspaceFlagView {
 
 /** Pre-login personalization payload served by GET /api/bootstrap. */
 export interface WorkspaceBootstrap {
+  /** True only when no established super administrator exists; false if the check fails. */
+  setup_pending: boolean;
+  /** API level; absent on older stations. */
+  mobile_api?: number;
   product_name: string | null;
   /** Logo data URL, or null to use the built-in mark. */
   logo: string | null;

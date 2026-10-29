@@ -238,6 +238,10 @@ export function createPlatformService(db: Db) {
       if (!target) throw new Error(`Platform system role "${role}" has not been bootstrapped`);
 
       await db.transaction(async (tx) => {
+        // Concurrent first-admin boots may both repair this binding. Serialize
+        // by user, and never restore a stale role after an account was changed.
+        const [current] = await tx.select({ role: users.role }).from(users).where(eq(users.id, userId)).for('update');
+        if (!current || current.role !== role) return;
         await tx.delete(platformRoleBindings).where(
           and(
             eq(platformRoleBindings.user_id, userId),

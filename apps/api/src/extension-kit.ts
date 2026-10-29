@@ -195,6 +195,7 @@ export {
 export { day } from '@greenhouse/db/plugin-schema';
 export { DATA_DIR } from './paths.js';
 export { createS3Client, type S3LiteClient } from './storage/s3-lite.js';
+export { resolveStorageS3Config } from './storage/config.js';
 export { extensionSkillPackDirs } from './plugin-host/skill-packs.js';
 export { notificationWebhookTransport } from './notifications/transports.js';
 export { compareSemver, isValidSemver, bumpPatch } from '@greenhouse/utils/semver';

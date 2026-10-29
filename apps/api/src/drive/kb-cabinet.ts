@@ -194,7 +194,7 @@ export async function cabinetDownloadUrl(
   if (!url) {
     return {
       error:
-        'This deployment keeps files on the server itself, so there are no direct download links. ' +
+        'This storage backend proxies downloads through Greenhouse and does not provide direct download links. ' +
         'Use files.read for documents, or ask your user to download it from the Files page.',
     };
   }

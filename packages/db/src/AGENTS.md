@@ -14,6 +14,7 @@
 - `pnpm db:migrate` 接受空库、3.x 库（原地桥接，见「Schema 迁移」）和 4.0 库；1.x、2.x、半途搬家、有 Greenhouse 表却没有可识别迁移记录、有表但不是 Greenhouse 的库一律拒绝（退出码 2），提示语来自 `refusalFor()`。
 - 1.x / 2.x 库的出路只有一条：先升到 3.0.2，再升 4.0。4.0 没有 1.x 搬家命令。
 - `drizzle.greenhouse_carry` 是 3.x `migrate-from-1x` 留下的标记：4.0 只读不写不删；`completed_at` 为空 = carry_incomplete，`db:migrate` 和启动都拒绝。
+- `MIGRATE_ON_START` 调 `applyAllMigrations({ allowV3Bridge: false })`：在迁移锁内拒绝 3.x，提示备份后手动迁移；CLI 默认仍允许桥接。
 - API 启动时 `initSchema()` 拒绝 1.x / 2.x / 半途搬家的库和还没桥接的 3.x 库，未迁移的空库报「先跑 `pnpm db:migrate`」；它只检查，不建任何东西。
 - run-dev 的沙箱库在主库仍是 1.x 时建空库而不克隆；3.x 主库克隆后由 `db:migrate` 原地升级。
 

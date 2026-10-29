@@ -17,6 +17,7 @@
  * Commands are imported lazily so a cheap command never pays to load the DB.
  */
 
+import '../config/env.js';
 import { extensionCommands } from '../plugin-host/boot.js';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';

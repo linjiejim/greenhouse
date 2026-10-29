@@ -1,16 +1,17 @@
 /**
- * Upload storage abstraction — Tencent Cloud COS with local-disk fallback.
+ * Upload storage abstraction — Tencent COS / S3-compatible storage with local-disk fallback.
  *
  * All upload/generated images flow through here so the rest of the app never
  * touches a storage backend directly. Callers work with a flat, server-issued
  * `id`; the COS object key is `${PREFIX}${id}`.
  *
- * Backend selection (decided once, lazily, at first use):
+ * S3 configuration is validated at module load; backend clients are created lazily.
  *   - COS    — when TENCENT_CLOUD_COS_SECRET_ID/SECRET_KEY/BUCKET/REGION are all set.
+ *   - S3     — when STORAGE_S3_* is configured; proxy-only.
  *   - local  — otherwise, writes to data/uploads (UPLOADS_DIR), for local dev.
  *
  * `getUpload` always falls back to the local disk when an object is absent from
- * COS (statusCode 404). This keeps legacy local files serveable during/after a
+ * the object store (404). This keeps legacy local files serveable during/after a
  * storage-backend migration.
  *
  * Config (env):
@@ -28,6 +29,16 @@ import { resolve, extname, dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { UPLOADS_DIR } from '../paths.js';
 import { validateMagicBytes } from '../security/security.js';
+import { resolveStorageS3Config } from './config.js';
+import { createS3Client, type S3LiteClient } from './s3-lite.js';
+
+// Fail boot on partial or conflicting configuration, before any writes can go to disk.
+const s3Config = resolveStorageS3Config();
+let s3Client: S3LiteClient | undefined;
+function getS3Client(): S3LiteClient | null {
+  if (!s3Config) return null;
+  return (s3Client ??= createS3Client(s3Config));
+}
 
 export interface StoredObject {
   buffer: Buffer;
@@ -175,16 +186,16 @@ const GENERATE_PREFIX = 'generate/';
  * which folder an id belongs to — keep put/get consistent by routing
  * through here.
  */
-function keyFor(cfg: CosConfig, id: string): string {
+function keyFor(id: string): string {
   if (id.startsWith('gen-')) return `${GENERATE_PREFIX}${id}`;
-  return `${cfg.prefix}${id}`;
+  return `${KEY_PREFIX}${id}`;
 }
 
 function ensureLocalDir(): void {
   if (!existsSync(UPLOADS_DIR)) mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
-/** Persist an object. Writes to COS when enabled, otherwise to local disk. */
+/** Persist an image in the selected object backend, otherwise local disk. */
 export async function putUpload(id: string, buffer: Buffer, contentType: string): Promise<void> {
   assertValidUploadId(id);
   if (buffer.length > MAX_STORED_UPLOAD_BYTES) {
@@ -195,12 +206,14 @@ export async function putUpload(id: string, buffer: Buffer, contentType: string)
     throw new Error('Image bytes do not match the declared content type');
   }
 
+  const s3 = getS3Client();
+  if (s3) return s3.putObject(keyFor(id), buffer, contentType);
   const cfg = getCosConfig();
   if (cfg) {
     const cos = getClient(cfg);
     await new Promise<void>((res, rej) =>
       cos.putObject(
-        { Bucket: cfg.bucket, Region: cfg.region, Key: keyFor(cfg, id), Body: buffer, ContentType: contentType },
+        { Bucket: cfg.bucket, Region: cfg.region, Key: keyFor(id), Body: buffer, ContentType: contentType },
         (err) => (err ? rej(err) : res()),
       ),
     );
@@ -210,15 +223,21 @@ export async function putUpload(id: string, buffer: Buffer, contentType: string)
   writeFileSync(localUploadPath(id), buffer);
 }
 
-/** Fetch an object, or null if it exists in neither COS nor local disk. */
+/** Fetch an image, or null if absent from both the selected object backend and local disk. */
 export async function getUpload(id: string): Promise<StoredObject | null> {
   assertValidUploadId(id);
+  const s3 = getS3Client();
+  if (s3) {
+    const buffer = await s3.getObject(keyFor(id));
+    if (buffer) return verifiedStoredObject(buffer);
+    // Only a 404 falls through to legacy local images.
+  }
   const cfg = getCosConfig();
   if (cfg) {
     const cos = getClient(cfg);
     try {
       const data = await new Promise<COS.GetObjectResult>((res, rej) =>
-        cos.getObject({ Bucket: cfg.bucket, Region: cfg.region, Key: keyFor(cfg, id) }, (err, d) =>
+        cos.getObject({ Bucket: cfg.bucket, Region: cfg.region, Key: keyFor(id) }, (err, d) =>
           err ? rej(err) : res(d),
         ),
       );
@@ -297,6 +316,8 @@ export function toolOutputKeyPrefix(): string {
  */
 export async function listObjectKeys(prefix: string): Promise<string[]> {
   if (!prefix.startsWith(DRIVE_PREFIX) || prefix.includes('..')) throw new Error('Invalid drive prefix');
+  const s3 = getS3Client();
+  if (s3) return s3.listObjectKeys(prefix);
   const cfg = getCosConfig();
   if (cfg) {
     const cos = getClient(cfg);
@@ -335,6 +356,7 @@ function driveLocalPath(key: string): string {
  * (caller falls back to the proxy upload endpoint).
  */
 export async function presignPutUrl(key: string, expiresSec = 600): Promise<string | null> {
+  if (s3Config) return null;
   const cfg = getCosConfig();
   if (!cfg) return null;
   const cos = getClient(cfg);
@@ -356,6 +378,7 @@ export async function presignGetUrl(
   expiresSec = 120,
   opts?: { filename?: string; contentType?: string },
 ): Promise<string | null> {
+  if (s3Config) return null;
   const cfg = getCosConfig();
   if (!cfg) return null;
   const cos = getClient(cfg);
@@ -382,6 +405,8 @@ export async function presignGetUrl(
 
 /** Verified byte size of an uploaded object, or null if it isn't there yet. */
 export async function headObjectSize(key: string): Promise<number | null> {
+  const s3 = getS3Client();
+  if (s3) return s3.headObjectSize(key);
   const cfg = getCosConfig();
   if (cfg) {
     const cos = getClient(cfg);
@@ -400,8 +425,10 @@ export async function headObjectSize(key: string): Promise<number | null> {
   return existsSync(p) ? statSync(p).size : null;
 }
 
-/** Store bytes at an explicit key (proxy-upload path; COS or local). */
+/** Store bytes at an explicit key (proxy-upload path for every backend). */
 export async function putObjectAtKey(key: string, buffer: Buffer, contentType: string): Promise<void> {
+  const s3 = getS3Client();
+  if (s3) return s3.putObject(key, buffer, contentType);
   const cfg = getCosConfig();
   if (cfg) {
     const cos = getClient(cfg);
@@ -420,6 +447,11 @@ export async function putObjectAtKey(key: string, buffer: Buffer, contentType: s
 
 /** Fetch bytes at an explicit key, or null if absent (proxy-download path). */
 export async function getObjectAtKey(key: string): Promise<StoredObject | null> {
+  const s3 = getS3Client();
+  if (s3) {
+    const object = await s3.getObjectWithMetadata(key);
+    return object ? { buffer: object.buffer, contentType: object.contentType || contentTypeForId(key) } : null;
+  }
   const cfg = getCosConfig();
   if (cfg) {
     const cos = getClient(cfg);
@@ -443,6 +475,8 @@ export async function getObjectAtKey(key: string): Promise<StoredObject | null> 
 
 /** Delete an object by key (best-effort on local). */
 export async function deleteObjectAtKey(key: string): Promise<void> {
+  const s3 = getS3Client();
+  if (s3) return s3.deleteObject(key);
   const cfg = getCosConfig();
   if (cfg) {
     const cos = getClient(cfg);

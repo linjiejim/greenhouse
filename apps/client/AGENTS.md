@@ -23,7 +23,7 @@
 
 - Sign-in: `POST /api/auth/login` → `{ accessToken, refreshToken, user }`; refresh: `POST /api/auth/refresh` with `{ refreshToken }` (single use, one refresh at a time per station); member: `GET /api/auth/me` → `{ user }`; language: `PUT /api/auth/me/preferences`. There is no logout endpoint: sign-out forgets the pair.
 - Errors are `{ error: '<words>' }`; src/api/client.ts maps the status to a stable `code` and keeps the words as `message`.
-- `/api/bootstrap` (public) gives branding and `mobile_api`. The client requires `CLIENT_API_LEVEL` (src/shared/plugins.ts, currently 4; src/api/bootstrap.ts); a station below it (any 3.x) shows the mismatch screen ("needs an update"). It rises with the server's `MOBILE_API_LEVEL` when the app starts calling a new endpoint.
+- `/api/bootstrap` (public) gives branding, `mobile_api` and `setup_pending`. Show first-admin instructions only for explicit `setup_pending: true`; missing/invalid values are false. Bootstrap/ThemeTokens are copied verbatim from `@greenhouse/types` and parity-tested. The client requires `CLIENT_API_LEVEL` (src/shared/plugins.ts, currently 4; src/api/bootstrap.ts); a station below it (any 3.x) shows the mismatch screen ("needs an update"). It rises with the server's `MOBILE_API_LEVEL` when the app starts calling a new endpoint.
 - Notifications: `GET /api/notifications` (cursor pages), `/summary`, `POST /:id/read` (answers with the notification; it is also how a notification missing from the list is fetched), `POST /read-all`.
 - Team activity: `GET /api/activity/recent` (14 days, `before` = last item's `at`, answers `next_before`); the bell sheet's second segment, rows open via src/notifications/activity.ts.
 - Push devices: `/api/auth/me/push-devices` (src/api/push.ts).

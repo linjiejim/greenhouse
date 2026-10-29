@@ -53,6 +53,14 @@ function declaration(sf: ts.SourceFile, name: string): string {
 }
 
 describe('vendored workspace code', () => {
+  it('the public bootstrap shape matches packages/types/src/workspace-settings.ts', () => {
+    const canonical = parse('packages/types/src/workspace-settings.ts');
+    const copy = parse(`${MOBILE}/shared/greenhouse-types.ts`);
+    for (const name of ['WorkspaceBootstrap', 'ThemeTokens']) {
+      expect(declaration(copy, name), name).toBe(declaration(canonical, name));
+    }
+  });
+
   it('src/shared/push.ts is a verbatim copy of packages/types/src/push.ts', () => {
     expect(statementTexts(parse(`${MOBILE}/shared/push.ts`))).toEqual(
       statementTexts(parse('packages/types/src/push.ts')),

@@ -1,0 +1,51 @@
+name: Deploy smoke
+
+# Runs the image the way a container platform does (scripts/deploy-smoke.mjs):
+# platform env only, no volume, no exec. Proves migrate-on-start, the first admin
+# from the log, S3-compatible storage and a stateless container. Only runs when
+# something that shapes the deployable image changes.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - Dockerfile
+      - .dockerignore
+      - render.yaml
+      - deploy/**
+      - scripts/deploy-smoke.mjs
+      - .github/workflows/deploy-smoke.yml
+      - apps/api/src/index.ts
+      - apps/api/src/storage/**
+      - apps/api/src/security/**
+      - apps/api/src/routes/bootstrap.ts
+      - packages/db/**
+      - package.json
+      - pnpm-lock.yaml
+  pull_request:
+    paths: *paths
+
+jobs:
+  smoke:
+    if: github.repository == 'linjiejim/greenhouse'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: greenhouse:deploy-smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Smoke test
+        run: node scripts/deploy-smoke.mjs --image greenhouse:deploy-smoke

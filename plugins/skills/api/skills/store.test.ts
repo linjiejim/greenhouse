@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -60,5 +60,43 @@ describe('resolveSkillStoreFromEnv', () => {
     expect(() =>
       resolveSkillStoreFromEnv({ SKILLS_S3_ENDPOINT: 'http://127.0.0.1:9000', SKILLS_S3_BUCKET: 'example-bucket' }),
     ).toThrow(/partial SKILLS_S3_\* config.*SKILLS_S3_ACCESS_KEY_ID/s);
+  });
+});
+
+describe('core S3 fallback', () => {
+  const core = {
+    STORAGE_S3_ENDPOINT: 'http://127.0.0.1:9000',
+    STORAGE_S3_BUCKET: 'core',
+    STORAGE_S3_ACCESS_KEY_ID: 'key',
+    STORAGE_S3_SECRET_ACCESS_KEY: 'secret',
+  };
+  afterEach(() => vi.unstubAllGlobals());
+  it('uses core credentials and skills/ without changing the stored version key', async () => {
+    const request = vi.fn<typeof fetch>().mockImplementation(async () => new Response('{}'));
+    vi.stubGlobal('fetch', request);
+    const store = resolveSkillStoreFromEnv(core);
+    expect(store.backend).toBe('s3');
+    const key = storageKeyFor('portable', '1.0.0');
+    await store.put(key, '{}');
+    expect(request.mock.calls[0][0]).toBe('http://127.0.0.1:9000/core/skills/portable/1.0.0.json');
+    expect(await store.get(key)).toBe('{}');
+  });
+  it('dedicated SKILLS_S3_* takes precedence and keeps its configured prefix', async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', request);
+    const store = resolveSkillStoreFromEnv({
+      ...core,
+      SKILLS_S3_ENDPOINT: 'https://skills.example',
+      SKILLS_S3_BUCKET: 'dedicated',
+      SKILLS_S3_ACCESS_KEY_ID: 'own',
+      SKILLS_S3_SECRET_ACCESS_KEY: 'secret',
+      SKILLS_S3_PREFIX: 'packs',
+    });
+    await store.delete('portable/1.0.0.json');
+    expect(request.mock.calls[0][0]).toBe('https://skills.example/dedicated/packs/portable/1.0.0.json');
+  });
+  it('does not hide partial dedicated or core configuration behind a fallback', () => {
+    expect(() => resolveSkillStoreFromEnv({ ...core, SKILLS_S3_BUCKET: 'partial' })).toThrow(/partial SKILLS_S3/);
+    expect(() => resolveSkillStoreFromEnv({ STORAGE_S3_BUCKET: 'partial' })).toThrow(/partial STORAGE_S3/);
   });
 });

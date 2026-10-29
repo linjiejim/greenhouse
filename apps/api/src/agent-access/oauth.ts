@@ -8,6 +8,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { MCP_RESOURCE_GROUP_IDS, allMcpResourceGroups } from '@greenhouse/types/mcp';
+import { resolveApiPort } from '../config/port.js';
 
 export const OAUTH_ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
 export const OAUTH_REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -68,7 +69,7 @@ function normalizeBaseUrl(raw: string): string {
 }
 
 export function getOAuthIssuerUrl(): string {
-  return normalizeBaseUrl(process.env.API_BASE_URL ?? `http://localhost:${process.env.API_PORT ?? '3000'}`);
+  return normalizeBaseUrl(process.env.API_BASE_URL ?? `http://localhost:${resolveApiPort()}`);
 }
 
 export function getOAuthWebUrl(): string {

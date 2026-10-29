@@ -127,5 +127,5 @@
 - Use Conventional squash commits; do not hand-edit released CHANGELOG sections or versions outside an authorized cut.
 - Local build authorization never implies push/tag/deploy/EAS publication or desktop signing/feed activation.
 - Keep the desktop bundle id/updater public key and the native app identity unchanged.
-- Keep Compose topologies aligned, migrate before startup, and back up with `scripts/backup-db.sh` (integrity/rotation checks).
+- Keep Compose topologies, `render.yaml`, `deploy/` and `scripts/deploy-smoke.mjs` aligned (the smoke is the platform contract), migrate before startup, and back up with `scripts/backup-db.sh` (integrity/rotation checks).
 - Upstream publishing workflows are repository-gated; forks use `fork-*.yml` and `node scripts/check-extension-overlay.mjs --base upstream/main --strict`.

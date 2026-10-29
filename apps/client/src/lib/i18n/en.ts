@@ -138,6 +138,7 @@ export const en = {
     no: 'No',
   },
   login: {
+    setupPending: 'This instance has no administrator yet. Find the activation link in the service logs, or set BOOTSTRAP_ADMIN_EMAIL and restart.',
     station: 'Station',
     noStation: 'Add a station first',
     emailPlaceholder: 'Email',

@@ -250,7 +250,13 @@ export interface AppliedMigrations {
  */
 export async function applyAllMigrations(
   url: string,
-  opts: { folder?: string; archiveFolder?: string; extensionSources?: readonly ExtensionMigrationSource[] } = {},
+  opts: {
+    folder?: string;
+    archiveFolder?: string;
+    extensionSources?: readonly ExtensionMigrationSource[];
+    /** API startup must not implicitly upgrade a major database generation. CLI defaults to true. */
+    allowV3Bridge?: boolean;
+  } = {},
 ): Promise<AppliedMigrations> {
   const folder = opts.folder ?? MIGRATIONS_FOLDER;
   const archiveFolder = opts.archiveFolder ?? V3_ARCHIVE_FOLDER;
@@ -259,6 +265,12 @@ export async function applyAllMigrations(
     await sql`SELECT pg_advisory_lock(${MIGRATION_LOCK_KEY}::bigint)`;
     try {
       const generation = await assertMigratableDatabase(sql, { current: folder, archive: archiveFolder });
+      if (generation.kind === 'v3' && opts.allowV3Bridge === false) {
+        throw new DatabaseGenerationError(
+          'MIGRATE_ON_START cannot upgrade a Greenhouse 3.x database. Back up the database, then run `pnpm db:migrate` manually before restarting.',
+          generation,
+        );
+      }
       const bridged = generation.kind === 'v3' ? { archived: await bridgeFrom3x(sql, folder, archiveFolder) } : null;
       const db = drizzle(sql, { schema });
       await migrate(db, { migrationsFolder: folder });

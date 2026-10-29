@@ -36,6 +36,9 @@ export default function Login() {
             {flow.productName}
           </Text>
         </View>
+        {flow.setupPending ? (
+          <Text style={{ ...typo.body, color: c.secondaryLabel }}>{t('login.setupPending')}</Text>
+        ) : null}
         <form
           className="gh-entry-form"
           onSubmit={(e) => {

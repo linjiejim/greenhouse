@@ -8,7 +8,7 @@ Versioned SKILL.md bundles, security scans, publish/download and MCP skill promp
 | Surface | Details |
 |---|---|
 | Settings | `packs.skills` and active `skillPacks` add boot sync roots; no plugin Runtime Config keys. |
-| Environment | Optional `SKILLHUB_DIR`, `SKILLHUB_SEED_OWNER_EMAIL`; storage `SKILLS_S3_ENDPOINT`, `SKILLS_S3_BUCKET`, `SKILLS_S3_ACCESS_KEY_ID`, `SKILLS_S3_SECRET_ACCESS_KEY` (all four required together), optional `SKILLS_S3_REGION`, `SKILLS_S3_PREFIX`, `SKILLS_S3_FORCE_PATH_STYLE`. Otherwise uses data/skills. Optional quarantine webhook uses an enabled WeCom transport (`SKILLS_WECOM_WEBHOOK_URL`), with `PUBLIC_BASE_URL` for links. |
+| Environment | Optional `SKILLHUB_DIR`, `SKILLHUB_SEED_OWNER_EMAIL`; storage `SKILLS_S3_ENDPOINT`, `SKILLS_S3_BUCKET`, `SKILLS_S3_ACCESS_KEY_ID`, `SKILLS_S3_SECRET_ACCESS_KEY` (all four required together), optional `SKILLS_S3_REGION`, `SKILLS_S3_PREFIX`, `SKILLS_S3_FORCE_PATH_STYLE`. Without dedicated storage, uses core `STORAGE_S3_*` under `skills/`, otherwise `data/skills`. Optional quarantine webhook uses an enabled WeCom transport (`SKILLS_WECOM_WEBHOOK_URL`), with `PUBLIC_BASE_URL` for links. |
 | Owned tables | `skills`, `skill_versions` |
 | Tools | `skill_query`, `skill_mutation` |
 | Routes | `/api/skills` |

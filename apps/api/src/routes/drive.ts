@@ -458,7 +458,7 @@ const drive = new Hono<AppEnv>()
     const signed = await presignGetUrl(file.cos_key, 120, { filename: file.name, contentType });
     if (signed) return c.redirect(signed, 302);
 
-    // Local: stream the bytes ourselves (still behind auth).
+    // S3/local proxy: return the bytes ourselves (still behind auth).
     const obj = await getObjectAtKey(file.cos_key);
     if (!obj) return c.json({ error: 'not found' }, 404);
     c.header('Content-Type', contentType);

@@ -20,10 +20,11 @@ export function parseBootstrap(body: unknown): Bootstrap | null {
   if (!('product_name' in value)) return null;
   const tokens = value.theme_tokens;
   return {
+    setup_pending: value.setup_pending === true,
     product_name: typeof value.product_name === 'string' && value.product_name.trim() ? value.product_name : null,
     logo: typeof value.logo === 'string' && value.logo.startsWith('data:image/') ? value.logo : null,
     theme_tokens:
-      tokens && typeof tokens === 'object' && !Array.isArray(tokens) ? (tokens as Record<string, string>) : null,
+      tokens && typeof tokens === 'object' && !Array.isArray(tokens) ? (tokens as Bootstrap['theme_tokens']) : null,
     ...(typeof value.mobile_api === 'number' ? { mobile_api: value.mobile_api } : {}),
   };
 }

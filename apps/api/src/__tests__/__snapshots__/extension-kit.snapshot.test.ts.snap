@@ -213,6 +213,7 @@ exports[`apps/api extension-kit > exports exactly the documented names 1`] = `
   "resolveModelConfig",
   "resolvePackPath",
   "resolveProfileAsync",
+  "resolveStorageS3Config",
   "restoreSpendLease",
   "type RetroAggregates",
   "retroMonth",

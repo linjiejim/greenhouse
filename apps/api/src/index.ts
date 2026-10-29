@@ -1,3 +1,4 @@
+import './config/env.js';
 import { identityDiscoveryRoutes } from './auth/identity-providers.js';
 import { startChannels } from './plugin-host/channels.js';
 import { fromExtensions } from './plugin-host/index.js';
@@ -9,19 +10,18 @@ import { fromExtensions } from './plugin-host/index.js';
 
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
-import { config } from 'dotenv';
-import { ENV_FILE, PUBLIC_DIR } from './paths.js';
-
-// Load .env before anything else
-config({ path: ENV_FILE });
+import { MIGRATIONS_DIR, PUBLIC_DIR } from './paths.js';
+import { resolveApiPort } from './config/port.js';
+import { bootstrapFirstAdmin } from './security/first-admin.js';
 
 // ─── Proxy for configured outbound APIs ───
 // Node.js native fetch (undici) doesn't read HTTPS_PROXY by default.
-// Set global dispatcher if proxy env var is present.
-import { ProxyAgent, setGlobalDispatcher, fetch as undiciFetch } from 'undici';
+// Set global dispatcher if proxy env var is present. Every scheme goes through
+// HTTPS_PROXY; hosts in NO_PROXY (an in-network S3 or model endpoint) go direct.
+import { EnvHttpProxyAgent, setGlobalDispatcher, fetch as undiciFetch } from 'undici';
 const _httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy;
 if (_httpsProxy) {
-  setGlobalDispatcher(new ProxyAgent(_httpsProxy));
+  setGlobalDispatcher(new EnvHttpProxyAgent({ httpProxy: _httpsProxy, httpsProxy: _httpsProxy }));
   // The dispatcher above belongs to *this* undici, which Node's global fetch cannot
   // run — it validates dispatchers against its own embedded undici and rejects ours
   // with `UND_ERR_INVALID_ARG`, failing every request as `TypeError: fetch failed`.
@@ -36,7 +36,7 @@ import { mountClientHosting } from './hosting.js';
 import { extUiScopeMiddleware } from './auth/middleware.js';
 import extUiRoutes from './routes/ext-ui.js';
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://greenhouse:greenhouse@localhost:5432/greenhouse';
-import { initDatabase } from '@greenhouse/db';
+import { applyAllMigrations, initDatabase } from '@greenhouse/db';
 import type { DatabaseProvider } from '@greenhouse/db';
 import { createToolRegistry, type ToolRegistry } from './agent.js';
 import type { AppEnv } from './app-env.js';
@@ -69,6 +69,7 @@ import extensionsRoutes from './routes/extensions.js';
 import adminPluginRoutes from './routes/admin-plugins.js';
 import {
   applyExtensionMigrations,
+  extensionMigrationSources,
   extensionApplicationRegistrations,
   mountExtensionRoutes,
   mountExtensionUis,
@@ -283,11 +284,19 @@ let dbProvider: DatabaseProvider;
 
 // ─── Start Server ────────────────────────────────────────
 
-const PORT = parseInt(process.env.API_PORT ?? '3000', 10);
+const PORT = resolveApiPort();
 const HOSTNAME = process.env.API_HOST;
 
 async function main() {
   assertAuthEnv(); // fail fast before binding if the signing key is absent
+  if (process.env.MIGRATE_ON_START === '1' || process.env.MIGRATE_ON_START === 'true') {
+    await applyAllMigrations(DATABASE_URL, {
+      folder: MIGRATIONS_DIR,
+      extensionSources: extensionMigrationSources(),
+      allowV3Bridge: false,
+    });
+    logger.info('[DB] MIGRATE_ON_START: core and active plugin migrations applied');
+  }
   dbProvider = await initDatabase({ type: 'pg', pgConnectionString: DATABASE_URL });
   // Extension-owned tables live in their own migration lane (core DDL stays in
   // packages/db/migrations, applied before boot). Pending files are applied here, under
@@ -311,6 +320,10 @@ async function main() {
   ) {
     logger.info('[Platform] Kernel bootstrap applied', { ...platformBootstrap });
   }
+
+  await bootstrapFirstAdmin(dbProvider).catch((error) => {
+    logger.error('[setup] First-administrator bootstrap failed', toErrorMessage(error));
+  });
 
   // Knowledge docs written before segmented FTS tokens existed are invisible to
   // search until tokenized. One-off backfill, fire-and-forget like the sweeps.

@@ -11,6 +11,8 @@
  * needs. Bump it when a release adds an endpoint the app starts calling.
  */
 
+import type { WorkspaceBootstrap } from '@greenhouse/types';
+import { isFirstRunSetupPending } from '../security/first-admin.js';
 import { CLIENT_API_LEVEL } from '@greenhouse/types/plugins';
 import { Hono } from 'hono';
 import type { AppEnv } from '../app-env.js';
@@ -26,10 +28,11 @@ import { getWorkspaceBootstrap } from '../settings/workspace-config.js';
 export const MOBILE_API_LEVEL = CLIENT_API_LEVEL;
 
 const bootstrapRoutes = new Hono<AppEnv>().get('/', async (c) => {
-  const payload = await getWorkspaceBootstrap();
+  const [branding, setupPending] = await Promise.all([getWorkspaceBootstrap(), isFirstRunSetupPending()]);
+  const payload: WorkspaceBootstrap = { ...branding, setup_pending: setupPending, mobile_api: MOBILE_API_LEVEL };
   // Admin edits should show up on the next reload — don't let browsers cache.
   c.header('Cache-Control', 'no-store');
-  return c.json({ ...payload, mobile_api: MOBILE_API_LEVEL });
+  return c.json(payload);
 });
 
 export default bootstrapRoutes;
