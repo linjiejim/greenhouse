@@ -6,8 +6,10 @@ FROM node:22-bookworm-slim AS base
 WORKDIR /app
 # npm/pnpm registry — override for restricted networks, e.g.:
 #   docker build --build-arg NPM_REGISTRY=https://registry.npmmirror.com/ .
+# npm (installing pnpm below) reads npm_config_*; pnpm 11 reads only pnpm_config_*.
 ARG NPM_REGISTRY=https://registry.npmjs.org/
-ENV npm_config_registry=${NPM_REGISTRY}
+ENV npm_config_registry=${NPM_REGISTRY} \
+    pnpm_config_registry=${NPM_REGISTRY}
 # Pin pnpm to match packageManager in package.json.
 RUN npm install -g pnpm@11.9.0
 
