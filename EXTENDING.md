@@ -269,7 +269,7 @@ for full signatures rather than creating a second registry.
 | `configurationEnv` | Warns about configured but disabled integrations; never activates them. |
 | `retention` | Bounded daily cleanup of owned table/column data; Feishu receipts are the reference. |
 | `searchSources`, `exportSources`, `catalogSources` | Permission-filtered search/export/catalog; `replaceDefaultSource` avoids duplicate catalog entries. Source failures stay within their lane. |
-| `entityKinds`, `objectRefs` | Deep links/peek and batched title resolution. Do not reveal unreadable titles. Official legacy kinds (`kb_doc`, `project`, `tables_record`) keep their URLs. |
+| `entityKinds`, `objectRefs` | Deep links/peek and batched title resolution. Do not reveal unreadable titles. Official legacy kinds (`kb_doc`, `project`, `tables_record`) keep their URLs. A kind with `page: '<embed page id>'` opens its links in that embed, passing the link as the init `route`. |
 | `discriminators` | Registers `shareResources`, `fileLinkTargets`, `folderScopes`, `auditApps`, `runKinds`, `artifactKinds`; writes validate active values, historical reads remain possible. |
 | `driveScopes` | Core Files/folders with plugin authorization, placement, node checks and occupancy; optional `cabinet: true` selects one legacy cabinet. |
 | `activity`, `recentChanges` | Write labels/risks, action/target shapes and the bounded team-activity merge. Host destructive-risk classification remains authoritative. |

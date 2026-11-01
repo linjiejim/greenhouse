@@ -18,7 +18,7 @@ import { useNavigationContainerRef, useRouter } from 'expo-router';
 import { linkTarget, type AppTarget } from '../lib/deep-links';
 import { openLink } from '../lib/links';
 import { getApiBase } from '../store/stations';
-import { pluginEntityLink } from '../plugins/entity-links';
+import { pluginEmbedLink, pluginEntityLink } from '../plugins/entity-links';
 import { useStationManifest } from '../plugins/store';
 import { useTheme } from '../theme';
 import { closeThen } from './close-then';
@@ -111,8 +111,11 @@ export function openPlace(
       router.push('/me/agents');
       return;
     case 'route': {
-      const record = pluginEntityLink(useStationManifest.getState().data, place.hash);
-      if (record) openObject(router, container, { kind: 'plugin-entity', ...record }, from);
+      const manifest = useStationManifest.getState().data;
+      const embed = pluginEmbedLink(manifest, place.hash);
+      const record = embed ? null : pluginEntityLink(manifest, place.hash);
+      if (embed) leavePresented(router, routes, () => router.navigate(embed as never));
+      else if (record) openObject(router, container, { kind: 'plugin-entity', ...record }, from);
       else leavePresented(router, routes, () => router.navigate('/'));
       return;
     }

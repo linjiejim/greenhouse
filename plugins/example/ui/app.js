@@ -1,4 +1,4 @@
-/* global window, document, URLSearchParams */
+/* global window, document, URLSearchParams, fetch */
 import { connectGreenhouse } from './greenhouse/index.js';
 // Desktop is an installed, trusted host, explicitly allowed by the server CSP.
 const parentOrigin = new URLSearchParams(window.location.search).get('host_origin');

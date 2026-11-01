@@ -14,7 +14,7 @@ import { t } from '../lib/i18n';
 import { clearReadBanners } from '../push/handler';
 import { useNotifications } from '../store/notifications';
 import { getApiBase } from '../store/stations';
-import { pluginEntityLink } from '../plugins/entity-links';
+import { pluginEmbedLink, pluginEntityLink } from '../plugins/entity-links';
 import { useStationManifest } from '../plugins/store';
 import { alertError } from '../ui/dialogs';
 import type { ObjectRef } from './object-ref';
@@ -22,7 +22,9 @@ import type { ObjectRef } from './object-ref';
 /** A target with a screen here; a station address (`route`) only when it names a plugin record. */
 export function opensHere(target: AppTarget): boolean {
   if (target.kind === 'external') return false;
-  return target.kind !== 'route' || pluginEntityLink(useStationManifest.getState().data, target.hash) !== null;
+  if (target.kind !== 'route') return true;
+  const manifest = useStationManifest.getState().data;
+  return pluginEmbedLink(manifest, target.hash) !== null || pluginEntityLink(manifest, target.hash) !== null;
 }
 
 export async function openNotificationOrTarget(

@@ -117,8 +117,10 @@ export async function stationManifest(
       nav: (ext.surfaces?.nav ?? []).filter((item) => pages.some((page) => page.id === item.page)),
       pages,
       entities,
-      entity_kinds: (ext.entityKinds ?? []).filter(
-        (kind) => !ext.dataSources?.length || entities.some((entity) => entity.kind === kind.kind),
+      entity_kinds: (ext.entityKinds ?? []).filter((kind) =>
+        kind.page !== undefined
+          ? pages.some((page) => page.id === kind.page)
+          : !ext.dataSources?.length || entities.some((entity) => entity.kind === kind.kind),
       ),
     });
   }

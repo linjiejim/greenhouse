@@ -49,6 +49,7 @@ export function pluginEntityLink(state: ManifestState, hash: string): PluginEnti
   if (state.kind !== 'v2') return null;
   for (const plugin of state.manifest.plugins) {
     for (const kind of plugin.entity_kinds ?? []) {
+      if (kind.page) continue;
       const id = matchRoute(kind.route, hash);
       if (!id) continue;
       const entity = plugin.entities.find((item) => item.kind === kind.kind);
@@ -57,6 +58,22 @@ export function pluginEntityLink(state: ManifestState, hash: string): PluginEnti
         plugin.pages.find((item) => item.kind === 'entity-detail' && item.entity === entity.id) ??
         plugin.pages.find((item) => item.kind === 'entity-list' && item.entity === entity.id);
       if (page) return { plugin: plugin.id, page: page.id, entity: entity.id, id };
+    }
+  }
+  return null;
+}
+
+/**
+ * The embed page a `#/…` link opens when its plugin routes those records to an embed
+ * (`entity_kinds[].page`): `/p/<plugin>/<page>?route=<the link>`; null otherwise.
+ */
+export function pluginEmbedLink(state: ManifestState, hash: string): string | null {
+  if (state.kind !== 'v2') return null;
+  for (const plugin of state.manifest.plugins) {
+    for (const kind of plugin.entity_kinds ?? []) {
+      if (!kind.page || !matchRoute(kind.route, hash)) continue;
+      if (!plugin.pages.some((page) => page.id === kind.page && page.kind === 'embed')) continue;
+      return `/p/${encodeURIComponent(plugin.id)}/${encodeURIComponent(kind.page)}?route=${encodeURIComponent(hash)}`;
     }
   }
   return null;
