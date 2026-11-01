@@ -296,6 +296,13 @@ export function defineExtension(extension: GreenhouseExtension): GreenhouseExten
     const owner = RESERVED_ENTITY_OWNERS[kind.kind];
     if (owner && owner !== extension.id)
       throw new Error(`Entity kind "${kind.kind}" is reserved for its official plugin`);
+    if (
+      kind.page !== undefined &&
+      !extension.surfaces?.pages?.some((page) => page.id === kind.page && page.kind === 'embed')
+    )
+      throw new Error(
+        `Entity kind "${kind.kind}" opens page "${kind.page}", which is not an embed page of this plugin`,
+      );
   }
   for (const kind of extension.notificationKinds ?? []) {
     if (!kind.startsWith(`ext:${extension.id}:`))

@@ -52,6 +52,12 @@ export interface ExtensionEntityKindDef {
    * drift apart — the reason this module exists at all.
    */
   route: string;
+  /**
+   * An `embed` page of the same plugin that shows these records. Clients then open such a link
+   * as that page with the link (`#/crm/companies/42`) as its `route`, and the embed navigates
+   * itself. Without it, a plugin with entity pages opens the record's entity-detail page.
+   */
+  page?: string;
 }
 
 const extensionKinds = new Map<string, ExtensionEntityKindDef>();

@@ -62,7 +62,8 @@ export interface PluginManifestEntry {
   pages: PluginPage[];
   /** Declarative data entities (see `PluginEntitySchema`), cut to what the member may read. */
   entities: PluginEntitySchema[];
-  entity_kinds: Array<{ kind: string; route: string; icon?: string; title?: LocalizedText }>;
+  /** `page`: an embed page of this plugin that opens these records (see ExtensionEntityKindDef). */
+  entity_kinds: Array<{ kind: string; route: string; page?: string; icon?: string; title?: LocalizedText }>;
 }
 
 export interface PluginNavItem {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseManifest, PENDING_MANIFEST } from './manifest';
-import { pluginEntityLink } from './entity-links';
+import { pluginEmbedLink, pluginEntityLink } from './entity-links';
 
 const manifest = parseManifest({
   manifest_version: 2,
@@ -18,6 +18,13 @@ const manifest = parseManifest({
         { id: 'crm-company', kind: 'entity-list', entity: 'crm.company' },
         { id: 'crm-company-detail', kind: 'entity-detail', entity: 'crm.company' },
       ],
+    },
+    {
+      id: 'sales',
+      nav: [],
+      entities: [],
+      entity_kinds: [{ kind: 'ext:sales:deal', route: '#/sales/deals/:id', page: 'sales' }],
+      pages: [{ id: 'sales', kind: 'embed', url: '/ext/sales/ui/' }],
     },
     {
       id: 'notes',
@@ -52,5 +59,18 @@ describe('plugin record links', () => {
     expect(pluginEntityLink(manifest, '#/crm/companies/%E0')).toBeNull();
     expect(pluginEntityLink(manifest, '#/notes')).toBeNull();
     expect(pluginEntityLink(PENDING_MANIFEST, '#/crm/companies/42')).toBeNull();
+  });
+});
+
+describe('plugin records shown by an embed', () => {
+  it('opens the embed page with the link as its route', () => {
+    expect(pluginEmbedLink(manifest, '#/sales/deals/7')).toBe('/p/sales/sales?route=%23%2Fsales%2Fdeals%2F7');
+    expect(pluginEntityLink(manifest, '#/sales/deals/7')).toBeNull();
+  });
+
+  it('leaves record pages and unknown links alone', () => {
+    expect(pluginEmbedLink(manifest, '#/crm/companies/42')).toBeNull();
+    expect(pluginEmbedLink(manifest, '#/sales/deals')).toBeNull();
+    expect(pluginEmbedLink(PENDING_MANIFEST, '#/sales/deals/7')).toBeNull();
   });
 });
