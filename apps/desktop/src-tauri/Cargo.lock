@@ -1459,7 +1459,7 @@ dependencies = [
 
 [[package]]
 name = "greenhouse-desktop"
-version = "4.0.0"
+version = "4.0.1"
 dependencies = [
  "keyring",
  "serde",

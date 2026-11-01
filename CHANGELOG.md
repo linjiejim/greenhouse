@@ -5,6 +5,13 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.1](https://github.com/linjiejim/greenhouse/compare/v4.0.0...v4.0.1) (2026-11-01)
+
+
+### Fixed
+
+* **api:** the hosted client gets its packaged images, such as the back arrow ([#98](https://github.com/linjiejim/greenhouse/issues/98)) ([1c50898](https://github.com/linjiejim/greenhouse/commit/1c508986d9a2c2a368bbcea5a58112b61040b7c2))
+
 ## [4.0.0](https://github.com/linjiejim/greenhouse/compare/v4.0.0-rc.2...v4.0.0) (2026-11-01)
 
 
