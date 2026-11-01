@@ -98,28 +98,56 @@ try {
 }
 
 /**
- * A private plugin package adds its own importer (and its dependencies) to pnpm-lock.yaml. That
- * is allowed when every importer outside plugins/ and the root settings stay exactly upstream's.
+ * A private plugin package adds its own importer (and its dependencies) to pnpm-lock.yaml. That is
+ * allowed when the committed lockfile keeps every importer outside plugins/, the root settings and
+ * every package/snapshot those importers reach exactly as upstream has them.
  */
 function lockfileStaysInSeam() {
   const base = execFileSync('git', ['merge-base', ref, 'HEAD'], { encoding: 'utf8' }).trim();
-  const before = parseYaml(execFileSync('git', ['show', `${base}:pnpm-lock.yaml`], { encoding: 'utf8' }));
-  const after = parseYaml(readFileSync('pnpm-lock.yaml', 'utf8'));
-  const core = (lock) => ({
-    ...Object.fromEntries(
-      Object.entries(lock).filter(([key]) => !['importers', 'packages', 'snapshots'].includes(key)),
+  const read = (rev) => parseYaml(execFileSync('git', ['show', `${rev}:pnpm-lock.yaml`], { encoding: 'utf8' }));
+  const before = read(base);
+  const after = read('HEAD');
+  const coreImporters = (lock) =>
+    Object.fromEntries(Object.entries(lock.importers ?? {}).filter(([key]) => !key.startsWith('plugins/')));
+  const settings = (lock) =>
+    Object.fromEntries(Object.entries(lock).filter(([key]) => !['importers', 'packages', 'snapshots'].includes(key)));
+  // Every snapshot core installs, followed through its dependencies.
+  const reached = new Set();
+  const queue = Object.values(coreImporters(before)).flatMap((importer) =>
+    ['dependencies', 'devDependencies', 'optionalDependencies'].flatMap((kind) =>
+      Object.entries(importer[kind] ?? {}).map(([name, dep]) => `${name}@${dep.version}`),
     ),
-    importers: Object.fromEntries(Object.entries(lock.importers ?? {}).filter(([key]) => !key.startsWith('plugins/'))),
-  });
-  const changed = JSON.stringify(core(before)) !== JSON.stringify(core(after));
-  if (changed) console.error('✗ pnpm-lock.yaml changes importers outside plugins/ or the root lockfile settings');
-  return !changed;
+  );
+  while (queue.length) {
+    const key = queue.pop();
+    if (reached.has(key) || key.includes('@link:')) continue;
+    reached.add(key);
+    const snapshot = before.snapshots?.[key] ?? {};
+    for (const kind of ['dependencies', 'optionalDependencies'])
+      for (const [name, version] of Object.entries(snapshot[kind] ?? {})) queue.push(`${name}@${version}`);
+  }
+  const packageKey = (key) => key.replace(/\(.*$/, '');
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const drift = [...reached].filter(
+    (key) =>
+      !same(before.snapshots?.[key], after.snapshots?.[key]) ||
+      !same(before.packages?.[packageKey(key)], after.packages?.[packageKey(key)]),
+  );
+  const ok =
+    same(settings(before), settings(after)) && same(coreImporters(before), coreImporters(after)) && !drift.length;
+  if (!ok)
+    console.error(
+      `✗ pnpm-lock.yaml changes core importers, lockfile settings or packages core installs${drift.length ? ` (${drift.slice(0, 5).join(', ')})` : ''}`,
+    );
+  return ok;
 }
 
 const leaks = files.filter(
   (f) => !allowed.some((re) => re.test(f)) && !(f === 'pnpm-lock.yaml' && lockfileStaysInSeam()),
 );
-const importStatus = reportImports(files.filter((f) => f.startsWith('plugins/') && !/^plugins\/[^/]+\/ui-src\//.test(f)));
+const importStatus = reportImports(
+  files.filter((f) => f.startsWith('plugins/') && !/^plugins\/[^/]+\/ui-src\//.test(f)),
+);
 if (leaks.length === 0) {
   console.log(`✓ overlay is clean: ${files.length} file(s) differ from ${ref}, all inside the plugin seam`);
   process.exit(importStatus);
