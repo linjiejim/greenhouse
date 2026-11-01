@@ -196,10 +196,9 @@
           "path": "apps/desktop/src-tauri/Cargo.lock",
           "jsonpath": "$.package[?(@.name.value == 'greenhouse-desktop')].version"
         }
-      ],
-      "release-as": "4.0.0"
+      ]
     }
   },
-  "versioning": "prerelease",
+  "versioning": "default",
   "prerelease": false
 }
