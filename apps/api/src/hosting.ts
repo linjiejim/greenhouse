@@ -15,7 +15,14 @@ export function mountClientHosting(app: Hono<AppEnv>, publicDir: string) {
     } catch {
       return c.body(null, 404);
     }
-    if (decoded.includes('\\') || decoded.split('/').some((part) => part.startsWith('.'))) return c.body(null, 404);
+    // No dot segments or dotfiles, except the `.pnpm` folder Expo's export keeps package assets in
+    // (`/assets/node_modules/.pnpm/expo-router@…/back-icon.png`).
+    const exportedPackageAsset = decoded.startsWith('/assets/node_modules/');
+    if (
+      decoded.includes('\\') ||
+      decoded.split('/').some((part) => part.startsWith('.') && !(exportedPackageAsset && part === '.pnpm'))
+    )
+      return c.body(null, 404);
     const shared = path.startsWith('/public/');
     const root = resolve(publicDir, shared ? '.' : 'app');
     const requestPath = shared ? decoded.slice('/public'.length) : decoded;
