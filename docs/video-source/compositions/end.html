@@ -1,0 +1,32 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; }
+    #end-stage { position: absolute; inset: 0; }
+    #end-icon { position: absolute; left: 600px; top: 330px; width: 190px; height: 190px; border-radius: 44px; overflow: hidden; }
+    #end-icon img { display: block; width: 100%; height: 100%; }
+    #end-word {
+      position: absolute; left: 830px; top: 340px; font-family: "Nunito", sans-serif; font-weight: 800; font-size: 132px;
+      line-height: 170px; letter-spacing: -2px; color: #1c1c1e; clip-path: inset(0 100% 0 0);
+    }
+    #end-ver {
+      position: absolute; left: 838px; top: 510px; font-family: "Nunito", sans-serif; font-weight: 800; font-size: 40px;
+      color: #235d4d; opacity: 0;
+    }
+  </style>
+  <div id="root" data-composition-id="end" data-width="1920" data-height="1080">
+    <div id="end-stage" class="clip" data-start="0" data-duration="5" data-layout-allow-overflow>
+      <div id="end-icon"><img src="assets/app-icon.svg" alt="" /></div>
+      <div id="end-word">Greenhouse</div>
+      <div id="end-ver">4.0</div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#end-icon", { scale: 0.2, rotation: -12, opacity: 0 }, { scale: 1, rotation: 0, opacity: 1, duration: 0.7, ease: "back.out(1.4)" }, 0.1);
+      tl.fromTo("#end-word", { clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0% 0 0)", duration: 0.6, ease: "power3.out" }, 0.55);
+      tl.fromTo("#end-ver", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.25, ease: "power2.out" }, 1.15);
+      window.__timelines["end"] = tl;
+    })();
+  </script>
+</template>

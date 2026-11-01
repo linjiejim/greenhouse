@@ -1,0 +1,6 @@
+node_modules/
+renders/
+.thumbnails/
+# Staged by stage-assets.sh from the capture run; the committed images live in docs/assets/screens.
+assets/screens/
+.hyperframes/
