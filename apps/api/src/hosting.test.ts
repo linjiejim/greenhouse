@@ -9,7 +9,10 @@ import { mountClientHosting } from './hosting.js';
 let dir: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'gh-host-'));
-  for (const part of ['', 'app', 'app/_expo/static/js/web']) mkdirSync(join(dir, part), { recursive: true });
+  for (const part of ['', 'app', 'app/_expo/static/js/web', 'app/assets/node_modules/.pnpm/router@1/assets'])
+    mkdirSync(join(dir, part), { recursive: true });
+  writeFileSync(join(dir, 'app/assets/node_modules/.pnpm/router@1/assets/back-icon.0123456789abcdef.png'), 'icon');
+  writeFileSync(join(dir, 'app/assets/node_modules/.pnpm/.env'), 'secret');
   writeFileSync(join(dir, 'app/index.html'), '<html><head></head><body>universal</body></html>');
   writeFileSync(join(dir, 'app/favicon.svg'), '<svg></svg>');
   writeFileSync(join(dir, 'app/_expo/static/js/web/entry-12345678.js'), 'universal script');
@@ -33,6 +36,10 @@ it('serves the universal client and its assets without swallowing API or plugin 
   expect(await script.text()).toBe('universal script');
   expect(script.headers.get('Cache-Control')).toContain('immutable');
   expect(await (await app.request('/public/shared.txt')).text()).toBe('shared');
+  // Expo's export keeps package assets (the back arrow) under a `.pnpm` folder.
+  expect((await app.request('/assets/node_modules/.pnpm/router@1/assets/back-icon.0123456789abcdef.png')).status).toBe(
+    200,
+  );
   for (const path of [
     '/api/nope',
     '/ext/off/ui/',
@@ -40,6 +47,9 @@ it('serves the universal client and its assets without swallowing API or plugin 
     '/assets/missing.js',
     '/public/.env',
     '/public/app/index.html',
+    '/assets/node_modules/.pnpm/.env',
+    '/assets/node_modules/.pnpm/../../index.html',
+    '/assets/.pnpm/router@1/assets/back-icon.0123456789abcdef.png',
   ])
     expect((await app.request(path)).status, path).toBe(404);
 });
