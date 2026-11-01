@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { api, grantFeature, memberToken, ready } from '../../../tests/client-e2e/plugin-kit';
+import { api, grantFeature, memberToken, openHosted, ready } from '../../../tests/client-e2e/plugin-kit';
 
 // Reference for a plugin's own browser test: real API, real station manifest, the derived entity list page.
 test('Example notes: a note written through the plugin API shows on its entity list page', async ({ page }) => {
@@ -8,4 +8,15 @@ test('Example notes: a note written through the plugin API shows on its entity l
   await api(page.request, await memberToken(page), 'POST', '/api/ext/example/notes', { body });
   await ready(page, '/p/example/example-note');
   await expect(page.getByText(body, { exact: true }).first()).toBeVisible();
+});
+
+// An embed needs the hosted client (same origin as the embed); see openHosted.
+test('Example embed: the bridge hands over the member, and the embed token reads the member directory', async ({
+  page,
+}) => {
+  await grantFeature(page, 'example');
+  await openHosted(page, '/p/example/example-embed');
+  const frame = page.frameLocator('iframe');
+  await expect(frame.locator('#status')).toContainText('Hello, Jim');
+  await expect(frame.locator('#colleagues')).toContainText(/\d+ people on this station/);
 });

@@ -409,8 +409,9 @@ from current-generation DDL plus `resetTables`, and refuses core/shared/external
   allowlists, audit, deletion preview/confirmation, compatibility endpoints and generated pages.
 - A plugin's own browser tests live in `plugins/<id>/e2e/*.e2e.ts` (the `plugins` Playwright
   project) and run against the real API as a signed-in super; `tests/client-e2e/plugin-kit.ts`
-  grants feature flags, calls the API and opens client routes. `plugins/example/e2e` is the
-  reference. Core client suites stay in `tests/client-e2e`; `plugins.e2e.ts` covers declarative
+  grants feature flags, calls the API and opens client routes; `openHosted` opens the API's hosted
+  build (`pnpm app:build`), which an embed needs because its bridge trusts only a host on its own
+  origin. `plugins/example/e2e` is the reference. Core client suites stay in `tests/client-e2e`; `plugins.e2e.ts` covers declarative
   surfaces and a static embed fixture. Both run with `pnpm test:e2e:client`; enable your plugin
   for the browser stack.
 

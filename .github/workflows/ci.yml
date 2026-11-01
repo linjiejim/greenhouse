@@ -173,6 +173,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - run: pnpm --dir apps/client install --ignore-workspace --frozen-lockfile
+      # The hosted build serves plugin embeds on their own origin (plugin-kit openHosted).
+      - run: pnpm app:build
       - name: Apply migrations to test database
         run: pnpm db:migrate
       - name: Install Chromium

@@ -2,7 +2,8 @@ import { test as setup, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { API_BASE, CLIENT_DATABASE } from '../../playwright.client.config';
-export const ACCOUNT = { email: 'c1-client@test.local', password: 'ClientE2ePw123', nickname: 'Jim' };
+import { ACCOUNT } from './account';
+export { ACCOUNT };
 setup('sign in to the universal client', async ({ page }) => {
   try {
     execFileSync(
