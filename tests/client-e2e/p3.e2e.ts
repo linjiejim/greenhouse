@@ -182,3 +182,21 @@ for (const width of [1440, 1280, 1024, 390])
     else await expect(page.getByRole('button', { name: '关闭', exact: true }).first()).toBeVisible();
     await shot(page, 'c4-10', width);
   });
+test('P3 the secondary column follows the rail from place to place', async ({ page }) => {
+  await installPlaces(page);
+  await ready(page, '/drive');
+  // visited places stay mounted behind the drawer and under admin; only the one on screen fills the column
+  const headings = page.getByTestId('client-secondary').getByRole('heading', { level: 2 });
+  await expect(headings).toHaveText(['云盘']);
+  for (const [place, title] of [
+    ['knowledge', '知识库'],
+    ['projects', '项目'],
+    ['drive', '云盘'],
+    ['automations', '定时任务'],
+    ['admin', '管理后台'],
+    ['knowledge', '知识库'],
+  ]) {
+    await page.getByTestId(`rail-${place}`).click();
+    await expect(headings).toHaveText([title]);
+  }
+});
