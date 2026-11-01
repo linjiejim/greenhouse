@@ -17,6 +17,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { checkPluginImports } from './lib/plugin-imports.mjs';
+import { parse as parseYaml } from 'yaml';
 
 const args = process.argv.slice(2);
 const extra = [];
@@ -96,7 +97,28 @@ try {
   process.exit(2);
 }
 
-const leaks = files.filter((f) => !allowed.some((re) => re.test(f)));
+/**
+ * A private plugin package adds its own importer (and its dependencies) to pnpm-lock.yaml. That
+ * is allowed when every importer outside plugins/ and the root settings stay exactly upstream's.
+ */
+function lockfileStaysInSeam() {
+  const base = execFileSync('git', ['merge-base', ref, 'HEAD'], { encoding: 'utf8' }).trim();
+  const before = parseYaml(execFileSync('git', ['show', `${base}:pnpm-lock.yaml`], { encoding: 'utf8' }));
+  const after = parseYaml(readFileSync('pnpm-lock.yaml', 'utf8'));
+  const core = (lock) => ({
+    ...Object.fromEntries(
+      Object.entries(lock).filter(([key]) => !['importers', 'packages', 'snapshots'].includes(key)),
+    ),
+    importers: Object.fromEntries(Object.entries(lock.importers ?? {}).filter(([key]) => !key.startsWith('plugins/'))),
+  });
+  const changed = JSON.stringify(core(before)) !== JSON.stringify(core(after));
+  if (changed) console.error('✗ pnpm-lock.yaml changes importers outside plugins/ or the root lockfile settings');
+  return !changed;
+}
+
+const leaks = files.filter(
+  (f) => !allowed.some((re) => re.test(f)) && !(f === 'pnpm-lock.yaml' && lockfileStaysInSeam()),
+);
 const importStatus = reportImports(files.filter((f) => f.startsWith('plugins/')));
 if (leaks.length === 0) {
   console.log(`✓ overlay is clean: ${files.length} file(s) differ from ${ref}, all inside the plugin seam`);
