@@ -444,7 +444,9 @@ node scripts/check-extension-overlay.mjs --base upstream/main --strict
 ```
 
 The guard rejects changes outside those paths (plus `.env.example` and `README.fork.md`) and,
-with `--strict`, plugin imports that break the package boundaries. Add generic missing hooks
+with `--strict`, plugin imports that break the package boundaries. `pnpm-lock.yaml` may change
+only by adding or updating importers under `plugins/` (and their packages); core importers and
+lockfile settings must stay upstream's. Add generic missing hooks
 upstream, with an Example consumer and seam tests; upstream workflows are repository-gated.
 In-process plugins can access the process/DB: trust comes from review, pinned dependencies and
 boundary checks, not from the kit being a sandbox. Never load plugin code from requests, DB rows
