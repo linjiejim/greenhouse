@@ -15,14 +15,14 @@ cat > "$TMP" <<'CSS'
 @import "tailwindcss" source(none);
 @source "./docs/index.html";
 @theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Nunito', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-  --color-brand-50:#f0fdfa; --color-brand-100:#ccfbf1; --color-brand-200:#99f6e4;
-  --color-brand-300:#5eead4; --color-brand-400:#2dd4bf; --color-brand-500:#14b8a6;
-  --color-brand-600:#0d9488; --color-brand-700:#0f766e; --color-brand-800:#115e59;
-  --color-brand-900:#134e4a;
-  --color-ink:#111827; --color-ink-soft:#374151; --color-ink-mut:#6b7280; --color-ink-faint:#9ca3af;
-  --color-edge:#e5e7eb; --color-edge-strong:#d1d5db;
+  --color-brand-50:#f0f5f2; --color-brand-100:#dae8e0; --color-brand-200:#b1d2bf;
+  --color-brand-300:#86b59c; --color-brand-400:#5a9479; --color-brand-500:#3b7a60;
+  --color-brand-600:#235d4d; --color-brand-700:#1c4d40; --color-brand-800:#163d33;
+  --color-brand-900:#10291f; --color-seed:#b6ca68; --color-canvas:#f6f8f7;
+  --color-ink:#1c1c1e; --color-ink-soft:#424944; --color-ink-mut:#555c57; --color-ink-faint:#8a918c;
+  --color-edge:#dde3df; --color-edge-strong:#c2cbc5;
 }
 CSS
 
