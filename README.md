@@ -13,6 +13,10 @@ Members connect their agents over MCP and use the team's resources within their 
 Sprouty, the built-in assistant, uses the same tools. The core assigns access, records actions,
 and meters paid calls against member, service and team budgets.
 
+<p align="center">
+  <img src="docs/assets/screens/chat-knowledge-answer.webp" alt="Sprouty answering from the team knowledge base with citations" width="820" />
+</p>
+
 See the [4.0 upgrade guide](docs/upgrading-to-4.0.md), the [release notes](CHANGELOG.md),
 the [capability reference](docs/capabilities.md) (Chinese) and the
 [architecture guide](docs/architecture.md) (Chinese).
@@ -85,6 +89,11 @@ pages, entities, fields and actions. `/api/bootstrap` reports `mobile_api: 4`, a
 requires it: a 3.x station asks to be updated. Server-made links target client
 routes (`packages/types/src/client-routes.ts`).
 There is no browser extension.
+
+<p align="center">
+  <img src="docs/assets/screens/chat-tables-answer.webp" alt="A chart and table answer over a Tables base" width="560" />
+  <img src="docs/assets/screens/ios-chat-chart.webp" alt="The same kind of answer on iPhone" width="190" />
+</p>
 
 ## Quick start (Docker)
 
@@ -263,8 +272,9 @@ pnpm app:build
 an API with a dead LLM endpoint for deterministic HTTP security checks. `test:e2e:client` starts
 the API and Expo web from `playwright.client.config.ts`; `CLIENT_E2E_DATABASE`,
 `CLIENT_E2E_API_PORT` and `CLIENT_E2E_WEB_PORT` override its database and ports. Product images
-in [docs/assets/screens](docs/assets/screens) predate the universal client; never mock or
-hand-edit product captures.
+in [docs/assets/screens](docs/assets/screens) come from `node scripts/capture-screens.mjs` against a
+seeded instance with a real model (iPhone images from the simulator, see that folder's README);
+never mock or hand-edit product captures.
 
 ## Releases
 
