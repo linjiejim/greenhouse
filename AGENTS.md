@@ -39,7 +39,7 @@
 - `.env` owns infrastructure/secrets; DB Runtime Config owns live settings; `greenhouse.config.ts` owns structure; do not add a fourth layer.
 - `greenhouse.config.ts` has `plugins`, `extensions.enabled`, `packs`, `conversations.sharing` and `clients.stations`; `clients.web` is a boot error.
 - `plugins` selects compiled packages; `extensions.enabled` selects active ids; GREENHOUSE_PLUGINS overrides assembly and GREENHOUSE_EXTENSIONS replaces (not appends to) enablement.
-- Rebuild for compilation changes and restart for enablement changes; Administration → Plugins is read-only; credentials alone never enable a plugin.
+- Rebuild for compilation changes and restart for enablement changes; Admin › Plugins is read-only; credentials alone never enable a plugin.
 - Settings resolve DB → env → unset; batch writes validate atomically and preserve masked secrets.
 
 ## Plugins
