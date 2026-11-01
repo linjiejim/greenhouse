@@ -1,0 +1,43 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; }
+    #source-view {
+      position: absolute; left: 120px; top: 236px; width: 1680px; height: 790px;
+      overflow: hidden; border-radius: 24px; background: #fff; border: 1px solid #dde3df;
+      box-shadow: 0 40px 80px -40px rgba(28, 28, 30, 0.35);
+    }
+    #source-cam { position: absolute; left: 0; top: 0; width: 1440px; height: 900px; transform-origin: 0 0; }
+    #source-cam img { display: block; width: 1440px; height: 900px; }
+    .source-mark { position: absolute; left: 340px; width: 7px; height: 28px; border-radius: 4px; background: #b6ca68; opacity: 0; }
+  </style>
+  <div id="root" data-composition-id="source" data-width="1920" data-height="1080">
+    <div id="source-view" class="clip" data-start="0" data-duration="5" data-layout-allow-overflow>
+      <div id="source-cam">
+        <img src="assets/screens/tables-grid.png" alt="" />
+        <div id="source-mark-1" class="source-mark" style="top: 177px"></div>
+        <div id="source-mark-2" class="source-mark" style="top: 337px"></div>
+        <div id="source-mark-3" class="source-mark" style="top: 497px"></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      function frame(l, t, w, h, cap) {
+        const s = Math.min(1680 / w, 790 / h, cap || 2);
+        let x = -l * s + (1680 - w * s) / 2;
+        let y = -t * s + (790 - h * s) / 2;
+        x = 1440 * s >= 1680 ? Math.min(0, Math.max(1680 - 1440 * s, x)) : (1680 - 1440 * s) / 2;
+        y = 900 * s >= 790 ? Math.min(0, Math.max(790 - 900 * s, y)) : (790 - 900 * s) / 2;
+        return { x, y, scale: s };
+      }
+      const wide = frame(300, 0, 1140, 560);
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#source-cam", { ...wide, x: wide.x + 900, filter: "blur(14px)" }, { ...wide, filter: "blur(0px)", duration: 0.45, ease: "expo.out" }, 0);
+      tl.to("#source-cam", { ...frame(330, 160, 1000, 380), duration: 0.9, ease: "power2.inOut" }, 2.2);
+      tl.fromTo(".source-mark", { opacity: 0, scaleY: 0.2 }, { opacity: 1, scaleY: 1, duration: 0.3, ease: "expo.out", stagger: 0.12 }, 3.1);
+      // push toward the next shot's chat
+      tl.to("#source-cam", { scale: "+=0.5", x: "-=400", y: "-=150", filter: "blur(10px)", duration: 0.32, ease: "power3.in" }, 4.68);
+      window.__timelines["source"] = tl;
+    })();
+  </script>
+</template>

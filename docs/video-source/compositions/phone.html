@@ -1,0 +1,35 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; }
+    #phone-flood { position: absolute; inset: 0; background: #235d4d; clip-path: circle(0% at 50% 100%); }
+    .phone-shot {
+      position: absolute; top: 250px; width: 352px; height: 765px; border-radius: 50px; overflow: hidden;
+      border: 2px solid rgba(255, 255, 255, 0.18); box-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.45); opacity: 0;
+    }
+    .phone-shot img { display: block; width: 100%; height: 100%; }
+    #phone-a { left: 404px; }
+    #phone-b { left: 784px; }
+    #phone-c { left: 1164px; }
+  </style>
+  <div id="root" data-composition-id="phone" data-width="1920" data-height="1080">
+    <div id="phone-stage" class="clip" data-start="0" data-duration="6" data-layout-allow-overflow>
+      <div id="phone-flood"></div>
+      <div id="phone-a" class="phone-shot"><img src="assets/screens/ios-home.png" alt="" /></div>
+      <div id="phone-b" class="phone-shot"><img src="assets/screens/ios-chat-chart.png" alt="" /></div>
+      <div id="phone-c" class="phone-shot"><img src="assets/screens/ios-knowledge-doc-dark.png" alt="" /></div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#phone-flood", { clipPath: "circle(0% at 50% 100%)" }, { clipPath: "circle(150% at 50% 100%)", duration: 0.55, ease: "power2.inOut" }, 0);
+      ["#phone-a", "#phone-b", "#phone-c"].forEach(function (id, i) {
+        tl.fromTo(id, { y: 160, opacity: 0, filter: "blur(10px)" }, { y: 0, opacity: 1, filter: "blur(0px)", duration: 0.6, ease: "expo.out" }, 0.45 + i * 0.4);
+      });
+      // the middle phone steps forward once the row has landed
+      tl.to("#phone-b", { scale: 1.06, duration: 0.6, ease: "power2.inOut" }, 3.2);
+      tl.to(["#phone-a", "#phone-c"], { opacity: 0.55, duration: 0.6, ease: "power2.inOut" }, 3.2);
+      window.__timelines["phone"] = tl;
+    })();
+  </script>
+</template>

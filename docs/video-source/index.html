@@ -1,0 +1,90 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"t1","type":"string","label":"Hook","default":"Which feedback is negative?"},
+    {"id":"t2","type":"string","label":"Answer","default":"Sprouty reads your Tables and answers"},
+    {"id":"t3","type":"string","label":"Source","default":"Every figure traces to a row"},
+    {"id":"t4","type":"string","label":"Citation","default":"Answers cite their sources"},
+    {"id":"t5","type":"string","label":"Policy","default":"One click opens the policy"},
+    {"id":"t6","type":"string","label":"Your agent","default":"Bring Claude Code, Codex or Cursor"},
+    {"id":"t7","type":"string","label":"Scopes","default":"Same tools, within each member’s rights"},
+    {"id":"t8","type":"string","label":"Record","default":"Every write is on record"},
+    {"id":"t9","type":"string","label":"Budget","default":"Every paid call has a budget"},
+    {"id":"t10","type":"string","label":"Phone","default":"On the web and on iPhone"},
+    {"id":"t11","type":"string","label":"Plugins","default":"Your own data, as a plugin"},
+    {"id":"tag","type":"string","label":"Tagline","default":"Open source · Self-hosted · MIT"},
+    {"id":"cta","type":"string","label":"Address","default":"greenhouse.linjiejim.com"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "PingFang SC"; src: local("PingFang SC"); }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #f6f8f7; }
+      #root { position: relative; width: 1920px; height: 1080px; font-family: "Nunito", "PingFang SC", sans-serif; }
+      #ground { position: absolute; inset: 0; background: #f6f8f7; }
+      .title {
+        position: absolute; left: 120px; top: 84px; max-width: 1680px; font-weight: 800; font-size: 68px; line-height: 92px;
+        letter-spacing: -1px; color: #1c1c1e; white-space: nowrap;
+      }
+      .title.on-forest { color: #ffffff; }
+      .end-line { position: absolute; left: 0; width: 1920px; text-align: center; font-weight: 700; color: #424944; }
+      #end-tag { top: 640px; font-size: 40px; }
+      #end-cta { top: 712px; font-size: 36px; color: #235d4d; font-weight: 800; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="45" data-width="1920" data-height="1080">
+      <div id="ground" class="clip" data-start="0" data-duration="45" data-track-index="0"></div>
+
+      <div id="ask" data-composition-id="ask" data-composition-src="compositions/ask.html" data-start="0" data-duration="6" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="source" data-composition-id="source" data-composition-src="compositions/source.html" data-start="6" data-duration="5" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="cite" data-composition-id="cite" data-composition-src="compositions/cite.html" data-start="11" data-duration="6" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="agents" data-composition-id="agents" data-composition-src="compositions/agents.html" data-start="17" data-duration="6" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="record" data-composition-id="record" data-composition-src="compositions/record.html" data-start="23" data-duration="6" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="phone" data-composition-id="phone" data-composition-src="compositions/phone.html" data-start="29" data-duration="6" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="plugins" data-composition-id="plugins" data-composition-src="compositions/plugins.html" data-start="35" data-duration="5" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="end" data-composition-id="end" data-composition-src="compositions/end.html" data-start="40" data-duration="5" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+
+      <div id="t1" class="clip title" data-start="0.2" data-duration="2.7" data-track-index="2" data-var-text="t1" style="z-index: 10">Which feedback is negative?</div>
+      <div id="t2" class="clip title" data-start="3.1" data-duration="2.7" data-track-index="2" data-var-text="t2" style="z-index: 10">Sprouty reads your Tables and answers</div>
+      <div id="t3" class="clip title" data-start="6.3" data-duration="4.5" data-track-index="2" data-var-text="t3" style="z-index: 10">Every figure traces to a row</div>
+      <div id="t4" class="clip title" data-start="11.2" data-duration="2.7" data-track-index="2" data-var-text="t4" style="z-index: 10">Answers cite their sources</div>
+      <div id="t5" class="clip title" data-start="14.1" data-duration="2.8" data-track-index="2" data-var-text="t5" style="z-index: 10">One click opens the policy</div>
+      <div id="t6" class="clip title" data-start="17.2" data-duration="2.7" data-track-index="2" data-var-text="t6" style="z-index: 10">Bring Claude Code, Codex or Cursor</div>
+      <div id="t7" class="clip title" data-start="20.1" data-duration="2.8" data-track-index="2" data-var-text="t7" style="z-index: 10">Same tools, within each member’s rights</div>
+      <div id="t8" class="clip title" data-start="23.2" data-duration="2.7" data-track-index="2" data-var-text="t8" style="z-index: 10">Every write is on record</div>
+      <div id="t9" class="clip title" data-start="26.1" data-duration="2.8" data-track-index="2" data-var-text="t9" style="z-index: 10">Every paid call has a budget</div>
+      <div id="t10" class="clip title on-forest" data-start="29.6" data-duration="5.3" data-track-index="2" data-var-text="t10" style="z-index: 10">On the web and on iPhone</div>
+      <div id="t11" class="clip title" data-start="35.2" data-duration="4.7" data-track-index="2" data-var-text="t11" style="z-index: 10">Your own data, as a plugin</div>
+      <div id="end-tag" class="clip end-line" data-start="41.3" data-duration="3.7" data-track-index="2" data-var-text="tag" style="z-index: 10">Open source · Self-hosted · MIT</div>
+      <div id="end-cta" class="clip end-line" data-start="41.7" data-duration="3.3" data-track-index="3" data-var-text="cta" style="z-index: 10">greenhouse.linjiejim.com</div>
+    </div>
+    <script>
+      (function () {
+        const tl = gsap.timeline({ paused: true });
+        const titles = [
+          ["#t1", 0.2, 2.7], ["#t2", 3.1, 2.7], ["#t3", 6.3, 4.5], ["#t4", 11.2, 2.7], ["#t5", 14.1, 2.8],
+          ["#t6", 17.2, 2.7], ["#t7", 20.1, 2.8], ["#t8", 23.2, 2.7], ["#t9", 26.1, 2.8], ["#t10", 29.6, 5.3], ["#t11", 35.2, 4.7],
+        ];
+        titles.forEach(function (row, i) {
+          const id = row[0], start = row[1], dur = row[2];
+          // alternate two entrances so the titles do not all arrive the same way
+          if (i % 2 === 0) {
+            tl.fromTo(id, { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "power4.out" }, start);
+          } else {
+            tl.fromTo(id, { opacity: 0, color: "#c2cbc5" }, { opacity: 1, color: id === "#t10" ? "#ffffff" : "#1c1c1e", duration: 0.3, ease: "power2.out" }, start);
+          }
+          tl.to(id, { opacity: 0, filter: "blur(6px)", duration: 0.15, ease: "power2.in" }, start + dur - 0.17);
+        });
+        tl.fromTo("#end-tag", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 41.3);
+        tl.fromTo("#end-cta", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power2.out" }, 41.7);
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

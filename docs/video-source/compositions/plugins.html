@@ -1,0 +1,54 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; }
+    #plugins-view {
+      position: absolute; left: 120px; top: 236px; width: 1680px; height: 790px;
+      overflow: hidden; border-radius: 24px; background: #10291f; border: 1px solid #dde3df;
+      box-shadow: 0 40px 80px -40px rgba(28, 28, 30, 0.35);
+    }
+    #plugins-rail { position: absolute; left: 0; top: 0; width: 1680px; height: 1580px; }
+    #plugins-code {
+      position: absolute; left: 0; top: 0; width: 1680px; height: 790px; padding: 44px 64px; margin: 0;
+      font-family: "JetBrains Mono", monospace; font-size: 28px; line-height: 40px; color: #e6efe9; white-space: pre;
+    }
+    #plugins-code .c { color: rgba(255, 255, 255, 0.42); }
+    #plugins-code .k { color: #b6ca68; }
+    #plugins-code .s { color: #f3d58b; }
+    #plugins-hl { position: absolute; left: 40px; top: 158px; width: 8px; height: 380px; border-radius: 4px; background: #b6ca68; opacity: 0; transform-origin: 50% 0; }
+    #plugins-page { position: absolute; left: 0; top: 790px; width: 1680px; height: 790px; overflow: hidden; background: #fff; }
+    #plugins-page img { position: absolute; left: -630px; top: -60px; width: 2880px; height: 1800px; }
+  </style>
+  <div id="root" data-composition-id="plugins" data-width="1920" data-height="1080">
+    <div id="plugins-view" class="clip" data-start="0" data-duration="5" data-layout-allow-overflow>
+      <div id="plugins-rail">
+<pre id="plugins-code"><span class="c">// plugins/example/api/index.ts</span>
+<span class="k">export default</span> defineExtension({
+  ...manifest,
+  dataSources: [{ app: defineApp({ id: <span class="s">'example'</span>, entities: { note: {
+    table: <span class="s">'ext_example_notes'</span>,
+    accessScopes: [<span class="s">'own'</span>],
+    fields: {
+      body: { kind: <span class="s">'text'</span>, searchable: <span class="k">true</span> },
+      userId: { kind: <span class="s">'user'</span>, title: <span class="s">'Owner'</span> },
+    },
+  } } }),
+  entities: { note: { actions: { read: <span class="s">'team'</span>, create: <span class="s">'team'</span> }, audit: <span class="s">'all'</span> } } }],
+  migrations: { dir: extensionPath(<span class="k">import.meta</span>.url, <span class="s">'../migrations'</span>) },
+  ui: { dir: extensionPath(<span class="k">import.meta</span>.url, <span class="s">'../ui'</span>) },
+});</pre>
+        <div id="plugins-hl"></div>
+        <div id="plugins-page"><img src="assets/screens/plugin-embed.png" alt="" /></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#plugins-code", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.35, ease: "expo.out" }, 0);
+      tl.fromTo("#plugins-hl", { opacity: 0, scaleY: 0 }, { opacity: 1, scaleY: 1, duration: 0.5, ease: "expo.out" }, 0.8);
+      // tilt down from the code to the page it serves
+      tl.fromTo("#plugins-rail", { y: 0 }, { y: -790, duration: 0.75, ease: "power2.inOut" }, 2.5);
+      window.__timelines["plugins"] = tl;
+    })();
+  </script>
+</template>
