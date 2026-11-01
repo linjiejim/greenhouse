@@ -306,7 +306,7 @@ Declare `ui: './ui'` in the manifest. Assembly resolves paths inside the package
 `/ext/<id>/ui/` serves `ui/dist` when present, otherwise source UI; disabled plugins return 404.
 HTML/mutable files revalidate; fingerprinted assets cache immutably. Dotfiles/traversal are
 refused. Static assets are public and must contain no secrets or member data.
-`pnpm plugins:ui:build` builds Example's frontend using the real bridge.
+`pnpm plugins:ui:build` runs the `ui:build` script of every compiled plugin that declares one (at install, dev, API start and in the image build); Example's builds its frontend with the real bridge. Use any bundler there; write `ui/dist`.
 
 `@greenhouse/ui-tokens` exports token names, generated light/dark values, brand resolution and
 `connectGreenhouse`. Its source of truth is `packages/ui/src/tokens`; run `pnpm tokens:build`.

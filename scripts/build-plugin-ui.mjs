@@ -1,20 +1,21 @@
-/** Build the example's dependency-free ES modules from the real ui-tokens package. */
-import { readFileSync, writeFileSync, mkdirSync, cpSync, rmSync } from 'node:fs';
-import { resolve, join } from 'node:path';
-import ts from 'typescript';
-const root = resolve(import.meta.dirname, '..');
-const ui = join(root, 'plugins/example/ui');
-const dist = join(ui, 'dist');
-rmSync(dist, { recursive: true, force: true });
-mkdirSync(join(dist, 'greenhouse'), { recursive: true });
-for (const file of ['index.html', 'style.css', 'app.js']) cpSync(join(ui, file), join(dist, file));
-for (const [source, target] of [
-  ['packages/ui-tokens/src/index.ts', 'index.js'],
-  ['packages/ui-tokens/src/tokens.generated.ts', 'tokens.generated.js'],
-  ['packages/types/src/plugins.ts', 'protocol.js'],
-]) {
-  const text = readFileSync(join(root, source), 'utf8').replace("'@greenhouse/types/plugins'", "'./protocol.js'");
-  writeFileSync(join(dist, 'greenhouse', target), ts.transpileModule(text, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },
-  }).outputText);
+/**
+ * Build every compiled plugin's static UI: a plugin opts in with a `ui:build` script in its
+ * package.json, which writes `ui/dist` (served ahead of `ui/`). Runs at install, dev, API start
+ * and in the image build; a failing build stops it.
+ */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { resolvePlugins } from './plugins-sync.mjs';
+
+const only = process.argv.slice(2);
+for (const plugin of await resolvePlugins()) {
+  if (only.length && !only.includes(plugin.id)) continue;
+  const pkg = JSON.parse(readFileSync(join(plugin.dir, 'package.json'), 'utf8'));
+  if (!pkg.scripts?.['ui:build']) continue;
+  const run = spawnSync('pnpm', ['--dir', plugin.dir, 'run', '--silent', 'ui:build'], { stdio: 'inherit' });
+  if (run.status !== 0) {
+    console.error(`plugins:ui:build: ${plugin.id} failed`);
+    process.exit(run.status ?? 1);
+  }
 }

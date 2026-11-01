@@ -41,7 +41,7 @@
     "desktop:build": "node apps/desktop/scripts/desktop.mjs build",
     "desktop:check": "node apps/desktop/scripts/desktop.mjs check",
     "app:build": "node scripts/build-app.mjs",
-    "plugins:ui:build": "node scripts/build-plugin-ui.mjs"
+    "plugins:ui:build": "tsx scripts/build-plugin-ui.mjs"
   },
   "lint-staged": {
     "apps/!(client)/**/*.{ts,tsx}": [

@@ -29,5 +29,5 @@ frames always validate the exact parent window and origin.
 The default parent origin is the page's own origin. An installed desktop plugin
 must explicitly allowlist the `host_origin=tauri://localhost` hint before passing
 that exact value as `hostOrigin`. Never trust arbitrary query-string origins.
-See plugins/example/ui and scripts/build-plugin-ui.mjs for a dependency-free
+See plugins/example/ui and plugins/example/scripts/build-ui.mjs for a dependency-free
 ES module build using this package.
