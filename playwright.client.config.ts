@@ -29,6 +29,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: 'tests/client-e2e/.auth/state.json' },
       dependencies: ['setup'],
     },
+    {
+      // A plugin's own browser tests: plugins/<id>/e2e/*.e2e.ts (helpers in tests/client-e2e/plugin-kit.ts).
+      name: 'plugins',
+      testDir: './plugins',
+      testMatch: /\/e2e\/.*\.e2e\.ts$/,
+      use: { ...devices['Desktop Chrome'], storageState: 'tests/client-e2e/.auth/state.json' },
+      dependencies: ['setup'],
+    },
   ],
   webServer: [
     {

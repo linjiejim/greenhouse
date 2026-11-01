@@ -399,9 +399,12 @@ from current-generation DDL plus `resetTables`, and refuses core/shared/external
   `@db-commit-reason`, use isolated fixtures and clean up.
 - Test enabled and disabled contributions, permission denials, scopes/field masks, write
   allowlists, audit, deletion preview/confirmation, compatibility endpoints and generated pages.
-- Browser coverage lives in `tests/client-e2e` and runs with `pnpm test:e2e:client`;
-  `plugins.e2e.ts` exercises declarative surfaces and a static embed fixture. Specs import
-  only `@playwright/test`. Enable your plugin for the browser stack.
+- A plugin's own browser tests live in `plugins/<id>/e2e/*.e2e.ts` (the `plugins` Playwright
+  project) and run against the real API as a signed-in super; `tests/client-e2e/plugin-kit.ts`
+  grants feature flags, calls the API and opens client routes. `plugins/example/e2e` is the
+  reference. Core client suites stay in `tests/client-e2e`; `plugins.e2e.ts` covers declarative
+  surfaces and a static embed fixture. Both run with `pnpm test:e2e:client`; enable your plugin
+  for the browser stack.
 
 ```bash
 pnpm typecheck
