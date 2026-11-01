@@ -49,7 +49,7 @@
 - Run `pnpm plugins:sync` after assembly inputs change; never edit or commit `apps/api/src/plugin-host/compiled.generated.ts`.
 - Production imports use only `@greenhouse/api/extension-kit`, `@greenhouse/types/*`, `@greenhouse/crud`, `@greenhouse/ui-tokens`, `@greenhouse/knowledge-editor/markdown`, own files, Node builtins and declared dependencies (`scripts/lib/plugin-imports.mjs`).
 - Relative imports cannot escape a package; plugin dependencies need both `dependsOn` and package.json; tests may reach host hooks; `pnpm lint` runs the boundary scanner.
-- Kit exports are snapshot-locked (`apps/api/src/__tests__/extension-kit.snapshot.test.ts`); removals/renames update the snapshot and add an `extension-kit:` CHANGELOG entry.
+- Kit exports are snapshot-locked (`apps/api/src/__tests__/extension-kit.snapshot.test.ts`); additions, removals and renames update the snapshot and use a commit scoped `extension-kit` (the generated CHANGELOG lists it).
 - Add hooks only with a real registry consumer, Example coverage and seam tests; never add per-module core cases.
 - Client UI comes from manifest `surfaces` (nav, pages: native, entity-list, entity-detail, settings-form, embed) and an optional static `ui/`; Admin sections use `parent: 'administration'`.
 - Client-facing plugin copy is manifest `LocalizedText` (`{ en, zh }`); official native screens live in `apps/client/src/plugins/<id>/` and use the client catalogs.

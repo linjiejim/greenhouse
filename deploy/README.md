@@ -5,9 +5,9 @@ PostgreSQL database and, optionally, an S3-compatible bucket. Anything that runs
 container next to a database can host it. `docker-compose.yml` in the repository root
 remains the reference self-hosted setup; this page covers hosted platforms.
 
-`MIGRATE_ON_START`, `BOOTSTRAP_ADMIN_EMAIL`, `PORT` and `STORAGE_S3_*` need a release newer
-than 4.0.0-rc.2. The files here use the `latest` tag, which follows stable releases only;
-until a stable 4.x is out, replace it with a newer 4.x tag.
+`MIGRATE_ON_START`, `BOOTSTRAP_ADMIN_EMAIL`, `PORT` and `STORAGE_S3_*` need 4.0.0 or later.
+The files here use the `latest` tag, which follows stable releases across major versions;
+pin an exact version such as `4.0.0` once the service holds data you care about.
 
 ## The contract
 
@@ -23,7 +23,7 @@ until a stable 4.x is out, replace it with a newer 4.x tag.
 | `STORAGE_S3_ENDPOINT`, `STORAGE_S3_BUCKET`, `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY` | without a disk | Uploads, Files and skill bundles go to the bucket instead of `/app/data`. Any store that speaks the S3 API (AWS S3, Cloudflare R2, MinIO, SeaweedFS, Backblaze B2, Tencent COS, Aliyun OSS); files are proxied through Greenhouse, so the bucket needs no CORS setup. Optional `STORAGE_S3_REGION` (default `us-east-1`; R2 uses `auto`) and `STORAGE_S3_FORCE_PATH_STYLE` (default `true`). |
 
 The model, search and other credentials are not deploy variables: sign in and fill them
-in under Administration → Runtime Config. The full list of optional variables is in
+in under Admin › Runtime Config. The full list of optional variables is in
 [`.env.example`](../.env.example).
 
 Requirements the platform must meet:

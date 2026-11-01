@@ -1,6 +1,6 @@
 name: Release Please
 
-# Version automation for main (3.x). On every push to main, release-please reads the Conventional
+# Version automation for main. On every push to main, release-please reads the Conventional
 # Commits since the last tag and maintains a "Release PR" (computed SemVer bump +
 # generated CHANGELOG.md). Merging that PR tags `vX.Y.Z` and creates the GitHub
 # Release — which is what triggers release.yml to build & publish the artifacts.

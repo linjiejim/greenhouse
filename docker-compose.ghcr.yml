@@ -14,7 +14,7 @@
 #   docker compose -f docker-compose.ghcr.yml up -d
 #
 # Pin a release instead of tracking `latest` by setting GREENHOUSE_IMAGE in .env:
-#   GREENHOUSE_IMAGE=ghcr.io/linjiejim/greenhouse:0.2.0
+#   GREENHOUSE_IMAGE=ghcr.io/linjiejim/greenhouse:4.0.0
 #
 # Run from the same directory as docker-compose.yml and the `pg_data` volume is
 # shared (same compose project) — switching between the two files keeps your data.
