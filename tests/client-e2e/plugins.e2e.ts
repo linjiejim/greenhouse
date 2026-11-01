@@ -250,6 +250,7 @@ test('Plugins embed init, trusted origin, theme, token refresh, navigate and dra
   await expect(frame.locator('#state')).toContainText('greenhouse:init');
   await expect(frame.locator('#state')).toContainText('scoped-');
   await expect(frame.locator('#state')).toContainText('--gh-accent');
+  await expect(frame.locator('#state')).toContainText('--gh-cat-blue-fill');
   await expect(page.getByText('客户工作台 · 已连接', { exact: true }).first()).toBeVisible();
   await screenshot(page, 'embed-light');
   await page.evaluate(() => window.postMessage({ type: 'greenhouse:navigate', href: '/projects' }, location.origin));
