@@ -5,6 +5,23 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0](https://github.com/linjiejim/greenhouse/compare/v4.0.1...v4.1.0) (2026-11-01)
+
+
+### Added
+
+* **api:** plugin embeds reach the member directory and their own drive scopes ([2cf8492](https://github.com/linjiejim/greenhouse/commit/2cf849240ae4c24c6681bc3575f893ed032a92fe))
+* **plugin-host:** a record link can open the plugin's embed page ([b4a0540](https://github.com/linjiejim/greenhouse/commit/b4a05401d1aa43e9c973bd0fe3770a24546db61f))
+* **plugin-host:** every compiled plugin can build its own UI ([76723bd](https://github.com/linjiejim/greenhouse/commit/76723bd9d89432430bfbdfe057d116dc76950daa))
+* **plugin-host:** plugins/&lt;id&gt;/ui-src is a plugin's own frontend project ([14b13ed](https://github.com/linjiejim/greenhouse/commit/14b13ed475f7bb3702b79e39453322c1705f56b4))
+* **plugin-host:** the overlay guard accepts a private plugin's lockfile entries ([ae7ad2b](https://github.com/linjiejim/greenhouse/commit/ae7ad2bf598da980a77186ce1943abd26c9672f8))
+* **ui-tokens:** embeds get the category colours and a Tailwind theme on the host tokens ([19f899a](https://github.com/linjiejim/greenhouse/commit/19f899a2774baafb920046fa612b0f87be540782))
+
+
+### Fixed
+
+* **plugin-host:** the overlay guard audits the committed lockfile and every package core installs ([654bb03](https://github.com/linjiejim/greenhouse/commit/654bb037a5a5e2b955df11aae7ec114a5a4f32d2))
+
 ## [4.0.1](https://github.com/linjiejim/greenhouse/compare/v4.0.0...v4.0.1) (2026-11-01)
 
 
