@@ -386,8 +386,13 @@ test('Skills: upload a folder as a new skill, then publish a new version from it
   expect(published.description).toBe('复盘流失客户');
   expect(published.files.map((file: any) => file.path).sort()).toEqual(['SKILL.md', 'checklist.md']);
 
-  // the version history of an existing skill, and a new version that needs a changelog
+  // publishing swaps the form for the new skill's detail once the answer arrives; close that first
+  const created = page.getByTestId('skill-detail');
+  await expect(created).toBeVisible();
   await page.keyboard.press('Escape');
+  await expect(created).toBeHidden();
+
+  // the version history of an existing skill, and a new version that needs a changelog
   await page.getByTestId('skills-list').getByRole('button', { name: '周报' }).click();
   const detail = page.getByTestId('skill-detail');
   await expect(detail.getByTestId('skill-versions')).toContainText('第一版');
