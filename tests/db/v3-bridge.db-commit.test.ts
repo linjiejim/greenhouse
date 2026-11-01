@@ -8,8 +8,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { officialPluginIds } from '../helpers/official-plugins.js';
 import { applyAllMigrations, createDatabase, DatabaseGenerationError } from '@greenhouse/db';
 import {
   TEST_DATABASE_URL,
@@ -21,12 +22,10 @@ import {
 
 const root = resolve(import.meta.dirname, '../..');
 const fixture = (name: string) => readFileSync(join(root, 'tests/fixtures', name), 'utf8');
-const officialSources = readdirSync(join(root, 'plugins'))
-  .sort()
-  .flatMap((id) => {
-    const dir = join(root, 'plugins', id, 'migrations');
-    return existsSync(dir) ? [{ extensionId: id, dir }] : [];
-  });
+const officialSources = officialPluginIds(root).flatMap((id) => {
+  const dir = join(root, 'plugins', id, 'migrations');
+  return existsSync(dir) ? [{ extensionId: id, dir }] : [];
+});
 
 async function withDatabase<T>(label: string, run: (url: string) => Promise<T>): Promise<T> {
   const name = `gh4_schema_${label}_${randomBytes(4).toString('hex')}_test`;
@@ -80,7 +79,9 @@ describe('3.x → 4.0 in-place bridge', () => {
       expect(Object.fromEntries(Object.keys(before).map((table) => [table, after[table]]))).toEqual(before);
       // The only new tables are 4.0's own core addition and the Example lane's (3.0.2 never had either).
       expect(Object.keys(after).filter((table) => !(table in before))).toEqual(['client_reports', 'ext_example_notes']);
-      expect(await queryRows(url, `SELECT DISTINCT profile_id FROM conversations`)).toEqual([{ profile_id: 'sprouty' }]);
+      expect(await queryRows(url, `SELECT DISTINCT profile_id FROM conversations`)).toEqual([
+        { profile_id: 'sprouty' },
+      ]);
 
       // No constraint was left unvalidated; the legacy values are still there.
       expect(

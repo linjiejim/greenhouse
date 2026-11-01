@@ -8,8 +8,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { officialPluginIds } from '../helpers/official-plugins.js';
 import { applyAllMigrations, coreTableNames, readCoreMigrations, V3_ARCHIVE_FOLDER } from '@greenhouse/db';
 import {
   TEST_DATABASE_URL,
@@ -24,12 +25,10 @@ const root = resolve(import.meta.dirname, '../..');
 const fixture = readFileSync(join(root, 'tests/fixtures/plugin-upgrade-v3.sql'), 'utf8');
 
 /** Every official plugin lane (a plugin without migrations owns no tables). */
-const officialSources = readdirSync(join(root, 'plugins'))
-  .sort()
-  .flatMap((id) => {
-    const dir = join(root, 'plugins', id, 'migrations');
-    return existsSync(dir) ? [{ extensionId: id, dir }] : [];
-  });
+const officialSources = officialPluginIds(root).flatMap((id) => {
+  const dir = join(root, 'plugins', id, 'migrations');
+  return existsSync(dir) ? [{ extensionId: id, dir }] : [];
+});
 
 /**
  * Documented differences between a fresh 4.0 database and an upgraded 3.x one.
