@@ -32,6 +32,9 @@ test('P3 drive preview, rename, move, delete and dropped upload', async ({ page 
   const f = await installPlaces(page);
   await ready(page, '/drive');
   const row = page.getByTestId('drive-list').getByRole('button', { name: 'Q4 活动方案.docx', exact: true });
+  // the owner column names the uploader, never their account id
+  await expect(page.getByTestId('drive-list')).toContainText('王宁');
+  await expect(page.getByTestId('drive-list')).not.toContainText('usr_wangning');
   await row.click();
   await expect(page.getByTestId('client-inspector').filter({ visible: true })).toBeVisible();
   await page.keyboard.press('Escape');

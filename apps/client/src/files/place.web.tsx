@@ -19,6 +19,7 @@ import { useLibraryActions } from '../library/use-library-actions';
 import { libraryChanged, useLibraryChanges } from '../library/changes';
 import { formatBytes } from '../lib/format';
 import { useT } from '../lib/i18n';
+import { usePeopleNames } from '../store/people';
 import { alertError } from '../ui/dialogs';
 import { WIDE_MIN } from '../shell/wide-model';
 export default function DrivePlace() {
@@ -149,6 +150,7 @@ function DriveDesktop() {
     })),
     ...(data.data?.files ?? []).map((f) => ({ ...f, created_by: f.uploaded_by, kind: 'file' as const })),
   ];
+  const owners = usePeopleNames(entries.flatMap((entry) => (entry.created_by ? [entry.created_by] : [])));
   return (
     <>
       <PlaceSecondary>
@@ -264,7 +266,7 @@ function DriveDesktop() {
                   />
                   {!grid ? (
                     <>
-                      <small>{entry.created_by}</small>
+                      <small>{entry.created_by ? (owners[entry.created_by] ?? '') : ''}</small>
                       <small>{entry.updated_at ? calendarDateLabel(entry.updated_at) : ''}</small>
                       <small>{entry.size === null ? '—' : formatBytes(entry.size)}</small>
                     </>

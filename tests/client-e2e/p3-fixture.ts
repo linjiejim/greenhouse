@@ -69,7 +69,7 @@ export async function installPlaces(page: Page) {
       visibility: 'team',
       content_type: 'text/plain',
       size: 1200000,
-      uploaded_by: '王宁',
+      uploaded_by: 'usr_wangning',
       created_at: at,
       updated_at: at,
     },
@@ -178,6 +178,7 @@ export async function installPlaces(page: Page) {
           : null;
     const json = (value: unknown) => route.fulfill({ json: value });
     if (!['GET', 'OPTIONS'].includes(method)) writes.push({ path, body, method });
+    if (path === '/api/people/resolve') return json({ people: [{ id: 'usr_wangning', name: '王宁' }] });
     if (path === '/api/sessions/shareable-users') return json({ users: [{ id: 'member', nickname: '林杰' }] });
     if (path === '/api/auth/me')
       return json({
