@@ -3,6 +3,9 @@
   "version": "4.0.1",
   "private": true,
   "type": "module",
+  "scripts": {
+    "ui:build": "node scripts/build-ui.mjs"
+  },
   "greenhouse": {
     "id": "example",
     "sdk": 2,
@@ -22,6 +25,7 @@
     "@greenhouse/ui-tokens": "workspace:*"
   },
   "devDependencies": {
-    "@greenhouse/db": "workspace:*"
+    "@greenhouse/db": "workspace:*",
+    "typescript": "^5.7.0"
   }
 }

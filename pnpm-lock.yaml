@@ -432,6 +432,9 @@ importers:
       '@greenhouse/db':
         specifier: workspace:*
         version: link:../../packages/db
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
 
   plugins/feedback:
     dependencies:

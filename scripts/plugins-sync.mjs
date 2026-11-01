@@ -152,6 +152,7 @@ export async function resolvePlugins(root = REPO_ROOT, env = process.env) {
     ids.add(id);
     plugins.push({
       id,
+      dir,
       packageName: pkg.name,
       manifest,
       halves,
