@@ -12,8 +12,8 @@ Greenhouse 是团队自托管的 Agent 中台。成员在客户端里使用 Spro
 ```mermaid
 flowchart TB
   subgraph clients[客户端]
-    universal[通用客户端 Web / iOS / Android]
-    desktop[macOS Tauri 壳]
+    universal[通用客户端 Web / iOS / Android（预览）]
+    desktop[macOS Tauri 壳（预览）]
     external[成员自己的 Agent / MCP 客户端]
   end
   desktop --> universal
@@ -87,10 +87,10 @@ Admin 位置 `/admin` 只给 super，只在浏览器与桌面端的宽窗口可�
 仍在应用内打开。
 
 官方 `native` 页面有编入客户端的适配器（`apps/client/src/plugins/<id>/`）：知识库、表格、项目是完整
-位置，其余是只读列表或专用页面。数据插件复用实体列表、详情和表单渲染器，`user` 字段经
+位置，其余是插件专用页面（技能、记忆、邮箱、报告模板、云电脑等）。数据插件复用实体列表、详情和表单渲染器，`user` 字段经
 `POST /api/people/resolve` 显示成员名；设置表单复用 Runtime Config 字段；`embed` 加载插件静态 UI。
-`apps/desktop` 是 Tauri 2 macOS 壳，打包同一份 Web 导出，补原生窗口、菜单、通知、Quick ask、
-Keychain 与多站点。
+`apps/desktop` 是 Tauri 2 macOS 壳（预览，未发布），打包同一份 Web 导出，补原生窗口、菜单、通知、Quick ask、
+Keychain 与多站点。Android 同样是预览。
 
 ## 一轮对话的数据流
 
@@ -103,7 +103,7 @@ sequenceDiagram
   participant M as 模型与预算
   participant D as PostgreSQL
   U->>A: Bearer + 消息 + client_turn_id
-  A->>P: 当前账号、可达工具、页面参考
+  A->>P: 当前账号、可达工具
   P-->>A: 收窄后的工具与稳定插件上下文
   A->>D: 认领会话轮次并保存用户消息
   A->>R: 启动后台 ChatRun
@@ -117,7 +117,7 @@ sequenceDiagram
 ```
 
 插件的 Agent 提示片段只在成员能用到它的工具时注入，每段上限 2,000 字符；MCP 资源和提示词也按
-可达范围筛选。页面上下文是参考，不授予权限。付费调用先占预算，完成后记实际用量。断线不终止生成，
+可达范围筛选。对话轮次不带页面上下文，页面细节写进消息正文。付费调用先占预算，完成后记实际用量。断线不终止生成，
 可按序号续读；终态转录先落库，再关闭运行流。MCP 调用先取 OAuth 成员、动作范围与资源分组的交集，
 再进入同一个工具层；MCP 写入记为成员名下的运行，删除先预览；Agent API 每次写入要求确认。
 

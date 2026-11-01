@@ -13,8 +13,7 @@ Members connect their agents over MCP and use the team's resources within their 
 Sprouty, the built-in assistant, uses the same tools. The core assigns access, records actions,
 and meters paid calls against member, service and team budgets.
 
-This checkout is **4.0.0-rc.1**, a release candidate for testing. See the
-[4.0 upgrade guide](docs/upgrading-to-4.0.md), the [release notes](CHANGELOG.md#400-rc1-2026-10-27),
+See the [4.0 upgrade guide](docs/upgrading-to-4.0.md), the [release notes](CHANGELOG.md),
 the [capability reference](docs/capabilities.md) (Chinese) and the
 [architecture guide](docs/architecture.md) (Chinese).
 
@@ -69,14 +68,16 @@ supply selected team documents.
 
 ## Clients
 
-There is one client, the universal client in `apps/client`, built with Expo for the browser,
-iOS and Android. The API serves its hosted web export at `/`.
+There is one client, the universal client in `apps/client`, built with Expo. The browser and iOS
+builds ship; Android and the macOS shell are previews that are not distributed yet. The API serves
+the hosted web export at `/`.
 
 | Client | What ships in this repository |
 |---|---|
 | Browser (`apps/client`) | Wide-screen rail with the built-in places and a More flyout for apps, secondary navigation, chat with inspectors, ⌘K, document editing, Files, Tables grids, project boards, the Automations place (editor and custom agents) and plugin pages from the station manifest. Supers get the Admin place at `/admin`. Entry pages handle account activation, MCP OAuth consent, connector and identity-provider returns. |
-| iOS / Android (`apps/client`) | Native Expo client with chat, Files, enabled plugin places, notifications, stations and offline copies. iOS includes widgets; Android has Material 3 adapters, with store distribution/push setup still operator-dependent. |
-| macOS (`apps/desktop`) | Tauri 2 shell bundling the universal client, multiple stations, Keychain sessions, native menus/notifications and Quick ask. Local unsigned builds are supported; signing and an updater feed require operator setup. |
+| iOS (`apps/client`) | Native Expo client with chat, Files, enabled plugin places, notifications, stations, offline copies and widgets. |
+| Android preview (`apps/client`) | The same client with Material 3 adapters. Not distributed; store upload and push need your own setup. |
+| macOS preview (`apps/desktop`) | Tauri 2 shell bundling the universal client, multiple stations, Keychain sessions, native menus/notifications and Quick ask. Not distributed; local unsigned builds only until you set up signing and an updater feed. |
 | CLI | `pnpm cli`: users, database, diagnostics, profiles, sessions, plugins, chat and enabled plugin commands. |
 
 `GET /api/extensions` is an authenticated station manifest v2: visible plugins, navigation,
@@ -101,8 +102,8 @@ Open http://localhost:3000. PostgreSQL, a one-shot migration job and the API run
 Compose services; the API serves the universal client.
 
 For a published image, set `GREENHOUSE_IMAGE=ghcr.io/linjiejim/greenhouse:<published-version>` in
-`.env`, then use `docker compose -f docker-compose.ghcr.yml up -d`. Pin an exact version;
-`4.0.0-rc.1` becomes available only after the maintainer publishes it.
+`.env`, then use `docker compose -f docker-compose.ghcr.yml up -d`. Pin an exact version such as
+`4.0.0`; `:latest` follows stable releases across major versions.
 
 ### Cloud platforms
 
@@ -223,6 +224,8 @@ runs before the API. Back up first (`scripts/backup-db.sh`), pin the new image a
 plugins explicitly**: several formerly built-in modules are now off by default. 1.6 databases go
 through 3.0.2 first; 2.x databases have no upgrade path. Never use `db push` on persistent data.
 A binary downgrade does not reverse migrations; keep the backup and previous image for rollback.
+An installation that pulls `:latest` moves from 3.x to 4.0 on its next pull: pin `3.0.2` first if you
+are not ready, because plugins that were built-in modules in 3.x stay off until you enable them.
 
 ## Plugins and architecture
 

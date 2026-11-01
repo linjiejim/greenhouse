@@ -2,8 +2,8 @@
 
 Greenhouse is one product with one version. Tags identify published releases; version fields
 across root, apps, packages, plugins, Expo and desktop mirror that version. The Release PR
-normally updates them through `release-please-config.json` extra-files. The authorized local
-4.0.0-rc.1 cut is prepared in this checkout; **no tag or artifact is created by changing these files**.
+updates them through `release-please-config.json` extra-files. Changing version files by hand
+creates no tag or artifact.
 
 ## Channels and artifacts
 
@@ -23,96 +23,48 @@ uses a valid APP_VERSION or falls back to root package.json for unstamped develo
 `GET /health` reports health/runtime switches; it does **not** return version or revision.
 Verify the image labels/config with `docker inspect`.
 
-## Candidate version automation
+## Version automation
 
-The checked-in candidate settings are:
-
-```json
-{
-  "release-type": "node",
-  "versioning": "prerelease",
-  "prerelease": true,
-  "packages": { ".": { "prerelease-type": "rc" } }
-}
-```
-
-`versioning` selects the increment strategy; `prerelease` also marks the GitHub release and
-keeps the suffix; `prerelease-type` selects rc in the root package configuration (the schema allows it
-there, not as a top-level property). See the upstream
-[manifest settings](https://github.com/googleapis/release-please/blob/main/docs/manifest-releaser.md)
-and [versioning strategy](https://github.com/googleapis/release-please/blob/main/src/versioning-strategies/prerelease.ts).
-For this 4.0.0-rc.1 baseline, fix/feature/breaking increments all yield 4.0.0-rc.2. With the
-prerelease strategy retained and `prerelease: false`, those increments produce 4.0.0 instead.
-Do not switch to the default strategy during promotion and accidentally advance the base version.
-
-The manifest now records 4.0.0-rc.1. It is a local prepared baseline until that exact candidate
-is published. A new automated Release PR would propose the *next* candidate; it is not the
-way to publish these already-written rc.1 notes.
+release-please runs on every push to main and keeps one Release PR open with the next version
+and the generated CHANGELOG section. Squash PRs with Conventional Commit titles; breaking,
+feat and fix map to major, minor and patch. Merging the Release PR tags `vX.Y.Z` and creates the
+GitHub release, which triggers release.yml. RELEASE_PLEASE_TOKEN (contents and PR write) is
+needed for that tag to start another workflow; tags made with GITHUB_TOKEN do not cascade.
 
 extra-files updates every app/package/plugin package.json, Expo app.json, Tauri config,
-Cargo.toml and only the greenhouse-desktop package version in Cargo.lock. The Cargo.lock
-JSONPath inspects the TOML updater's `name.value` node; this target was exercised with the
-actual release-please updater and leaves dependency versions/checksums untouched.
+Cargo.toml and only the greenhouse-desktop package version in Cargo.lock. Independent manifest
+schema versions inside platform application definitions are contracts, not product versions.
 
-## Publishing the prepared rc.1 (operator: Jim)
+Do not edit released CHANGELOG sections. If `extra-files` changes while a Release PR is open,
+close the PR, delete its branch and let release-please regenerate it.
 
-These are operator instructions, not actions performed by this documentation task.
+## Release candidates
 
-1. Review/land the complete candidate, including version targets, migration ownership, the
-   release notes and the [4.0 upgrade guide](docs/upgrading-to-4.0.md). Confirm all required gates
-   plus actual browser acceptance: `pnpm test:e2e:client` in Chromium and a manual pass on a
-   seeded stack (sign-in, chat, Files, each enabled plugin place, Admin, the entry pages).
-   Exercise the in-place 3.x upgrade (3.0.2 recommended) on a backup copy with the intended plugin
-   list; 1.6 databases must reach 3.0.2 first, and 2.x databases have no path.
-2. Review `.github/workflows/mobile.yml` **before landing mobile version changes on main**.
-   It can deploy to the production EAS branch on a main push when EXPO_TOKEN exists. Product
-   rc tagging does not gate that lane; pause/configure it operationally if store/OTA publication
-   is not intended. Do not run EAS publication commands as part of a local rc cut.
-3. Select the exact accepted commit and verify no `v4.0.0-rc.1` tag/release already exists.
-   Create and push that annotated tag from the accepted revision, then create a GitHub release
-   marked prerelease, explicitly not latest. Use only the rc.1 section of CHANGELOG as its notes
-   and link the upgrade guide.
+To cut candidates for the next version, set `versioning: "prerelease"`, `prerelease: true` and
+the root package's `prerelease-type: "rc"`, and pin `release-as: "X.Y.Z-rc.1"` for the first one.
+Remove release-as after it is tagged; later Release PRs propose the next rc. To promote, set
+`prerelease: false` and pin `release-as: "X.Y.Z"` while keeping the prerelease strategy, so the
+base version does not advance. After the stable release, remove release-as and prerelease-type
+and return to `versioning: "default"`. A persistent release-as keeps proposing the same version.
 
-   ```bash
-   # Run only after acceptance, with <accepted-sha> replaced by the reviewed commit.
-   git tag -a v4.0.0-rc.1 <accepted-sha> -m 'Greenhouse 4.0.0-rc.1'
-   git push origin refs/tags/v4.0.0-rc.1
-   # Put just the rc.1 release notes in /tmp/greenhouse-rc-notes.md first.
-   gh release create v4.0.0-rc.1 --verify-tag --prerelease --latest=false \
-     --title 'Greenhouse 4.0.0-rc.1' --notes-file /tmp/greenhouse-rc-notes.md
-   ```
+## Before merging a Release PR
 
-4. Watch the Release workflow; inspect the exact rc image's APP_VERSION/revision/OCI labels
-   and confirm stable aliases did not move. Deploy the pinned rc only to the intended test
-   environment and verify `/health`, sign-in at `/`, the `/classic` redirect, plugin status
-   (`pnpm cli plugins status` or Admin › Plugins), default/off behavior and the Admin place.
-5. Publish a signed/notarized desktop build only through the separate
-   [desktop runbook](apps/desktop/README.md). Native iOS/Android distribution is also separate;
-   use a valid store version/profile when required by the store rather than assuming a SemVer
-   prerelease suffix is accepted by a store submission.
+- All CI jobs pass on the Release PR, including client-e2e and deploy smoke.
+- The main image (`:main-<sha>` of the same commit) runs on the integration server: `/health`,
+  sign-in at `/`, chat, Files, each enabled plugin place, Admin, plugin status
+  (`pnpm cli plugins status` or Admin › Plugins) and the entry pages.
+- An in-place upgrade from the previous release line on a backup copy keeps its data.
+- Release notes call out breaking changes and what `:latest` users get on their next pull.
+- Review `.github/workflows/mobile.yml` before version changes land on main: a main push can
+  publish OTA or start a TestFlight build when EXPO_TOKEN exists.
 
-Do not delete/recreate an existing release tag to force a build. The current Release workflow
-has no workflow_dispatch trigger. If a token-created tag did not trigger it, add/review an explicit
-workflow publication path or create the release tag with normal operator/PAT credentials in the
-first place; never silently rewrite a published tag.
+After the tag: watch release.yml, check the image's APP_VERSION, revision and OCI labels with
+`docker inspect`, and confirm prereleases did not move stable aliases. Never delete or recreate a
+published tag to force a build; release.yml has no workflow_dispatch trigger.
 
-## Next candidate and stable promotion
-
-For another rc, keep the candidate settings, land Conventional Commits and review the next
-Release PR. release-please normally runs on main; merge its PR only when that next candidate
-is intended. RELEASE_PLEASE_TOKEN (contents/PR write) lets its tag push trigger release.yml;
-GITHUB_TOKEN-created tags do not cascade to another workflow. Inspect workflow execution.
-
-To release **4.0.0 stable**, set `prerelease: false`, keep `versioning: 'prerelease'` for the
-promotion PR, remove `prerelease-type` if desired, and explicitly set package `release-as:
-'4.0.0'` if an exact promotion needs pinning. Review the proposed version and stable release
-flag before merging. After stable is published, remove release-as and prerelease-type, set
-`versioning: 'default'`, and leave `prerelease: false` for normal SemVer (breaking/feat/fix →
-major/minor/patch). A persistent release-as would keep proposing the same version.
-
-Do not edit prior released CHANGELOG sections. Squash PRs with Conventional Commit titles;
-release-please maintains the next notes and all version targets. Independent manifest schema
-versions inside platform application definitions are contracts, not product version fields.
+Desktop builds are published only through the [desktop runbook](apps/desktop/README.md) (preview
+in 4.0). iOS and Android store distribution is separate; store versions do not accept SemVer
+prerelease suffixes.
 
 ## Mobile fingerprint CD
 

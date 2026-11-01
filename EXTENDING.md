@@ -66,7 +66,7 @@ plugins/<id>/
 ```json
 {
   "name": "@greenhouse/plugin-example",
-  "version": "4.0.0-rc.1",
+  "version": "4.0.0",
   "type": "module",
   "greenhouse": { "id": "example", "sdk": 2, "api": "./api/index.ts" },
   "exports": { "./manifest": "./manifest.ts", "./api": "./api/index.ts" }
@@ -103,8 +103,8 @@ Relative paths cannot leave a package. Do not import host source, DB, utils or k
 directly; the kit exposes the needed primitives. Core imports no plugin code except the generated
 registrations. The AST boundary scanner (`scripts/check-plugin-boundaries.mjs`, run by
 `pnpm lint`) checks imports, re-exports, import types and computed loads; tests may reach host
-hooks. Kit exports are snapshot-locked; removals/renames update the snapshot and an
-`extension-kit:` CHANGELOG entry. Add a symbol only for an actual plugin consumer.
+hooks. Kit exports are snapshot-locked; additions, removals and renames update the snapshot and land in a
+Conventional Commit scoped `extension-kit` so the generated CHANGELOG lists them. Add a symbol only for an actual plugin consumer.
 
 ### Compatibility
 
