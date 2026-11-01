@@ -292,7 +292,8 @@ export async function securityHeadersMiddleware(c: Context, next: Next) {
           "frame-src 'self' https://*.myqcloud.com",
           // COS: authed file endpoints (chat files, Drive) 302 to a presigned object
           // URL, and fetch()-based downloads follow that redirect from the page.
-          "connect-src 'self' https://unpkg.com https://*.myqcloud.com",
+          // blob:/data:: the web file pickers hand back local URIs that uploads read with fetch().
+          "connect-src 'self' blob: data: https://unpkg.com https://*.myqcloud.com",
         ].join('; '),
   );
 

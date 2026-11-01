@@ -17,7 +17,12 @@ describe('Content-Security-Policy', () => {
   it('lets the page fetch presigned COS objects', async () => {
     // Chat file + Drive downloads 302 from /api/**/content to the COS host; the
     // redirect target is matched against connect-src, not the 'self' origin.
-    expect(await csp()).toContain("connect-src 'self' https://unpkg.com https://*.myqcloud.com");
+    expect(await csp()).toMatch(/connect-src [^;]*https:\/\/\*\.myqcloud\.com/);
+  });
+
+  it('lets uploads read the files the web pickers return', async () => {
+    // Drive, chat attachments and skill uploads fetch() the picker's blob:/data: URI for the bytes.
+    expect(await csp()).toContain("connect-src 'self' blob: data:");
   });
 
   it('keeps active content same-origin', async () => {
