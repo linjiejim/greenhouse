@@ -59,6 +59,7 @@ plugins/<id>/
   drizzle.config.ts       plugin-only Drizzle config (when it owns tables)
   seeds/                  dataset files for `pnpm seed` (optional)
   ui/                     optional trusted static frontend; ui/dist wins when built
+  ui-src/                 optional frontend project (own package.json + lockfile) that ui:build compiles into ui/dist
   db-schema.md            owned tables
   README.md               purpose, defaults, settings/env, tables, tools and routes
 ```
@@ -306,7 +307,7 @@ Declare `ui: './ui'` in the manifest. Assembly resolves paths inside the package
 `/ext/<id>/ui/` serves `ui/dist` when present, otherwise source UI; disabled plugins return 404.
 HTML/mutable files revalidate; fingerprinted assets cache immutably. Dotfiles/traversal are
 refused. Static assets are public and must contain no secrets or member data.
-`pnpm plugins:ui:build` runs the `ui:build` script of every compiled plugin that declares one (at install, dev, API start and in the image build); Example's builds its frontend with the real bridge. Use any bundler there; write `ui/dist`.
+`pnpm plugins:ui:build` runs the `ui:build` script of every compiled plugin that declares one (at install, dev, API start and in the image build); Example's builds its frontend with the real bridge. Use any bundler there; write `ui/dist`. A bundled frontend lives in `ui-src/` as its own project (its own `package.json`, lockfile and lint, installed with `--ignore-workspace`); the root typecheck, lint, tests and import-boundary scan skip `plugins/*/ui-src/`, and it runs in the browser frame with only the embed bridge, never host code.
 
 `@greenhouse/ui-tokens` exports token names, generated light/dark values, brand resolution and
 `connectGreenhouse`. Its source of truth is `packages/ui/src/tokens`; run `pnpm tokens:build`.

@@ -8,6 +8,8 @@ function walk(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     if (['node_modules', 'dist', '.claude'].includes(entry.name)) return [];
     const file = join(dir, entry.name);
+    // plugins/<id>/ui-src is a browser project with its own dependencies; it cannot reach host code.
+    if (entry.isDirectory() && entry.name === 'ui-src' && dir.startsWith('plugins/')) return [];
     return entry.isDirectory() ? walk(file) : /\.[cm]?[jt]sx?$/.test(file) ? [file] : [];
   });
 }

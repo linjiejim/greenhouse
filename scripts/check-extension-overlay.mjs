@@ -119,7 +119,7 @@ function lockfileStaysInSeam() {
 const leaks = files.filter(
   (f) => !allowed.some((re) => re.test(f)) && !(f === 'pnpm-lock.yaml' && lockfileStaysInSeam()),
 );
-const importStatus = reportImports(files.filter((f) => f.startsWith('plugins/')));
+const importStatus = reportImports(files.filter((f) => f.startsWith('plugins/') && !/^plugins\/[^/]+\/ui-src\//.test(f)));
 if (leaks.length === 0) {
   console.log(`✓ overlay is clean: ${files.length} file(s) differ from ${ref}, all inside the plugin seam`);
   process.exit(importStatus);
