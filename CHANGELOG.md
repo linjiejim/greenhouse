@@ -5,6 +5,25 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0](https://github.com/linjiejim/greenhouse/compare/v4.0.0-rc.2...v4.0.0) (2026-11-01)
+
+
+### Added
+
+* one-click deploy to container platforms (S3 storage, migrate on start, first admin from env) ([#91](https://github.com/linjiejim/greenhouse/issues/91)) ([a99c0c4](https://github.com/linjiejim/greenhouse/commit/a99c0c4c36bad64649e4e17c772334e6eddc8758))
+
+
+### Fixed
+
+* **api:** the hosted client can upload files again ([d502ee0](https://github.com/linjiejim/greenhouse/commit/d502ee0fe741a12ff87fffec0efe084ba82feb5d))
+* **client:** Drive's owner column names the uploader instead of their account id ([a995433](https://github.com/linjiejim/greenhouse/commit/a9954339a206378e2730ed447a29638231b81b73))
+* **docker:** NPM_REGISTRY reaches pnpm 11 ([#93](https://github.com/linjiejim/greenhouse/issues/93)) ([ef47e39](https://github.com/linjiejim/greenhouse/commit/ef47e39fb9c7f5b369f610c6fa2f377027690d95))
+
+
+### Changed
+
+* release 4.0.0 as the stable promotion of the rc line ([0706554](https://github.com/linjiejim/greenhouse/commit/0706554cc9ae211d9898f19f4bb808ecf92b08f1))
+
 ## [4.0.0-rc.2](https://github.com/linjiejim/greenhouse/compare/v4.0.0-rc.1...v4.0.0-rc.2) (2026-10-28)
 
 
