@@ -165,7 +165,7 @@ sequenceDiagram
 ```
 
 `@greenhouse/ui-tokens` 生成浅/深色 token 并提供 `connectGreenhouse`；双方校验来源窗口与精确
-origin。凭证只允许所属插件 API 与 `GET /api/me`，续期由持有完整登录态的宿主完成；`sendPrompt`
+origin。凭证只允许所属插件 API、`GET /api/me`、成员目录（`GET /api/people` 与 `POST /api/people/resolve`）和本插件声明的云盘 scope，续期由持有完整登录态的宿主完成；`sendPrompt`
 只打开可编辑草稿。静态 UI 公开托管、不含用户数据；可信插件 iframe 允许脚本与同源访问，安全基础
 是对安装代码的信任。普通 HTML 预览保持不透明 origin。CSP 只允许同源和 `tauri://localhost` 父级。
 

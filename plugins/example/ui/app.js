@@ -7,6 +7,13 @@ const bridge = connectGreenhouse({
   onInit({ user }) {
     document.getElementById('status').textContent = `Hello, ${user.name}. Your notes stay personal.`;
     bridge.title('Example notes');
+    // An embed token also reaches the member directory (owner pickers) and its plugin's drive scopes.
+    fetch('/api/people', { headers: { Authorization: `Bearer ${bridge.token}` } })
+      .then((response) => (response.ok ? response.json() : { people: [] }))
+      .then(({ people }) => {
+        document.getElementById('colleagues').textContent = `${people.length} people on this station.`;
+      })
+      .catch(() => {});
   },
 });
 document.getElementById('navigate').onclick = () => bridge.navigate('/p/example/example-note');

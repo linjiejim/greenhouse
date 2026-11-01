@@ -54,6 +54,7 @@ import {
   canReadDrive,
   canWriteDrive,
   sameDriveCabinet,
+  driveScopeOwner,
 } from '../drive/access.js';
 import { recordDriveChange } from '../drive/audit.js';
 import { searchCabinet } from '../drive/kb-cabinet.js';
@@ -96,6 +97,9 @@ function buildScopeKeys(
 /** Authorize against a node (folder/file row, or a scope-root descriptor). */
 async function accessFor(c: Context<AppEnv>, node: DriveAccessNode, operation: 'read' | 'write') {
   const user = getAuthUser(c);
+  // A plugin embed reaches only the drive scopes its own plugin declared.
+  const embed = c.get('embedPlugin');
+  if (embed && driveScopeOwner(node.scope) !== embed) return null;
   return resolveDriveAccessAsync(node, { userId: user.id, userRole: user.role, db: getDb(), operation });
 }
 

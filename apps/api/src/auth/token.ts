@@ -110,14 +110,19 @@ export function validateExtUiToken(token: string): ExtUiTokenPayload | null {
   }
 }
 
+/**
+ * What a plugin embed token may call: its own `/api/ext/<id>/…`, the member's basic profile, the
+ * member directory for owner pickers, and the drive folder/file routes, where drive access then
+ * admits only the scopes this plugin declared (routes/drive.ts `accessFor`). Drive search and the
+ * cabinet selector stay out of reach.
+ */
 export function extUiPathAllowed(plugin: string, method: string, path: string): boolean {
-  if (path === '/api/me') return method === 'GET';
   // Refuse encoded separators/traversal rather than relying on a router's decoding order.
-  return (
-    path.startsWith(`/api/ext/${plugin}/`) &&
-    !/[%\\\\]/.test(path) &&
-    !path.split('/').some((s) => s === '.' || s === '..')
-  );
+  if (/[%\\\\]/.test(path) || path.split('/').some((s) => s === '.' || s === '..')) return false;
+  if (path === '/api/me' || path === '/api/people') return method === 'GET';
+  if (path === '/api/people/resolve') return method === 'POST';
+  if (/^\/api\/drive\/(folders|files|breadcrumb)(\/|$)/.test(path)) return true;
+  return path.startsWith(`/api/ext/${plugin}/`);
 }
 
 // ─── Access Token ────────────────────────────────────────

@@ -116,7 +116,7 @@ for (const ext of EXTENSIONS) {
   if (ext.mcpGroups?.length) registerMcpResourceGroups(ext.mcpGroups);
   if (ext.entityKinds?.length) registerEntityKinds(ext.entityKinds);
   if (ext.searchSources?.length) registerSearchSources(ext.searchSources);
-  if (ext.driveScopes?.length) registerDriveScopes(ext.driveScopes);
+  if (ext.driveScopes?.length) registerDriveScopes(ext.driveScopes, ext.id);
   if (ext.exportSources?.length) registerExportSources(ext.exportSources);
 }
 

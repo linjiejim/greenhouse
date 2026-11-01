@@ -56,10 +56,18 @@ export interface DriveScopeDef {
 }
 
 const extensionScopes = new Map<string, DriveScopeDef>();
+/** scope → the plugin that declared it; a plugin embed may reach only its own scopes. */
+const scopeOwners = new Map<string, string>();
 
-export function registerDriveScopes(defs: readonly DriveScopeDef[]): void {
+/** The plugin that declared a drive scope, if any. */
+export function driveScopeOwner(scope: string): string | undefined {
+  return scopeOwners.get(scope);
+}
+
+export function registerDriveScopes(defs: readonly DriveScopeDef[], owner?: string): void {
   for (const def of defs) {
     if (extensionScopes.has(def.scope)) throw new Error(`Drive scope "${def.scope}" is already registered`);
+    if (owner) scopeOwners.set(def.scope, owner);
     if (def.cabinet && [...extensionScopes.values()].some((scope) => scope.cabinet))
       throw new Error('Only one plugin file cabinet may be selected');
     extensionScopes.set(def.scope, def);
@@ -80,6 +88,7 @@ export function extensionDriveScopes(): readonly DriveScopeDef[] {
 /** Test hook — forget scopes registered by a suite. */
 export function _resetExtensionDriveScopes(): void {
   extensionScopes.clear();
+  scopeOwners.clear();
 }
 
 /**

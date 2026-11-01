@@ -21,6 +21,10 @@ const app = new Hono<AppEnv>()
   .route('/api/ext-ui', extUiRoutes)
   .route('/api/me', meRoutes)
   .all('/api/ext/:plugin/*', (c) => c.json({ user: c.get('user') }))
+  .all('/api/people/*', (c) => c.json({ embed: c.get('embedPlugin') }))
+  .all('/api/people', (c) => c.json({ embed: c.get('embedPlugin') }))
+  .all('/api/drive/*', (c) => c.json({ embed: c.get('embedPlugin') }))
+  .all('/api/sessions/*', (c) => c.json({ escaped: true }))
   .all('/api/admin/users', (c) => c.json({ escaped: true }));
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' });
 beforeEach(() => {
@@ -113,4 +117,29 @@ it('refuses unknown or inaccessible plugins and malformed input at issuance', as
   expect(
     (await app.request('/api/ext-ui/token', { method: 'POST', headers, body: '{"plugin":"example"}' })).status,
   ).toBe(403);
+});
+
+it('reaches the member directory and the drive folder/file routes, naming its plugin for drive access', async () => {
+  const headers = bearer(token().token);
+  for (const [path, method] of [
+    ['/api/people', 'GET'],
+    ['/api/people/resolve', 'POST'],
+    ['/api/drive/folders?scope=example-note&owner_key=1', 'GET'],
+    ['/api/drive/files/abc/content', 'GET'],
+    ['/api/drive/files/init', 'POST'],
+    ['/api/drive/breadcrumb?folder_id=1', 'GET'],
+  ]) {
+    const response = await app.request(path, { headers, method });
+    expect(response.status, `${method} ${path}`).toBe(200);
+    expect(await response.json()).toEqual({ embed: 'example' });
+  }
+  for (const [path, method] of [
+    ['/api/people', 'POST'],
+    ['/api/people/resolve', 'GET'],
+    ['/api/drive/search?q=plan', 'GET'],
+    ['/api/drive/cabinet', 'GET'],
+    ['/api/drive/files/%2e%2e/x', 'GET'],
+    ['/api/sessions/shareable-users', 'GET'],
+  ])
+    expect((await app.request(path, { headers, method })).status, `${method} ${path}`).toBe(403);
 });

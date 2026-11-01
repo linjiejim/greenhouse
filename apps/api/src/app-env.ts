@@ -16,6 +16,8 @@ export type AppEnv = {
     extensionUi?: boolean;
     /** Set by authMiddleware for authenticated requests. */
     user: AuthUser;
+    /** Set by authMiddleware when the request carries a plugin embed token: that plugin's id. */
+    embedPlugin?: string;
     /** Set by Agent/MCP credential middleware. */
     agentIdentity: AgentIdentity;
     /** Set by the OAuth-only MCP credential middleware. */
