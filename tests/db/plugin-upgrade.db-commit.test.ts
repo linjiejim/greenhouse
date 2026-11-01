@@ -4,8 +4,9 @@
  */
 import { it, expect } from 'vitest';
 import { randomBytes, createHash } from 'node:crypto';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { officialPluginIds } from '../helpers/official-plugins.js';
 import { applyAllMigrations } from '@greenhouse/db';
 import {
   TEST_DATABASE_URL,
@@ -22,7 +23,7 @@ it('upgrades populated 3.0 tables without data loss, including disable/re-enable
     // What a 3.0.2 install has: the archived 3.x chain through 0002.
     await buildV3Database(url);
     await queryRows(url, readFileSync(join(root, 'tests/fixtures/plugin-upgrade-v3.sql'), 'utf8'));
-    const sources = readdirSync(join(root, 'plugins')).flatMap((id) => {
+    const sources = officialPluginIds(root).flatMap((id) => {
       const dir = join(root, 'plugins', id, 'migrations');
       return existsSync(join(dir, '0001_adopt.sql')) ? [{ extensionId: id, dir }] : [];
     });
