@@ -21,10 +21,11 @@ let user: Awaited<ReturnType<typeof createInternalTestUser>>;
 /** Owner "7" is the caller's; everything else is somebody else's. */
 const OWNED = '7';
 
-function app() {
+function app(embedPlugin?: string) {
   return new Hono<AppEnv>()
     .use('*', async (c, next) => {
       c.set('user', { id: user.id, role: 'team', email: user.email, name: 'Test' } as never);
+      if (embedPlugin) c.set('embedPlugin', embedPlugin);
       await next();
     })
     .route('/api/drive', drive);
@@ -34,12 +35,15 @@ beforeEach(async () => {
   db = await initDatabase({ type: 'pg', pgConnectionString: TEST_DATABASE_URL });
   user = await createInternalTestUser(db, { email: `drive-scope-${Date.now()}@test.local`, role: 'team' });
   _resetExtensionDriveScopes();
-  registerDriveScopes([
-    {
-      scope: 'probe-scope',
-      authorize: async (ownerKey): Promise<DriveAccess> => (ownerKey === OWNED ? 'editor' : null),
-    },
-  ]);
+  registerDriveScopes(
+    [
+      {
+        scope: 'probe-scope',
+        authorize: async (ownerKey): Promise<DriveAccess> => (ownerKey === OWNED ? 'editor' : null),
+      },
+    ],
+    'probe',
+  );
 });
 
 afterEach(async () => {
@@ -81,5 +85,21 @@ describe('extension drive scope', () => {
     // `scope=probe-scope&visibility=team` must not fall back to the kb lane.
     const res = await app().request('/api/drive/folders?scope=probe-scope&visibility=team');
     expect(res.status).toBe(400);
+  });
+
+  it("lets a plugin embed reach only its own plugin's scopes", async () => {
+    registerDriveScopes([{ scope: 'other-scope', authorize: async (): Promise<DriveAccess> => 'editor' }], 'other');
+    const create = (embed: string, scope: string, extra: Record<string, string>) =>
+      app(embed).request('/api/drive/folders', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ scope, name: 'From the embed', ...extra }),
+      });
+    expect((await create('probe', 'probe-scope', { owner_key: OWNED })).status).toBe(200);
+    expect((await create('other', 'probe-scope', { owner_key: OWNED })).status).toBe(403);
+    expect((await create('probe', 'other-scope', { owner_key: OWNED })).status).toBe(403);
+    expect((await create('other', 'other-scope', { owner_key: OWNED })).status).toBe(200);
+    expect((await app('probe').request(`/api/drive/folders?scope=probe-scope&owner_key=${OWNED}`)).status).toBe(200);
+    expect((await app('probe').request(`/api/drive/folders?scope=other-scope&owner_key=${OWNED}`)).status).toBe(403);
   });
 });

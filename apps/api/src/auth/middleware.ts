@@ -146,6 +146,7 @@ export async function authMiddleware(c: Context, next: Next) {
       id: user.id,
       role: user.role,
     } as AuthUser);
+    if (embed) c.set('embedPlugin', embed.plugin);
     return next();
   }
 

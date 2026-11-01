@@ -337,7 +337,10 @@ time out after 15 seconds.
 
 `POST /api/ext-ui/token {plugin}` requires the full host session and issues a ten-minute
 credential bound to member, auth generation and plugin. It admits only that plugin's
-`/api/ext/<id>/*` routes and basic `GET /api/me` (id/name/role). Every request still checks
+`/api/ext/<id>/*` routes, basic `GET /api/me` (id/name/role), the member directory
+(`GET /api/people`, `POST /api/people/resolve`: ids and names) and the `/api/drive` folder/file
+routes, where drive access admits only the scopes this plugin declared in `driveScopes` (drive
+search and the cabinet selector stay closed). Every request still checks
 account/plugin visibility and route permissions. It cannot mint renewal tokens or call unrelated
 core APIs. Do not inject full login tokens, store narrow tokens or put credentials in URLs.
 

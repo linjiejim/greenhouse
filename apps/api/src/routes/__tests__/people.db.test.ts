@@ -1,5 +1,5 @@
 /**
- * Member names for plugin record fields (`POST /api/people/resolve`).
+ * Member names for plugin record fields (`POST /api/people/resolve`) and owner pickers (`GET /api/people`).
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -59,5 +59,22 @@ describe('people resolve', () => {
     expect((await server.request('/api/people/resolve', resolve({ ids: 'x' }))).status).toBe(400);
     const many = Array.from({ length: MAX_RESOLVE_PEOPLE + 1 }, (_, i) => `usr_${i}`);
     expect((await server.request('/api/people/resolve', resolve({ ids: many }))).status).toBe(400);
+  });
+
+  it('lists active internal members by name for owner pickers, without emails or roles', async () => {
+    const gone = await createInternalTestUser(db, {
+      email: `gone_${randomBytes(4).toString('hex')}@example.test`,
+      nickname: 'Gone',
+    });
+    await db.users.update(gone.id, { status: 'disabled' });
+    const res = await app(ada).request('/api/people');
+    expect(res.status).toBe(200);
+    const { people } = (await res.json()) as { people: { id: string; name: string }[] };
+    expect(people).toContainEqual({ id: ada.id, name: 'Ada' });
+    expect(people).toContainEqual({ id: bo.id, name: 'Bo' });
+    expect(people.some((p) => p.id === gone.id)).toBe(false);
+    expect(Object.keys(people[0]!).sort()).toEqual(['id', 'name']);
+    const names = people.map((p) => p.name);
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
   });
 });
