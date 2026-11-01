@@ -197,9 +197,9 @@
           "jsonpath": "$.package[?(@.name.value == 'greenhouse-desktop')].version"
         }
       ],
-      "prerelease-type": "rc"
+      "release-as": "4.0.0"
     }
   },
   "versioning": "prerelease",
-  "prerelease": true
+  "prerelease": false
 }
