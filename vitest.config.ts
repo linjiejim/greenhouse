@@ -96,6 +96,8 @@ export default defineConfig({
       '**/node_modules/**',
       '**/.claude/**',
       'skillhub/**',
+      // A plugin's own frontend project tests itself with its own dependencies.
+      'plugins/*/ui-src/**',
       ...pluginTestExcludes,
       '.cargo-home/**',
       '**/target/**',

@@ -21,6 +21,9 @@ export default tseslint.config(
       // or passes depending on whether the mobile app happens to be installed —
       // the same reason .prettierignore and tsconfig exclude it.
       'apps/client/',
+      // A plugin's own frontend project (plugins/<id>/ui-src) has its own package.json,
+      // lockfile and lint; its ui:build compiles it into ui/dist.
+      'plugins/*/ui-src/',
       '*.config.ts',
       '*.config.js',
       '**/*.mjs',
