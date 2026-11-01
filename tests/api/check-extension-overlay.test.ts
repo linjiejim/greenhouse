@@ -37,22 +37,46 @@ describe('check-extension-overlay glob matching', () => {
 
 describe('check-extension-overlay lockfile rule', () => {
   const script = join(import.meta.dirname, '..', '..', 'scripts', 'check-extension-overlay.mjs');
-  const lock = (importers: Record<string, unknown>) =>
-    `lockfileVersion: '9.0'\nsettings:\n  autoInstallPeers: true\nimporters:\n${Object.entries(importers)
-      .map(([key, value]) => `  ${key}:\n    dependencies: ${JSON.stringify(value)}`)
-      .join('\n')}\npackages: {}\n`;
-  function run(change: Record<string, unknown>): number {
+  type Lock = { importers: Record<string, Record<string, string>>; snapshots: Record<string, Record<string, string>> };
+  const BASE: Lock = {
+    importers: { '.': { hono: '4.0.0' }, 'apps/api': { zod: '4.0.0' } },
+    snapshots: { 'hono@4.0.0': {}, 'zod@4.0.0': { tslib: '2.0.0' }, 'tslib@2.0.0': {} },
+  };
+  const yaml = (lock: Lock) =>
+    [
+      "lockfileVersion: '9.0'",
+      'settings:',
+      '  autoInstallPeers: true',
+      'importers:',
+      ...Object.entries(lock.importers).flatMap(([key, deps]) => [
+        `  ${key}:`,
+        '    dependencies:',
+        ...Object.entries(deps).map(
+          ([name, version]) => `      ${name}: { specifier: '^${version}', version: ${version} }`,
+        ),
+      ]),
+      'packages: {}',
+      'snapshots:',
+      ...Object.entries(lock.snapshots).flatMap(([key, deps]) =>
+        Object.keys(deps).length
+          ? [`  '${key}':`, '    dependencies:', ...Object.entries(deps).map(([n, v]) => `      ${n}: ${v}`)]
+          : [`  '${key}': {}`],
+      ),
+      '',
+    ].join('\n');
+  function run(fork: Lock, uncommitted?: Lock): number {
     const dir = mkdtempSync(join(tmpdir(), 'overlay-lock-'));
     const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, stdio: 'pipe' });
     git('init', '-q', '-b', 'upstream');
     git('config', 'user.email', 't@test.local');
     git('config', 'user.name', 'T');
-    writeFileSync(join(dir, 'pnpm-lock.yaml'), lock({ '.': { a: 1 }, 'apps/api': { b: 1 } }));
+    writeFileSync(join(dir, 'pnpm-lock.yaml'), yaml(BASE));
     git('add', '.');
     git('commit', '-qm', 'upstream');
     git('checkout', '-qb', 'fork');
-    writeFileSync(join(dir, 'pnpm-lock.yaml'), lock({ '.': { a: 1 }, 'apps/api': { b: 1 }, ...change }));
+    writeFileSync(join(dir, 'pnpm-lock.yaml'), yaml(fork));
     git('commit', '-qam', 'fork');
+    if (uncommitted) writeFileSync(join(dir, 'pnpm-lock.yaml'), yaml(uncommitted));
     try {
       execFileSync('node', [script, '--base', 'upstream'], { cwd: dir, stdio: 'pipe' });
       return 0;
@@ -62,12 +86,25 @@ describe('check-extension-overlay lockfile rule', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }
+  const withPlugin: Lock = {
+    importers: { ...BASE.importers, 'plugins/crm': { react: '19.0.0' } },
+    snapshots: { ...BASE.snapshots, 'react@19.0.0': {} },
+  };
 
-  it('accepts a lockfile that only adds a private plugin importer', () => {
-    expect(run({ 'plugins/crm': { c: 1 } })).toBe(0);
+  it('accepts a lockfile that only adds a private plugin importer and its packages', () => {
+    expect(run(withPlugin)).toBe(0);
   });
 
   it('rejects a lockfile that changes a core importer', () => {
-    expect(run({ 'apps/api': { b: 2 } })).toBe(1);
+    expect(run({ ...BASE, importers: { ...BASE.importers, 'apps/api': { zod: '4.1.0' } } })).toBe(1);
+  });
+
+  it('rejects a lockfile that changes a package core installs, however deep', () => {
+    expect(run({ ...withPlugin, snapshots: { ...withPlugin.snapshots, 'zod@4.0.0': { tslib: '2.9.9' } } })).toBe(1);
+  });
+
+  it('audits the committed lockfile, not the working tree', () => {
+    const bad = { ...BASE, importers: { ...BASE.importers, 'apps/api': { zod: '4.1.0' } } };
+    expect(run(bad, BASE)).toBe(1);
   });
 });
