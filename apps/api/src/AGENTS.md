@@ -89,7 +89,7 @@
 - Images via `fetchPublicImage()` (`security/network.ts`): public HTTPS, connect-time DNS check, per-hop redirect check, size cap, magic bytes.
 - Pages via `fetchPublicPage()`: http(s), no credentials or non-public literals, connect-time DNS check, manual per-hop redirects, streamed truncation; `assertSafePublicPageUrl()` prechecks without fetching.
 - With an undici `dispatcher`, import `fetch` from the same `undici` package (Node's built-in fetch rejects it as an opaque `fetch failed`); tests mock undici's `fetch` or `fetchPublicImage`.
-- CSP `connect-src` allows `https://*.myqcloud.com` because authenticated downloads 302 to presigned URLs (`security/headers.test.ts`; the Expo dev server sends no CSP, so only a deployed API reproduces it).
+- CSP `connect-src` allows `blob:` and `data:` because web uploads fetch() the file picker's URI, and `https://*.myqcloud.com` because authenticated downloads 302 to presigned URLs (`security/headers.test.ts`; the Expo dev server sends no CSP, so only a deployed API reproduces it).
 
 ## Uploads and storage
 
