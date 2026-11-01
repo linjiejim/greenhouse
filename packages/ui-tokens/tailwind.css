@@ -1,0 +1,88 @@
+/*
+ * Tailwind v4 theme for plugin embeds: the semantic colour names the 3.x web app used
+ * (bg-surface, text-fg-muted, border-edge, bg-accent, text-cat-blue …) mapped onto the --gh-*
+ * tokens the host sends to an embed. Import it after Tailwind:
+ *
+ *   @import "tailwindcss";
+ *   @import "@greenhouse/ui-tokens/tailwind.css";
+ *
+ * Every colour follows the host's theme, brand and light/dark switch at run time.
+ */
+@theme inline {
+  --color-surface-canvas: var(--gh-background);
+  --color-surface-chrome: var(--gh-sidebar-background);
+  --color-surface: var(--gh-tertiary-background);
+  --color-surface-card: var(--gh-secondary-grouped-background);
+  --color-surface-raised: var(--gh-tertiary-background);
+  --color-surface-muted: var(--gh-secondary-background);
+  --color-surface-sunken: var(--gh-secondary-fill);
+
+  --color-fg: var(--gh-label);
+  --color-fg-secondary: var(--gh-secondary-label);
+  --color-fg-muted: var(--gh-tertiary-label);
+  --color-fg-faint: var(--gh-quaternary-label);
+
+  --color-edge: var(--gh-separator);
+  --color-edge-strong: var(--gh-opaque-separator);
+  --color-logo-safe: #ffffff;
+
+  --color-primary-50: color-mix(in srgb, var(--gh-accent) 6%, var(--gh-background));
+  --color-primary-100: color-mix(in srgb, var(--gh-accent) 12%, var(--gh-background));
+  --color-primary-200: color-mix(in srgb, var(--gh-accent) 24%, var(--gh-background));
+  --color-primary-300: color-mix(in srgb, var(--gh-accent) 40%, var(--gh-background));
+  --color-primary-400: color-mix(in srgb, var(--gh-accent) 65%, var(--gh-background));
+  --color-primary-500: var(--gh-accent);
+  --color-primary-600: var(--gh-accent);
+  --color-primary-700: color-mix(in srgb, var(--gh-accent) 85%, var(--gh-label));
+  --color-primary-800: color-mix(in srgb, var(--gh-accent) 70%, var(--gh-label));
+  --color-primary-900: color-mix(in srgb, var(--gh-accent) 55%, var(--gh-label));
+
+  --color-success: var(--gh-green);
+  --color-success-subtle: var(--gh-green-fill);
+  --color-success-fg: var(--gh-green);
+  --color-warning: var(--gh-orange);
+  --color-warning-subtle: var(--gh-orange-fill);
+  --color-warning-fg: var(--gh-orange);
+  --color-danger: var(--gh-red);
+  --color-danger-subtle: var(--gh-red-fill);
+  --color-danger-fg: var(--gh-red);
+  --color-info: var(--gh-blue);
+  --color-info-subtle: var(--gh-blue-fill);
+  --color-info-fg: var(--gh-blue);
+
+  --color-destructive: var(--gh-red);
+  --color-destructive-hover: color-mix(in srgb, var(--gh-red) 85%, var(--gh-label));
+  --color-on-destructive: var(--gh-on-tint);
+  --color-star: var(--gh-yellow);
+  --color-star-hover: color-mix(in srgb, var(--gh-yellow) 85%, var(--gh-label));
+
+  --color-primary-subtle: var(--gh-accent-fill);
+  --color-primary-subtle-hover: color-mix(in srgb, var(--gh-accent-fill) 85%, var(--gh-accent));
+  --color-primary-edge: color-mix(in srgb, var(--gh-accent) 35%, transparent);
+  --color-primary-fg: var(--gh-accent-text);
+  --color-primary-fg-strong: var(--gh-accent);
+
+  --color-accent: var(--gh-accent);
+  --color-accent-hover: color-mix(in srgb, var(--gh-accent) 88%, var(--gh-label));
+  --color-accent-pressed: color-mix(in srgb, var(--gh-accent) 78%, var(--gh-label));
+  --color-on-accent: var(--gh-on-accent);
+
+  --color-cat-gray: var(--gh-cat-gray);
+  --color-cat-gray-fill: var(--gh-cat-gray-fill);
+  --color-cat-red: var(--gh-cat-red);
+  --color-cat-red-fill: var(--gh-cat-red-fill);
+  --color-cat-orange: var(--gh-cat-orange);
+  --color-cat-orange-fill: var(--gh-cat-orange-fill);
+  --color-cat-amber: var(--gh-cat-amber);
+  --color-cat-amber-fill: var(--gh-cat-amber-fill);
+  --color-cat-green: var(--gh-cat-green);
+  --color-cat-green-fill: var(--gh-cat-green-fill);
+  --color-cat-teal: var(--gh-cat-teal);
+  --color-cat-teal-fill: var(--gh-cat-teal-fill);
+  --color-cat-blue: var(--gh-cat-blue);
+  --color-cat-blue-fill: var(--gh-cat-blue-fill);
+  --color-cat-purple: var(--gh-cat-purple);
+  --color-cat-purple-fill: var(--gh-cat-purple-fill);
+  --color-cat-pink: var(--gh-cat-pink);
+  --color-cat-pink-fill: var(--gh-cat-pink-fill);
+}

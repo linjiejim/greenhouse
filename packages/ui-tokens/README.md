@@ -30,4 +30,5 @@ The default parent origin is the page's own origin. An installed desktop plugin
 must explicitly allowlist the `host_origin=tauri://localhost` hint before passing
 that exact value as `hostOrigin`. Never trust arbitrary query-string origins.
 See plugins/example/ui and plugins/example/scripts/build-ui.mjs for a dependency-free
-ES module build using this package.
+ES module build using this package. A bundled embed can `@import "@greenhouse/ui-tokens/tailwind.css"`
+after Tailwind for the 3.x semantic colour names on the --gh-* tokens.

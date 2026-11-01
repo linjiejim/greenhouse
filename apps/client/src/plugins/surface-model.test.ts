@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  embedTokens,
   entityQuery,
   entityColumns,
   fieldText,
@@ -148,5 +149,16 @@ describe('parseInstant', () => {
     expect(parseInstant('2026-10-27T08:35:36.5+0530')).toBe(Date.parse('2026-10-27T03:05:36.500Z'));
     expect(parseInstant('2026-10-27T08:35:36Z')).toBe(Date.parse('2026-10-27T08:35:36Z'));
     expect(Number.isNaN(parseInstant('yesterday'))).toBe(true);
+  });
+});
+
+describe('embedTokens', () => {
+  it('sends the palette and the category pairs for the current appearance', () => {
+    const light = embedTokens({ accent: '#235D4D', secondaryLabel: '#424944' }, false);
+    expect(light['--gh-accent']).toBe('#235D4D');
+    expect(light['--gh-secondary-label']).toBe('#424944');
+    expect(light['--gh-cat-blue']).toMatch(/^#/);
+    expect(light['--gh-cat-blue-fill']).toMatch(/^#/);
+    expect(embedTokens({}, true)['--gh-cat-blue']).not.toBe(light['--gh-cat-blue']);
   });
 });

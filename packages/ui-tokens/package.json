@@ -3,7 +3,8 @@
   "version": "4.0.1",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./tailwind.css": "./tailwind.css"
   },
   "dependencies": {
     "@greenhouse/types": "workspace:*"

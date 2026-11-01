@@ -310,6 +310,10 @@ refused. Static assets are public and must contain no secrets or member data.
 
 `@greenhouse/ui-tokens` exports token names, generated light/dark values, brand resolution and
 `connectGreenhouse`. Its source of truth is `packages/ui/src/tokens`; run `pnpm tokens:build`.
+An embed receives every palette colour as `--gh-*` plus the category pairs (`--gh-cat-<name>`,
+`--gh-cat-<name>-fill`). `@greenhouse/ui-tokens/tailwind.css` is a Tailwind v4 theme mapping the
+3.x semantic names (`bg-surface`, `text-fg-muted`, `border-edge`, `bg-accent`, `text-cat-blue` …)
+onto them, so a ported React UI keeps its class names and follows the host's theme.
 The client constructs its own payload without importing the workspace package.
 
 ```ts

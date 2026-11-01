@@ -12,7 +12,7 @@ import { Screen } from '../ui/screen';
 import { WebFrame } from '../ui/web-frame';
 import { EmptyState } from '../ui/empty';
 import { useOpenHref, useStartChat } from '../shell/open-object';
-import { embedMessage, embedUrl, normalizeNavigate } from './surface-model';
+import { embedMessage, embedTokens, embedUrl, normalizeNavigate } from './surface-model';
 import { EMBED_PROTOCOL, type PluginEmbedPage } from '../shared/plugins';
 export function EmbedScreen({ plugin, page, title }: { plugin: string; page: PluginEmbedPage; title: string }) {
   const { hex, isDark } = useTheme(),
@@ -27,16 +27,7 @@ export function EmbedScreen({ plugin, page, title }: { plugin: string; page: Plu
   const [frameTitle, setFrameTitle] = useState(title),
     [outgoing, setOutgoing] = useState<Record<string, unknown> | null>(null),
     [error, setError] = useState('');
-  const tokens = useMemo(
-    () =>
-      Object.fromEntries(
-        Object.entries(hex).map(([key, value]) => [
-          `--gh-${key.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())}`,
-          value,
-        ]),
-      ),
-    [hex],
-  );
+  const tokens = useMemo(() => embedTokens(hex, isDark), [hex, isDark]);
   // Keep iframe URL stable across theme changes; bridge updates preserve plugin state.
   const [initial] = useState({ theme, locale });
   const url = embedUrl(page.url, getApiBase(), initial.theme, initial.locale);

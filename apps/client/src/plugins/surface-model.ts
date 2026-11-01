@@ -1,5 +1,6 @@
 /** React-free declarative surface protocol. Never trust framed page messages or URLs. */
 import type { EntityFieldSchema, EntityViewSchema, PluginEntitySchema } from '../shared/plugins';
+import { categorical } from '../theme/palette';
 export type EntityRow = Record<string, unknown> & { id: string };
 export function entityQuery(
   entity: PluginEntitySchema,
@@ -189,4 +190,19 @@ export function normalizeNavigate(href: string, base: string): string | null {
 }
 export function safeNavigate(href: string, base = 'https://station.invalid'): boolean {
   return normalizeNavigate(href, base) !== null;
+}
+
+/**
+ * The CSS variables an embed receives: every palette colour as `--gh-<kebab-name>`, plus the
+ * category pairs (`--gh-cat-<name>` text on `--gh-cat-<name>-fill`) for tags and select options.
+ */
+export function embedTokens(hex: Record<string, string>, isDark: boolean): Record<string, string> {
+  const tokens: Record<string, string> = {};
+  for (const [key, value] of Object.entries(hex))
+    tokens[`--gh-${key.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())}`] = value;
+  for (const [name, pair] of Object.entries(categorical[isDark ? 'dark' : 'light'])) {
+    tokens[`--gh-cat-${name}`] = pair.fg;
+    tokens[`--gh-cat-${name}-fill`] = pair.fill;
+  }
+  return tokens;
 }
