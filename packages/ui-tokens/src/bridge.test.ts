@@ -79,3 +79,13 @@ it('accepts native WebView injection only in a top-level native bridge', () => {
     delete native.ReactNativeWebView;
   }
 });
+it('paints in the theme the frame URL names before init arrives', () => {
+  vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
+  window.history.replaceState(null, '', '/?theme=dark&locale=zh');
+  const onTheme = vi.fn();
+  bridges.push(connectGreenhouse({ onTheme }));
+  expect(document.documentElement.dataset.theme).toBe('dark');
+  expect(document.documentElement.style.colorScheme).toBe('dark');
+  expect(onTheme).toHaveBeenCalledWith('dark');
+  window.history.replaceState(null, '', '/');
+});

@@ -33,23 +33,21 @@ export function AccountMenu() {
       fill
       title={`${user.nickname} · ${user.email}`}
       items={[
-        { id: 'account', title: t('client.account'), icon: 'person' },
+        { id: 'settings', title: t('nav.settings'), icon: 'gear', shortcut: '⌘ ,' },
+        ...(user.role === 'super' ? [{ id: 'admin', title: t('admin.title'), icon: 'shieldCheck' as const }] : []),
         {
           id: 'station',
           title: `${t('client.station')} · ${new URL(getApiBase()).host}`,
           icon: 'server',
           disabled: IS_SINGLE_STATION,
         },
-        { id: 'text', title: t('client.textSize'), icon: 'textSize' },
-        { id: 'agents', title: t('client.agents'), icon: 'sparkle' },
-        { id: 'settings', title: t('nav.settings'), icon: 'gear', shortcut: '⌘ ,' },
         { id: 'logout', title: t('client.signOut'), icon: 'logout', destructive: true },
       ]}
       onSelect={(id) => {
         if (id === 'settings') openSettings(() => router.push('/me'));
+        else if (id === 'admin') router.navigate('/admin' as never);
         else if (id === 'station') openStationSettings(() => router.push('/me/stations'));
         else if (id === 'logout') void useAuth.getState().logout();
-        else router.push(id === 'agents' ? '/me/agents' : ({ pathname: '/me', params: { section: id } } as never));
       }}
     >
       <button

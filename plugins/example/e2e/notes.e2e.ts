@@ -18,5 +18,8 @@ test('Example embed: the bridge hands over the member, and the embed token reads
   await openHosted(page, '/p/example/example-embed');
   const frame = page.frameLocator('iframe');
   await expect(frame.locator('#status')).toContainText('Hello, Jim');
+  // the frame is hidden only until its document loads (no white flash on a dark host)
+  await expect(page.locator('iframe')).toBeVisible();
+  await expect(frame.locator('html')).toHaveAttribute('data-theme', 'light');
   await expect(frame.locator('#colleagues')).toContainText(/\d+ people on this station/);
 });

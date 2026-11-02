@@ -196,7 +196,10 @@ test('P3 the secondary column follows the rail from place to place', async ({ pa
     ['admin', '管理后台'],
     ['knowledge', '知识库'],
   ]) {
-    await page.getByTestId(`rail-${place}`).click();
+    if (place === 'admin') {
+      await page.getByTestId('rail-me').click();
+      await page.getByRole('menuitem', { name: title, exact: true }).click();
+    } else await page.getByTestId(`rail-${place}`).click();
     await expect(headings).toHaveText([title]);
   }
 });

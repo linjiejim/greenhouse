@@ -139,13 +139,23 @@ test('P2 search and commands, notifications, account and row context menus', asy
   await dialog.getByRole('button', { name: /好|确定|保存/ }).click();
   await expect(row).toHaveText(/政策问答/);
   await page.getByTestId('rail-me').click();
-  for (const name of ['账号', '文字大小', '我的 Agents', '退出登录'])
-    await expect(page.getByRole('menuitem', { name, exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /^设置/ })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: '退出登录', exact: true })).toBeVisible();
+  // account, text size and My Agents live in Settings, not in this menu
+  for (const name of ['账号', '文字大小', '我的 Agents'])
+    await expect(page.getByRole('menuitem', { name, exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await page.keyboard.press('Meta+,');
-  await expect(page.getByTestId('settings-overlay')).toBeVisible();
+  const settings = page.getByTestId('settings-overlay');
+  await expect(settings).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.getByTestId('settings-overlay')).toHaveCount(0);
+  await expect(settings).toHaveCount(0);
+  // close leaves the whole window, however many of its tabs were visited
+  await page.keyboard.press('Meta+,');
+  await settings.getByRole('button', { name: '账号', exact: true }).click();
+  await settings.getByRole('button', { name: '我的 Agents', exact: true }).click();
+  await settings.getByRole('button', { name: '关闭', exact: true }).first().click();
+  await expect(settings).toHaveCount(0);
   await page.keyboard.press('Meta+n');
   await expect(page).toHaveURL(/\/$/);
 });

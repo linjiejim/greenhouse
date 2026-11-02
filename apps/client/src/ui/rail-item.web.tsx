@@ -49,10 +49,23 @@ export function RailItem({
         backgroundColor: lit ? c.sidebarSelection : pressed || hovered ? c.fill : 'transparent',
       })}
     >
-      <Icon name={icon} size={21} color={tint} />
-      <Text numberOfLines={1} style={{ ...LABEL, fontFamily: typo.caption1.fontFamily, maxWidth: width - 10, color: tint }}>
-        {label}
-      </Text>
+      {({ hovered }: { pressed: boolean; hovered?: boolean }) => (
+        <>
+          <Icon name={icon} size={21} color={lit ? tint : hovered ? c.label : tint} />
+          {/* labels stay quiet so the rail reads as icons; hover brings one forward */}
+          <Text
+            numberOfLines={1}
+            style={{
+              ...LABEL,
+              fontFamily: typo.caption1.fontFamily,
+              maxWidth: width - 10,
+              color: lit ? tint : hovered ? c.label : c.tertiaryLabel,
+            }}
+          >
+            {label}
+          </Text>
+        </>
+      )}
     </Pressable>
   );
 }
