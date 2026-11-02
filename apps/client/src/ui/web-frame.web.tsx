@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import type { FrameBridge } from './frame-bridge';
 import type { WebViewProps } from 'react-native-webview';
@@ -36,6 +36,9 @@ export function WebFrame({
     url.searchParams.set('host_origin', 'tauri://localhost');
     return url.href;
   }, [source, bridge]);
+  // A plugin page stays hidden until its document has loaded: before its styles and the bridge's
+  // theme apply, a frame paints the browser's white canvas, a flash on a dark host.
+  const [loadedSrc, setLoadedSrc] = useState<string | undefined>();
   const html = source && 'html' in source ? source.html : undefined;
   const srcDoc = useMemo(() => {
     if (html === undefined) return undefined;
@@ -49,7 +52,10 @@ export function WebFrame({
       ref={frame}
       title={bridge?.title ?? 'Greenhouse preview'}
       sandbox={bridge ? 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads' : 'allow-scripts allow-downloads'}
-      onLoad={bridge?.onLoad}
+      onLoad={() => {
+        setLoadedSrc(frameSrc);
+        bridge?.onLoad?.();
+      }}
       referrerPolicy="no-referrer"
       srcDoc={srcDoc}
       src={frameSrc}
@@ -59,6 +65,7 @@ export function WebFrame({
         height: '100%',
         flex: 1,
         ...(StyleSheet.flatten(style) as React.CSSProperties),
+        ...(bridge && loadedSrc !== frameSrc ? { visibility: 'hidden' as const } : null),
       }}
     />
   );

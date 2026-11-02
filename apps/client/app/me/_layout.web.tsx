@@ -1,6 +1,6 @@
 import { closeSettings } from '../../src/desktop/chrome';
 import React from 'react';
-import { Stack, useRouter, usePathname } from 'expo-router';
+import { Stack, useNavigation, useRouter, usePathname } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
 import { useTheme } from '../../src/theme';
 import { pageScreen, stackDefaults } from '../../src/ui/nav';
@@ -17,7 +17,10 @@ export default function SettingsLayout() {
     router = useRouter(),
     path = usePathname(),
     user = useAuth((s) => s.user),
+    navigation = useNavigation(),
     { width } = useWindowDimensions();
+  // The settings window as a whole, like Esc and its backdrop: a tab switched to inside it is not a step back.
+  const close = () => closeSettings(() => (navigation.canGoBack() ? navigation.goBack() : router.replace('/')));
   // Personal settings only: every app (plugin page) has its own place in the rail.
   const items: { label: string; href: string; icon: IconName }[] = [
     { label: t('places.settings'), href: '/me', icon: 'gear' },
@@ -57,7 +60,7 @@ export default function SettingsLayout() {
         <button
           className="gh-settings-close"
           aria-label={t('common.close')}
-          onClick={() => closeSettings(() => router.dismiss())}
+          onClick={close}
         >
           <Icon name="x" size={20} />
         </button>

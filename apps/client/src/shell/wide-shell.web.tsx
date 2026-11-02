@@ -212,9 +212,6 @@ export function WideShell({ children }: { children: React.ReactNode }) {
                 />
               </ScrollView>
               <View style={{ gap: 2, paddingTop: space.sm, borderTopWidth: 1, borderTopColor: c.separator, marginHorizontal: 0 }}>
-                {admin
-                  ? rail(admin.id, admin.rail ?? admin.label, admin.icon, () => go(admin.href), active === 'admin')
-                  : null}
                 <View>
                   {rail('notifications', t('client.railActivity'), 'bell', () => {
                     setSearch(false);

@@ -78,6 +78,10 @@ export function connectGreenhouse(
     }
   };
   window.addEventListener('message', receive);
+  // The host names its theme in the frame URL: paint in it now, not after the token round trip
+  // behind init, or a dark host shows a light page first.
+  const initial = new URLSearchParams(window.location.search).get('theme');
+  if (initial === 'light' || initial === 'dark') apply(initial, {});
   send(EMBED_PROTOCOL.ready);
   return {
     get token() {

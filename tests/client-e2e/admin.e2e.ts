@@ -188,16 +188,20 @@ test('Admin is hidden from members, and the place says so', async ({ page }) => 
   await adminStation(page, { role: 'team' });
   await ready(page, '/');
   await expect(page.getByTestId('rail-knowledge')).toBeVisible();
-  await expect(page.getByTestId('rail-admin')).toHaveCount(0);
+  await page.getByTestId('rail-me').click();
+  await expect(page.getByRole('menuitem', { name: /^设置/ })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: '管理后台', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
   await ready(page, '/admin');
   await expect(page.getByText('仅限管理员')).toBeVisible();
   await expect(page.getByTestId('admin-sections')).toHaveCount(0);
 });
 
-test('Rail Admin opens the place; users list, role edit and the create dialog', async ({ page }) => {
+test('Admin opens from the account menu; users list, role edit and the create dialog', async ({ page }) => {
   const f = await adminStation(page);
   await ready(page, '/');
-  await page.getByTestId('rail-admin').click();
+  await page.getByTestId('rail-me').click();
+  await page.getByRole('menuitem', { name: '管理后台', exact: true }).click();
   await expect(page).toHaveURL(/\/admin$/);
   const sections = page.getByTestId('admin-sections');
   await expect(sections.getByRole('button', { name: '用户', exact: true })).toHaveAttribute('aria-current', 'page');
