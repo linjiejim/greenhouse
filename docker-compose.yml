@@ -15,6 +15,7 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    mem_limit: ${POSTGRES_MEM_LIMIT:-512m}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-greenhouse}
       POSTGRES_USER: ${POSTGRES_USER:-greenhouse}
@@ -45,6 +46,7 @@ services:
   api:
     build: .
     restart: unless-stopped
+    mem_limit: ${API_MEM_LIMIT:-1g}
     depends_on:
       postgres:
         condition: service_healthy
