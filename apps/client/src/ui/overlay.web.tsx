@@ -22,26 +22,23 @@ export type DialogSize = keyof typeof DIALOG_SIZES;
 const TABBABLE = 'button:not(:disabled),input,textarea,select,a[href],[tabindex="0"]';
 export const tabbablesIn = (root: HTMLElement | null) =>
   Array.from(root?.querySelectorAll<HTMLElement>(TABBABLE) ?? []).filter((node) => !node.closest('[inert]'));
-/** Keeps Tab and Shift+Tab inside a modal surface; returns whether it handled the key. */
+/** Notices float above every layer: a modal's Tab cycle includes their buttons (Retry, Details, Close). */
+const noticeTabbables = () => tabbablesIn(document.querySelector<HTMLElement>('.gh-notices'));
+/**
+ * Keeps Tab and Shift+Tab inside a modal surface and the notices floating above it (their portals sit
+ * anywhere in the DOM, so every step is moved explicitly); returns whether it handled the key.
+ */
 export function trapTabIn(root: HTMLElement | null, e: KeyboardEvent) {
   if (e.key !== 'Tab' || !root) return false;
-  const nodes = tabbablesIn(root);
-  const first = nodes[0];
-  const last = nodes.at(-1);
-  const inside = root.contains(document.activeElement);
-  if (!first) {
-    e.preventDefault();
+  const nodes = [...tabbablesIn(root), ...noticeTabbables()];
+  e.preventDefault();
+  if (!nodes.length) {
     root.focus();
-  } else if (!inside) {
-    e.preventDefault();
-    (e.shiftKey ? last : first)?.focus();
-  } else if (e.shiftKey && (document.activeElement === first || document.activeElement === root)) {
-    e.preventDefault();
-    last?.focus();
-  } else if (!e.shiftKey && document.activeElement === last) {
-    e.preventDefault();
-    first.focus();
+    return true;
   }
+  const at = nodes.indexOf(document.activeElement as HTMLElement);
+  const next = at === -1 ? (e.shiftKey ? nodes.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + nodes.length) % nodes.length;
+  nodes[next]?.focus();
   return true;
 }
 /**

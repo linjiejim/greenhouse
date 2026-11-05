@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { create } from 'zustand';
 import { Overlay } from './overlay.web';
-import { recordError } from '../feedback/last-error';
+import { notify } from './notify.web';
 import { translate } from '../lib/i18n';
 import { usePrefs } from '../store/prefs';
 type Options = {
@@ -36,9 +36,13 @@ export async function promptText(opts: Options): Promise<string | null> {
 }
 export const confirm = confirmAction;
 export const prompt = promptText;
+/**
+ * A failed action on the web: a notice that stays until dismissed (DESIGN.md States and feedback),
+ * the reason as its second line and the technical detail behind Details. Field and block errors
+ * stay where they happened instead.
+ */
 export function alertError(title: string, message?: string, detail?: string) {
-  recordError(title, message);
-  void ask('alert', { title, message, detail });
+  notify.error(title, { body: message || undefined, detail });
 }
 export function showErrorDetails(detail: string) {
   void ask('alert', { title: translate(usePrefs.getState().lang, 'common.details'), message: detail });
@@ -95,7 +99,7 @@ function Dialog({ request: r }: { request: Request }) {
             </button>
           ) : null}
           <button type="submit" className={r.destructive ? 'gh-primary gh-danger' : 'gh-primary'}>
-            {r.confirmLabel ?? translate(lang, 'common.ok')}
+            {r.confirmLabel ?? translate(lang, r.kind === 'alert' ? 'common.close' : 'common.ok')}
           </button>
         </footer>
       </form>

@@ -19,6 +19,7 @@ import { NativeMenu, menuSections } from '../../ui/menu';
 import { usePullRefresh } from '../../ui/refresh';
 import { Screen } from '../../ui/screen';
 import { toast } from '../../ui/toast';
+import { notify } from '../../ui/notify';
 import { NativeToggle } from '../../ui/toggle';
 import { FormField } from '../app-form';
 import { deleteMemory, listMemories, updateMemory } from './api';
@@ -45,12 +46,15 @@ export function MemoryScreen({ title }: { title: string }) {
   const [editing, setEditing] = useState<Memory | null>(null);
   const sections = useMemo(() => (list.data ? memorySections(list.data.memories) : null), [list.data]);
 
-  const change = async (memory: Memory, body: Parameters<typeof updateMemory>[1], done: string) => {
+  // A pin shows on the row itself: say nothing. An archive moves the row out of sight: say so,
+  // with Undo (it is reversible, so it never asks first).
+  const change = async (memory: Memory, body: Parameters<typeof updateMemory>[1], undo?: { text: string; back: typeof body }) => {
     const current = captureIdentity();
     const r = await updateMemory(memory.id, body);
     if (!current()) return;
     if (!r.ok) alertError(t('appPages.memory.saveFailed'), r.message);
-    else toast(done);
+    // Undo writes as the member who acted, on the station they acted on, or not at all.
+    else if (undo) notify.undo(undo.text, () => void (current() && change(memory, undo.back)));
     void list.refresh();
   };
   const remove = async (memory: Memory) => {
@@ -70,18 +74,18 @@ export function MemoryScreen({ title }: { title: string }) {
   };
   const act = (id: string, memory: Memory) => {
     if (id === 'edit') setEditing(memory);
-    if (id === 'pin')
-      void change(
-        memory,
-        { pinned: !memory.pinned },
-        t(memory.pinned ? 'appPages.memory.unpinnedDone' : 'appPages.memory.pinnedDone'),
-      );
+    if (id === 'pin') void change(memory, { pinned: !memory.pinned });
     if (id === 'archive') {
       const status = archiveStatus(memory);
+      // a merged (superseded) memory cannot be sent back to that state: no Undo then
+      const back = memory.status === 'superseded' ? undefined : { status: memory.status };
       void change(
         memory,
         { status },
-        t(status === 'archived' ? 'appPages.memory.archivedDone' : 'appPages.memory.restored'),
+        back && {
+          text: t(status === 'archived' ? 'appPages.memory.archivedDone' : 'appPages.memory.restored'),
+          back,
+        },
       );
     }
     if (id === 'delete') void remove(memory);
