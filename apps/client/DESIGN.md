@@ -2,6 +2,13 @@
 
 One client for web, desktop (Tauri), iOS and Android. Native pages render on the web through react-native-web; web-only rendering lives in `*.web.tsx`. Never build a parallel DOM app.
 
+## Relation to jim-uiux
+
+- Interaction, feedback, copy and data states follow jim-uiux (https://design.linjiejim.com); this file records only Greenhouse's own values and exceptions.
+- Greenhouse keeps its brand (Haven greens, Nunito) and its numbers: dialog sizes (`DIALOG_SIZES`), desktop density (rows 32, toolbar controls 28, headers 52) and the wide shell below.
+- Native screens follow the platform (HIG, Material 3): system sheets, menus and alerts; native titles may use weight 700. Browser CSS stays at 600 or below.
+- Guards: `src/theme/design-guard.test.ts` (screens and browser CSS) and `scripts/check-plugin-ui.mjs` (plugin front ends, run by `pnpm lint`); known debt only shrinks.
+
 ## Layout
 
 - Phone (< 760): drawer sidebar under the place, one column, 44 pt targets, sheets for objects. iPad regular width keeps the sidebar as a split view.

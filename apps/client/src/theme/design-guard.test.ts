@@ -70,6 +70,40 @@ describe('design guard', () => {
   });
 });
 
+/**
+ * Browser CSS follows the type scale and the 600 weight cap (DESIGN.md, Relation to jim-uiux).
+ * LEGACY counts the debt still being paid down: a count may only fall, and the test asks for
+ * the new number when it does.
+ */
+const CSS_SIZES = new Set([12, 13, 14, 15, 16, 18, 22, 28]);
+const LEGACY = { heavyWeight: 21, offScaleSize: 7, rawColour: 1 };
+
+describe('browser CSS guard', () => {
+  const css = cssFiles(join(APP, 'src'));
+  const count = (test: (line: string) => boolean) =>
+    css.flatMap((path) =>
+      readFileSync(path, 'utf8')
+        .split('\n')
+        .map((line, index) => ({ line, at: `${relative(APP, path)}:${index + 1}` }))
+        .filter(({ line }) => !line.trim().startsWith('/*') && !line.trim().startsWith('*') && test(line)),
+    );
+  const found = {
+    heavyWeight: count((line) => /font-weight:\s*(?:[7-9]00|bold)/.test(line)),
+    offScaleSize: count((line) => {
+      const m = /font-size:\s*(\d+)px/.exec(line);
+      return !!m && !CSS_SIZES.has(Number(m[1]));
+    }),
+    rawColour: count((line) => /#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(line)),
+  };
+  for (const key of Object.keys(LEGACY) as (keyof typeof LEGACY)[]) {
+    it(`${key} does not grow (${LEGACY[key]} left)`, () => {
+      const at = found[key].map((hit) => hit.at);
+      expect(at.length, at.join('\n')).toBeLessThanOrEqual(LEGACY[key]);
+      expect(at.length, `lower LEGACY.${key} to ${at.length}`).toBe(LEGACY[key]);
+    });
+  }
+});
+
 function cssFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);

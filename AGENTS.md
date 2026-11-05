@@ -51,6 +51,7 @@
 - Relative imports cannot escape a package; plugin dependencies need both `dependsOn` and package.json; tests may reach host hooks; `pnpm lint` runs the boundary scanner.
 - Kit exports are snapshot-locked (`apps/api/src/__tests__/extension-kit.snapshot.test.ts`); additions, removals and renames update the snapshot and use a commit scoped `extension-kit` (the generated CHANGELOG lists it).
 - Add hooks only with a real registry consumer, Example coverage and seam tests; never add per-module core cases.
+- Plugin front ends pass `scripts/check-plugin-ui.mjs` (in `pnpm lint`); known debt sits in `plugins/<id>/design-baseline.json` and only shrinks.
 - Client UI comes from manifest `surfaces` (nav, pages: native, entity-list, entity-detail, settings-form, embed) and an optional static `ui/`; Admin sections use `parent: 'administration'`.
 - Client-facing plugin copy is manifest `LocalizedText` (`{ en, zh }`); official native screens live in `apps/client/src/plugins/<id>/` and use the client catalogs.
 - Prefer `dataSources` for table-backed entities; REST/tools/runtime share capability, row-scope, field-policy, export and audit checks.
