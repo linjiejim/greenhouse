@@ -10,6 +10,7 @@ const dist = join(ui, 'dist');
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(join(dist, 'greenhouse'), { recursive: true });
 for (const file of ['index.html', 'style.css', 'app.js']) cpSync(join(ui, file), join(dist, file));
+cpSync(join(root, 'packages/ui-tokens/fonts/nunito-variable.woff2'), join(dist, 'greenhouse', 'nunito-variable.woff2'));
 for (const [source, target] of [
   ['packages/ui-tokens/src/index.ts', 'index.js'],
   ['packages/ui-tokens/src/tokens.generated.ts', 'tokens.generated.js'],

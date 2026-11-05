@@ -218,6 +218,18 @@ export const motionTokens = {
   "easeExit": "cubic-bezier(0.3, 0, 1, 1)"
 } as const;
 
+/** Elevation for browser surfaces (CSS box-shadow): `control` inside a surface, `floating` for layers. */
+export const shadowCss = {
+  "control": {
+    "light": "0 1px 2px rgba(17, 17, 19, 0.06), 0 2px 6px rgba(17, 17, 19, 0.05)",
+    "dark": "0 0 0 1px rgba(255, 255, 255, 0.04)"
+  },
+  "floating": {
+    "light": "0 2px 8px rgba(17, 17, 19, 0.06), 0 12px 32px rgba(17, 17, 19, 0.12)",
+    "dark": "0 0 0 1px rgba(255, 255, 255, 0.06), 0 12px 32px rgba(0, 0, 0, 0.5)"
+  }
+} as const;
+
 /** Brand colours of the mark. */
 export const brandHex = {
   "mark": {

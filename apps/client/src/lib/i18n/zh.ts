@@ -108,6 +108,7 @@ export const zh: Catalog = {
     moreActions: '更多操作',
   },
   common: {
+    undo: '撤销',
     loading: '加载中…',
     cancel: '取消',
     ok: '好',

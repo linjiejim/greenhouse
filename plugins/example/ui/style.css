@@ -1,29 +1,96 @@
+/* The host's look without a build step: the --gh-* tokens the bridge sets, the type scale and
+   control specs of @greenhouse/ui-tokens (apps/client/DESIGN.md), Nunito bundled beside the page. */
+@font-face {
+  font-family: Nunito;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url('./greenhouse/nunito-variable.woff2') format('woff2');
+}
 :root {
   color-scheme: light dark;
-  font-family: system-ui, sans-serif;
+  font-family:
+    Nunito,
+    -apple-system,
+    BlinkMacSystemFont,
+    'PingFang SC',
+    'Microsoft YaHei',
+    system-ui,
+    sans-serif;
+  font-size: 14px;
+  line-height: 22px;
 }
 body {
-  margin: 2rem;
+  margin: 0;
+  padding: 24px 16px;
   background: var(--gh-background, Canvas);
   color: var(--gh-label, CanvasText);
 }
+[hidden] {
+  display: none !important;
+}
 main {
-  max-width: 40rem;
+  max-width: 720px;
   margin: auto;
 }
-
-button {
+h2 {
+  margin: 32px 0 8px;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+}
+p {
+  margin: 0 0 8px;
+}
+.meta {
+  color: var(--gh-secondary-label, GrayText);
+  font-size: 13px;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+button,
+.file {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--gh-separator, ButtonBorder);
+  border-radius: 8px;
+  background: var(--gh-secondary-grouped-background, ButtonFace);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.primary {
+  border-color: transparent;
   background: var(--gh-accent);
   color: var(--gh-on-accent);
-  padding: 0.75rem;
-  border: 0;
-  border-radius: 0.5rem;
 }
-
+button:focus-visible,
+.file:focus-within {
+  outline: 2px solid var(--gh-accent);
+  outline-offset: 2px;
+}
+.file input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+@media (pointer: coarse) {
+  button,
+  .file {
+    min-height: 44px;
+  }
+}
 #picture-preview {
   display: block;
   max-width: 100%;
   max-height: 16rem;
-  margin: 1rem 0;
-  border-radius: 0.5rem;
+  margin: 16px 0 0;
+  border-radius: 12px;
 }

@@ -15,6 +15,7 @@ import { wideLayout, RAIL_WIDTH, SECONDARY_WIDTH, SECONDARY_MIN, WIDE_MIN } from
 import { useT } from '../lib/i18n';
 import { ConversationRow } from '../chat/conversation-row.web';
 import { webColors } from '../theme/web-colors.generated';
+import { shadowCss } from '../theme/tokens.generated';
 import { promptText } from '../ui/dialogs';
 import { listShares, markShareRead, type SharedConversation } from '../api/shares';
 import { listAutomationRuns } from '../api/assistant';
@@ -69,6 +70,8 @@ export function WideShell({ children }: { children: React.ReactNode }) {
     root.style.setProperty('--gh-secondary', c.secondaryLabel);
     root.style.setProperty('--gh-on-accent', c.onAccent);
     root.style.setProperty('--gh-sidebar-selection', c.sidebarSelection);
+    root.style.setProperty('--gh-shadow-control', shadowCss.control[isDark ? 'dark' : 'light']);
+    root.style.setProperty('--gh-shadow-floating', shadowCss.floating[isDark ? 'dark' : 'light']);
     root.style.colorScheme = isDark ? 'dark' : 'light';
     root.dataset.theme = isDark ? 'dark' : 'light';
   }, [c, isDark]);

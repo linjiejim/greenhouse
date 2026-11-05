@@ -78,6 +78,7 @@
 - Regenerate shared themes with `pnpm tokens:build`; never hand-edit generated tokens.
 - Embeds receive ten-minute member/plugin credentials from `/api/ext-ui/token`, scoped to the plugin API and basic `GET /api/me`.
 - Validate bridge window and exact origin; never inject full login tokens, persist credentials or submit assistant drafts automatically.
+- Plugin pages use the `@greenhouse/ui-tokens` preset and React kit; the host draws their confirms and notices, and malformed bridge requests are dropped.
 - Same-origin installed plugin frames share code trust; user HTML previews stay opaque-origin and credential-free.
 - Desktop CORS/framing trusts exactly `tauri://localhost`; plugin frames get no native capabilities and explicitly allowlist the parent hint.
 - All business surfaces bind real active internal team/super accounts; reject anonymous/disabled/deleted/external/stale-generation identities.

@@ -162,3 +162,68 @@ describe('embedTokens', () => {
     expect(embedTokens({}, true)['--gh-cat-blue']).not.toBe(light['--gh-cat-blue']);
   });
 });
+
+describe('embed host requests', () => {
+  const at = 'https://station.test';
+  it('accepts well-formed confirms, notices, header actions and routes', () => {
+    expect(
+      embedMessage(
+        { type: 'greenhouse:confirm', id: 'm1-ab', title: 'Delete?', confirmLabel: 'Delete', tone: 'danger' },
+        at,
+        at,
+      ),
+    ).toEqual({
+      type: 'greenhouse:confirm',
+      id: 'm1-ab',
+      title: 'Delete?',
+      body: undefined,
+      confirmLabel: 'Delete',
+      cancelLabel: undefined,
+      tone: 'danger',
+    });
+    expect(
+      embedMessage({ type: 'greenhouse:notify', id: 'm2', kind: 'undo', text: 'Moved', actionLabel: 'undo' }, at, at),
+    ).toEqual({
+      type: 'greenhouse:notify',
+      id: 'm2',
+      kind: 'undo',
+      text: 'Moved',
+      actionLabel: 'undo',
+    });
+    expect(
+      embedMessage({ type: 'greenhouse:header', actions: [{ id: 'up', label: 'Upload', icon: 'Upload' }] }, at, at),
+    ).toEqual({
+      type: 'greenhouse:header',
+      actions: [{ id: 'up', label: 'Upload', icon: 'Upload', disabled: false }],
+    });
+    expect(embedMessage({ type: 'greenhouse:route', route: '#/collection/x?q=cat' }, at, at)).toEqual({
+      type: 'greenhouse:route',
+      route: '#/collection/x?q=cat',
+    });
+  });
+  it('drops malformed, oversized or foreign requests', () => {
+    expect(embedMessage({ type: 'greenhouse:confirm', id: 'm1', title: 'Delete?' }, at, at)).toBeNull();
+    expect(
+      embedMessage({ type: 'greenhouse:confirm', id: 'bad id!', title: 'x', confirmLabel: 'y' }, at, at),
+    ).toBeNull();
+    expect(embedMessage({ type: 'greenhouse:notify', id: 'm2', kind: 'shout', text: 'x' }, at, at)).toBeNull();
+    expect(
+      embedMessage({ type: 'greenhouse:notify', id: 'm2', kind: 'info', text: 'x'.repeat(501) }, at, at),
+    ).toBeNull();
+    expect(
+      embedMessage(
+        {
+          type: 'greenhouse:header',
+          actions: Array.from({ length: 5 }, (_, i) => ({ id: `a${i}`, label: 'x', icon: 'x' })),
+        },
+        at,
+        at,
+      ),
+    ).toBeNull();
+    expect(embedMessage({ type: 'greenhouse:route', route: '/admin' }, at, at)).toBeNull();
+    expect(embedMessage({ type: 'greenhouse:route', route: '#/ with space' }, at, at)).toBeNull();
+    expect(
+      embedMessage({ type: 'greenhouse:confirm', id: 'm1', title: 'x', confirmLabel: 'y' }, 'https://evil.test', at),
+    ).toBeNull();
+  });
+});

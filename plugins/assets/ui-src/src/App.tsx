@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { FolderOpen, Images, Settings, Upload } from 'lucide-react';
-import { useEmbed } from './embed';
+import { FolderOpen, Images, Settings } from 'lucide-react';
+import { useHeaderActions } from '@greenhouse/ui-tokens/react';
+import { retryConnection, useEmbed } from './embed';
 import { formatBytes, useT } from './i18n';
-import { go, useRoute } from './router';
+import { go, listHash, useRoute } from './router';
 import { useLibrary } from './state';
 import { guessType, useQueue } from './upload/queue';
 import { AssetDetail } from './views/AssetDetail';
@@ -10,12 +11,13 @@ import { CollectionHeader, Collections } from './views/Collections';
 import { Library } from './views/Library';
 import { Manage } from './views/Manage';
 import { BatchDialog, filesFromDrop, UploadPanel } from './views/Upload';
-import { Button, ConfirmHost, Spinner, Toasts } from './components/ui';
+import { cx, Spinner, StateView, useDelayedFlag } from './components/ui';
 import { api } from './api';
 
 export function App() {
   const t = useT();
-  const ready = useEmbed((s) => s.ready);
+  const status = useEmbed((s) => s.status);
+  const ready = status === 'ready';
   const route = useRoute();
   const { config, loadConfig, loadPeople, loadCollections } = useLibrary();
   const revision = useQueue((s) => s.revision);
@@ -30,27 +32,40 @@ export function App() {
     if (!ready) return;
     void loadConfig();
     void loadPeople();
-    void loadCollections();
+    void loadCollections().catch(() => {});
   }, [ready, loadConfig, loadPeople, loadCollections]);
   useEffect(() => {
     if (ready) void api.stats().then(setStats, () => {});
   }, [ready, revision, changed]);
+
+  // Upload lives in the host's title bar: one header for the whole page.
+  useHeaderActions(
+    config
+      ? [
+          { id: 'folder', label: t('uploadFolder'), icon: 'FolderPlus', onPress: () => folderInput.current?.click() },
+          { id: 'upload', label: t('upload'), icon: 'Upload', onPress: () => filesInput.current?.click() },
+        ]
+      : [],
+  );
+  const slow = useDelayedFlag(!ready || !config, 300, 0);
 
   const accept = (files: File[]) => {
     const usable = files.filter((f) => (f.type || guessType(f.name)).match(/^(image|video)\//));
     if (usable.length) setPending(usable);
   };
 
-  if (!ready || !config)
+  if (status === 'failed')
     return (
       <div className="flex h-full items-center justify-center">
-        <Spinner size={20} />
+        <StateView kind="error" title={t('notConnected')} hint={t('notConnectedHint')} onRetry={retryConnection} />
       </div>
     );
+  if (!ready || !config)
+    return <div className="flex h-full items-center justify-center">{slow ? <Spinner size={20} /> : null}</div>;
 
   const tab = route.view === 'manage' ? 'manage' : route.view === 'collections' || route.view === 'collection' ? 'collections' : 'library';
   const openAsset = route.view === 'library' || route.view === 'collection' ? route.asset : undefined;
-  const closeAsset = () => go(route.view === 'collection' ? `#/collection/${encodeURIComponent(route.id)}` : '#/');
+  const closeAsset = () => go(listHash(route.view === 'collection' ? `#/collection/${encodeURIComponent(route.id)}` : '#/'));
 
   return (
     <div
@@ -67,7 +82,7 @@ export function App() {
         accept(await filesFromDrop(e));
       }}
     >
-      <header className="flex h-[52px] shrink-0 items-center gap-1 border-b border-edge px-3">
+      <nav className="flex h-11 shrink-0 items-center gap-1 border-b border-border px-3" aria-label={t('library')}>
         {[
           { id: 'library', label: t('library'), icon: <Images size={16} />, href: '#/' },
           { id: 'collections', label: t('collections'), icon: <FolderOpen size={16} />, href: '#/collections' },
@@ -77,9 +92,10 @@ export function App() {
             key={item.id}
             href={item.href}
             aria-current={tab === item.id ? 'page' : undefined}
-            className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[14px] font-semibold ${
-              tab === item.id ? 'bg-surface-muted text-fg' : 'text-fg-secondary hover:bg-surface-muted hover:text-fg'
-            }`}
+            className={cx(
+              'flex h-8 items-center gap-1.5 rounded-control px-2.5 text-body font-medium pointer-coarse:h-11',
+              tab === item.id ? 'bg-pressed text-foreground' : 'text-muted-foreground hover:bg-hover hover:text-foreground',
+            )}
           >
             {item.icon}
             <span className="hidden sm:inline">{item.label}</span>
@@ -87,17 +103,10 @@ export function App() {
         ))}
         <div className="flex-1" />
         {stats ? (
-          <span className="mr-2 hidden text-[12px] text-fg-muted md:inline">
+          <span className="mr-1 hidden text-caption text-muted-foreground tabular-nums md:inline">
             {t('count', { n: stats.active })} · {formatBytes(stats.bytes)}
           </span>
         ) : null}
-        <Button variant="secondary" className="hidden sm:inline-flex" onClick={() => folderInput.current?.click()}>
-          {t('uploadFolder')}
-        </Button>
-        <Button variant="primary" onClick={() => filesInput.current?.click()}>
-          <Upload size={16} />
-          {t('upload')}
-        </Button>
         <input
           ref={filesInput}
           type="file"
@@ -121,7 +130,7 @@ export function App() {
             e.target.value = '';
           }}
         />
-      </header>
+      </nav>
 
       {route.view === 'collections' ? (
         <Collections />
@@ -141,13 +150,11 @@ export function App() {
       {openAsset ? <AssetDetail id={openAsset} onClose={closeAsset} onChanged={() => setChanged((n) => n + 1)} /> : null}
       {pending ? <BatchDialog files={pending} onClose={() => setPending(null)} /> : null}
       {dragging ? (
-        <div className="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-accent bg-primary-subtle/80 text-[15px] font-bold text-primary-fg">
+        <div className="pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-card border-2 border-dashed border-ring bg-selected text-title-sm font-semibold text-primary-fg">
           {t('dropHere')}
         </div>
       ) : null}
       <UploadPanel />
-      <ConfirmHost cancel={t('cancel')} />
-      <Toasts />
     </div>
   );
 }

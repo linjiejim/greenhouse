@@ -5,15 +5,16 @@ import { useT } from '../i18n';
 import { go } from '../router';
 import { useLibrary } from '../state';
 import { useEmbed } from '../embed';
-import { Button, confirmAction, Dialog, EmptyState, Field, IconButton, TextArea, TextInput, toastError } from '../components/ui';
+import { Button, confirm, Dialog, Field, IconButton, notify, Skeleton, StateView, TextArea, TextInput, useDelayedFlag } from '../components/ui';
 
 export function Collections() {
   const t = useT();
-  const { collections, people, loadCollections } = useLibrary();
+  const { collections, collectionsState, people, loadCollections } = useLibrary();
   const [editing, setEditing] = useState(false);
   useEffect(() => {
-    void loadCollections();
+    void loadCollections().catch(() => {});
   }, [loadCollections]);
+  const showSkeleton = useDelayedFlag(collectionsState === 'loading');
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
       <div className="mb-4 flex justify-end">
@@ -22,8 +23,18 @@ export function Collections() {
           {t('newCollection')}
         </Button>
       </div>
-      {!collections.length ? (
-        <EmptyState icon={<FolderOpen size={28} />} title={t('noCollections')} hint={t('noCollectionsHint')} />
+      {collectionsState === 'failed' ? (
+        <StateView kind="error" onRetry={() => void loadCollections().catch(() => {})} />
+      ) : collectionsState === 'loading' ? (
+        showSkeleton ? (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3" aria-busy="true">
+            {Array.from({ length: 6 }, (_, i) => (
+              <Skeleton key={i} className="h-[76px] rounded-card" />
+            ))}
+          </div>
+        ) : null
+      ) : !collections.length ? (
+        <StateView kind="empty" icon={<FolderOpen size={24} />} title={t('noCollections')} hint={t('noCollectionsHint')} />
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
           {collections.map((c) => (
@@ -31,14 +42,14 @@ export function Collections() {
               key={c.id}
               type="button"
               onClick={() => go(`#/collection/${encodeURIComponent(c.id)}`)}
-              className="flex flex-col gap-1 rounded-2xl border border-edge bg-surface-card px-4 py-3 text-left hover:border-accent"
+              className="flex flex-col gap-1 rounded-card border border-border bg-card px-4 py-3 text-left hover:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
-              <span className="flex items-center gap-2 text-[15px] font-bold">
-                <FolderOpen size={16} className="text-fg-muted" />
+              <span className="flex items-center gap-2 text-title-sm font-semibold">
+                <FolderOpen size={16} className="text-faint-foreground" />
                 <span className="truncate">{c.name}</span>
               </span>
-              {c.description ? <span className="line-clamp-2 text-[13px] text-fg-secondary">{c.description}</span> : null}
-              <span className="text-[12px] text-fg-muted">
+              {c.description ? <span className="line-clamp-2 text-body-sm text-muted-foreground">{c.description}</span> : null}
+              <span className="text-caption text-muted-foreground">
                 {t('count', { n: c.count })} · {people.get(c.created_by) ?? ''}
               </span>
             </button>
@@ -72,7 +83,7 @@ export function CollectionForm({
       await useLibrary.getState().loadCollections();
       onClose();
     } catch (error) {
-      toastError((error as Error).message);
+      notify.error((error as Error).message);
       setBusy(false);
     }
   };
@@ -84,14 +95,19 @@ export function CollectionForm({
       footer={
         <>
           <Button onClick={onClose}>{t('cancel')}</Button>
-          <Button variant="primary" onClick={save} busy={busy} disabled={!name.trim()}>
-            {t('save')}
+          <Button
+            variant="primary"
+            onClick={save}
+            busy={busy}
+            disabled={!name.trim() || (!!existing && name === existing.name && description === (existing.description ?? ''))}
+          >
+            {existing ? t('save') : t('createCollection')}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3">
-        <Field label={t('collectionName')}>
+        <Field label={t('collectionName')} required>
           <TextInput autoFocus maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field label={t('description')}>
@@ -112,9 +128,9 @@ export function CollectionHeader({ id }: { id: string }) {
   if (!collection) return null;
   const mayChange = collection.created_by === me?.id || Boolean(config?.can_manage);
   return (
-    <div className="flex items-center gap-2 border-b border-edge px-5 py-2.5">
-      <FolderOpen size={16} className="text-fg-muted" />
-      <span className="min-w-0 flex-1 truncate text-[15px] font-bold">{collection.name}</span>
+    <div className="flex items-center gap-2 border-b border-border px-5 py-2.5">
+      <FolderOpen size={16} className="text-faint-foreground" />
+      <span className="min-w-0 flex-1 truncate text-title-sm font-semibold">{collection.name}</span>
       {mayChange ? (
         <>
           <IconButton label={t('rename')} onClick={() => setEditing(true)}>
@@ -123,13 +139,19 @@ export function CollectionHeader({ id }: { id: string }) {
           <IconButton
             label={t('deleteCollection')}
             onClick={async () => {
-              if (!(await confirmAction(t('deleteCollectionConfirm'), t('deleteCollection')))) return;
+              const ok = await confirm({
+                title: t('deleteCollectionTitle', { name: collection.name }),
+                body: t('deleteCollectionHint'),
+                confirmLabel: t('deleteCollection'),
+                tone: 'danger',
+              });
+              if (!ok) return;
               try {
                 await api.deleteCollection(id);
                 await useLibrary.getState().loadCollections();
                 go('#/collections');
               } catch (error) {
-                toastError((error as Error).message);
+                notify.error((error as Error).message);
               }
             }}
           >

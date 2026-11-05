@@ -1,21 +1,9 @@
-import React, { useEffect } from 'react';
-import { create } from 'zustand';
-import { Overlay } from './overlay.web';
+/** Browser confirmations go through the notice stack (./notify.web.tsx). */
 import type { IconName } from './core';
-const useToast = create<{ message: string | null; seq: number }>(() => ({ message: null, seq: 0 }));
+import { notify, NotifyHost } from './notify.web';
 export function toast(message: string, _icon?: IconName) {
-  useToast.setState((s) => ({ message, seq: s.seq + 1 }));
+  notify.success(message);
 }
 export function ToastHost() {
-  const { message, seq } = useToast();
-  useEffect(() => {
-    if (!message) return;
-    const timer = setTimeout(() => useToast.setState({ message: null }), 1800);
-    return () => clearTimeout(timer);
-  }, [message, seq]);
-  return message ? (
-    <Overlay role="status" modal={false} onClose={() => {}}>
-      <span aria-live="polite">{message}</span>
-    </Overlay>
-  ) : null;
+  return <NotifyHost />;
 }

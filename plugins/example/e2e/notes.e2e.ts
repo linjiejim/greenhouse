@@ -17,11 +17,12 @@ test('Example embed: the bridge hands over the member, and the embed token reads
   await grantFeature(page, 'example');
   await openHosted(page, '/p/example/example-embed');
   const frame = page.frameLocator('iframe');
-  await expect(frame.locator('#status')).toContainText('Hello, Jim');
+  // the e2e member reads Chinese (auth.setup), so the page greets in Chinese
+  await expect(frame.locator('#status')).toContainText('你好，Jim');
   // the frame is hidden only until its document loads (no white flash on a dark host)
   await expect(page.locator('iframe')).toBeVisible();
   await expect(frame.locator('html')).toHaveAttribute('data-theme', 'light');
-  await expect(frame.locator('#colleagues')).toContainText(/\d+ people on this station/);
+  await expect(frame.locator('#colleagues')).toContainText(/这个工作站有 \d+ 位成员/);
 });
 
 // Plugin objects, end to end in a real frame: upload target → PUT (no Bearer) → size check →
@@ -30,13 +31,13 @@ test('Example embed: a picture goes into the plugin object store and shows inlin
   await grantFeature(page, 'example');
   await openHosted(page, '/p/example/example-embed');
   const frame = page.frameLocator('iframe');
-  await expect(frame.locator('#status')).toContainText('Hello');
+  await expect(frame.locator('#status')).toContainText('你好');
   const png = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
     'base64',
   );
   await frame.locator('#picture-file').setInputFiles({ name: 'dot.png', mimeType: 'image/png', buffer: png });
-  await expect(frame.locator('#picture-status')).toHaveText('Attached to a new note.');
+  await expect(frame.locator('#picture-status')).toHaveText('已附加到一条新笔记。');
   const preview = frame.locator('#picture-preview');
   await expect(preview).toBeVisible();
   await expect.poll(() => preview.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1);

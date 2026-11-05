@@ -8,19 +8,25 @@
   </head>
   <body>
     <main>
-      <h1>Example notes</h1>
-      <p>A small plugin page served by Greenhouse.</p>
-      <p id="status">Ready for the host.</p>
-      <p id="colleagues"></p>
-      <button id="navigate">Open notes</button>
-      <button id="prompt">Ask the assistant</button>
-      <button id="refresh">Refresh token</button>
+      <p id="status" role="status"></p>
+      <p id="colleagues" class="meta"></p>
+      <div class="row">
+        <button id="navigate" class="primary" data-text="open">Open notes</button>
+        <button id="prompt" data-text="ask">Ask the assistant</button>
+        <button id="refresh" data-text="refresh">Refresh token</button>
+      </div>
       <section id="picture">
-        <h2>A note with a picture</h2>
-        <input id="picture-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" />
-        <p id="picture-status"></p>
+        <h2 data-text="pictureTitle">A note with a picture</h2>
+        <label class="file">
+          <span data-text="choose">Choose a picture</span>
+          <input id="picture-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" />
+        </label>
+        <p id="picture-status" class="meta"></p>
         <img id="picture-preview" alt="" hidden />
-        <button id="picture-describe" hidden>Describe it</button>
+        <div class="row">
+          <button id="picture-describe" hidden data-text="describe">Describe it</button>
+          <button id="picture-clear" hidden data-text="clear">Delete note</button>
+        </div>
         <p id="picture-description"></p>
       </section>
     </main>

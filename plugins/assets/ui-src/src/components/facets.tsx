@@ -9,11 +9,14 @@ export function FacetPicker({
   value,
   onChange,
   suggested,
+  hideLabels,
 }: {
   facets: Facet[];
   value: FacetValues;
   onChange: (next: FacetValues) => void;
   suggested?: FacetValues;
+  /** Inside a labelled row (the detail drawer) the facet name is already shown. */
+  hideLabels?: boolean;
 }) {
   const locale = useEmbed((s) => s.locale);
   return (
@@ -26,8 +29,8 @@ export function FacetPicker({
           onChange({ ...value, [facet.key]: next });
         };
         return (
-          <div key={facet.key} className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-semibold text-fg-secondary">{facetLabel(facet, locale)}</span>
+          <div key={facet.key} role="group" aria-label={facetLabel(facet, locale)} className="flex flex-col gap-1.5">
+            {hideLabels ? null : <span className="text-label font-medium text-foreground">{facetLabel(facet, locale)}</span>}
             <div className="flex flex-wrap gap-1.5">
               {facet.values.map((v) => (
                 <Chip

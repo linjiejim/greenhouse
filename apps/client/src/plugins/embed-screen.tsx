@@ -13,7 +13,10 @@ import { WebFrame } from '../ui/web-frame';
 import { EmptyState } from '../ui/empty';
 import { useOpenHref, useStartChat } from '../shell/open-object';
 import { embedMessage, embedTokens, embedUrl, normalizeNavigate } from './surface-model';
-import { EMBED_PROTOCOL, type PluginEmbedPage } from '../shared/plugins';
+import { lucideIcon } from './icons';
+import { confirmAction } from '../ui/dialogs';
+import { notify } from '../ui/notify';
+import { EMBED_PROTOCOL, type EmbedHeaderAction, type PluginEmbedPage } from '../shared/plugins';
 export function EmbedScreen({ plugin, page, title }: { plugin: string; page: PluginEmbedPage; title: string }) {
   const { hex, isDark } = useTheme(),
     theme = isDark ? 'dark' : 'light',
@@ -26,6 +29,7 @@ export function EmbedScreen({ plugin, page, title }: { plugin: string; page: Plu
     openHref = useOpenHref();
   const [frameTitle, setFrameTitle] = useState(title),
     [outgoing, setOutgoing] = useState<Record<string, unknown> | null>(null),
+    [headerActions, setHeaderActions] = useState<EmbedHeaderAction[]>([]),
     [error, setError] = useState('');
   const tokens = useMemo(() => embedTokens(hex, isDark), [hex, isDark]);
   // Keep iframe URL stable across theme changes; bridge updates preserve plugin state.
@@ -75,9 +79,21 @@ export function EmbedScreen({ plugin, page, title }: { plugin: string; page: Plu
     setOutgoing({ type: EMBED_PROTOCOL.theme, theme, tokens });
   }, [theme, tokens]);
   const loaded = useCallback(() => void latestInit.current(), []);
+  // Replies to the page's requests; a reply after the page has gone is dropped.
+  const reply = (message: Record<string, unknown>) => {
+    if (alive.current) setOutgoing(message);
+  };
   return (
     <>
-      <Screen title={frameTitle} />
+      <Screen
+        title={frameTitle}
+        actions={headerActions.map((a) => ({
+          icon: lucideIcon(a.icon) ?? 'apps',
+          label: a.label,
+          disabled: a.disabled,
+          onPress: () => reply({ type: EMBED_PROTOCOL.headerAction, id: a.id }),
+        }))}
+      />
       <View style={{ flex: 1 }}>
         {!url || error ? (
           <EmptyState
@@ -102,6 +118,27 @@ export function EmbedScreen({ plugin, page, title }: { plugin: string; page: Plu
                 if (m.type === EMBED_PROTOCOL.title) setFrameTitle(m.title);
                 if (m.type === EMBED_PROTOCOL.sendPrompt) {
                   start(m.text);
+                }
+                if (m.type === EMBED_PROTOCOL.header) setHeaderActions(m.actions);
+                if (m.type === EMBED_PROTOCOL.route)
+                  router.setParams({ route: m.route === '#/' ? undefined : m.route });
+                if (m.type === EMBED_PROTOCOL.confirm) {
+                  const id = m.id;
+                  void confirmAction({
+                    title: m.title,
+                    message: m.body,
+                    confirmLabel: m.confirmLabel,
+                    cancelLabel: m.cancelLabel,
+                    destructive: m.tone === 'danger',
+                  }).then((ok) => reply({ type: EMBED_PROTOCOL.confirmResult, id, ok }));
+                }
+                if (m.type === EMBED_PROTOCOL.notify) {
+                  const id = m.id;
+                  const action = m.actionLabel
+                    ? { label: m.actionLabel, onPress: () => reply({ type: EMBED_PROTOCOL.notifyAction, id }) }
+                    : undefined;
+                  if (m.kind === 'undo') notify.undo(m.text, () => reply({ type: EMBED_PROTOCOL.notifyAction, id }));
+                  else notify[m.kind](m.text, { action });
                 }
                 if (m.type === EMBED_PROTOCOL.navigate) {
                   const href = normalizeNavigate(m.href, getApiBase());

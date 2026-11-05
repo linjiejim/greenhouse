@@ -1,5 +1,11 @@
 /** Minimal browser bridge for installed, trusted plugin frontends. */
-import { EMBED_PROTOCOL, type EmbedInitMessage } from '@greenhouse/types/plugins';
+import {
+  EMBED_PROTOCOL,
+  type EmbedConfirmRequest,
+  type EmbedHeaderAction,
+  type EmbedInitMessage,
+  type EmbedNotifyRequest,
+} from '@greenhouse/types/plugins';
 import { themeTokens } from './tokens.generated.js';
 export { tokenNames, themeTokens } from './tokens.generated.js';
 
@@ -14,6 +20,9 @@ export function connectGreenhouse(
     hostOrigin?: string;
     onInit?: (message: EmbedInitMessage) => void;
     onTheme?: (theme: 'light' | 'dark') => void;
+    /** No init within `initTimeoutMs` (default 10 s): the host is missing or refused the page. */
+    onTimeout?: () => void;
+    initTimeoutMs?: number;
   } = {},
 ) {
   const origin = options.hostOrigin ?? window.location.origin;
@@ -32,6 +41,11 @@ export function connectGreenhouse(
   let resolveRefresh: ((token: string) => void) | null = null;
   let rejectRefresh: ((error: Error) => void) | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let sequence = 0;
+  const confirms = new Map<string, (ok: boolean) => void>();
+  const notices = new Map<string, (answer: 'action' | 'dismissed') => void>();
+  let headerActions = new Map<string, () => void>();
+  const nextId = () => `m${++sequence}-${Math.random().toString(36).slice(2, 8)}`;
   const send = (type: string, payload = {}) => window.parent.postMessage({ type, ...payload }, origin);
   const apply = (theme: 'light' | 'dark', tokens: Record<string, string>) => {
     const root = document.documentElement;
@@ -58,6 +72,7 @@ export function connectGreenhouse(
       m.user
     ) {
       state = m;
+      clearTimeout(initTimer);
       document.documentElement.lang = m.locale;
       apply(m.theme, m.tokens ?? {});
       options.onInit?.(m);
@@ -75,6 +90,14 @@ export function connectGreenhouse(
       resolveRefresh?.(m.token);
       pending = null;
       resolveRefresh = rejectRefresh = null;
+    } else if (m.type === EMBED_PROTOCOL.confirmResult && typeof m.id === 'string') {
+      confirms.get(m.id)?.(m.ok === true);
+      confirms.delete(m.id);
+    } else if (m.type === EMBED_PROTOCOL.notifyAction && typeof m.id === 'string') {
+      notices.get(m.id)?.('action');
+      notices.delete(m.id);
+    } else if (m.type === EMBED_PROTOCOL.headerAction && typeof m.id === 'string') {
+      headerActions.get(m.id)?.();
     }
   };
   window.addEventListener('message', receive);
@@ -83,6 +106,9 @@ export function connectGreenhouse(
   const initial = new URLSearchParams(window.location.search).get('theme');
   if (initial === 'light' || initial === 'dark') apply(initial, {});
   send(EMBED_PROTOCOL.ready);
+  const initTimer = setTimeout(() => {
+    if (!state) options.onTimeout?.();
+  }, options.initTimeoutMs ?? 10_000);
   return {
     get token() {
       return state?.token ?? '';
@@ -107,9 +133,38 @@ export function connectGreenhouse(
     navigate: (href: string) => send(EMBED_PROTOCOL.navigate, { href }),
     sendPrompt: (text: string) => send(EMBED_PROTOCOL.sendPrompt, { text }),
     title: (title: string) => send(EMBED_PROTOCOL.title, { title }),
+    /** Keep the page's own view (`#/…`) in the host address, replacing the current entry. */
+    route: (route: string) => send(EMBED_PROTOCOL.route, { route }),
+    /** Ask the host to draw a confirm over the whole app; resolves with the member's answer. */
+    confirm(request: Omit<EmbedConfirmRequest, 'id'>): Promise<boolean> {
+      const id = nextId();
+      return new Promise((resolve) => {
+        confirms.set(id, resolve);
+        send(EMBED_PROTOCOL.confirm, { ...request, id });
+      });
+    },
+    /** Ask the host to show a notice; resolves `action` when its action is pressed. */
+    notify(request: Omit<EmbedNotifyRequest, 'id'>): Promise<'action' | 'dismissed'> {
+      const id = nextId();
+      return new Promise((resolve) => {
+        if (request.actionLabel) notices.set(id, resolve);
+        else resolve('dismissed');
+        send(EMBED_PROTOCOL.notify, { ...request, id });
+      });
+    },
+    /** Put icon actions in the host's title bar (an empty list clears them). */
+    header(actions: (EmbedHeaderAction & { onPress: () => void })[]) {
+      headerActions = new Map(actions.map((a) => [a.id, a.onPress]));
+      send(EMBED_PROTOCOL.header, { actions: actions.map(({ onPress: _, ...a }) => a) });
+    },
     disconnect() {
       window.removeEventListener('message', receive);
       clearTimeout(timer);
+      clearTimeout(initTimer);
+      for (const resolve of confirms.values()) resolve(false);
+      confirms.clear();
+      notices.clear();
+      headerActions.clear();
       rejectRefresh?.(new Error('Bridge disconnected'));
       resolveRefresh = rejectRefresh = null;
       pending = null;

@@ -265,8 +265,14 @@ textarea {
 /* Inputs: input, select and textarea share one box; controls in a .gh-form or directly in a
    .gh-field get it without the class. */
 .gh-input,
-.gh-form :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']), select, textarea),
-.gh-field > :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']), select, textarea) {
+.gh-form
+  :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']), select, textarea),
+.gh-field
+  > :where(
+    input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']),
+    select,
+    textarea
+  ) {
   height: 32px;
   min-width: 0;
   padding: 0 10px;
@@ -619,7 +625,8 @@ textarea.gh-input,
 /* Phone widths (below WIDE_MIN, src/shell/wide-model.ts): 44 pt targets, and 16 px text so Safari never zooms a field. */
 @media (max-width: 759px) {
   .gh-input,
-  :is(.gh-form, .gh-field) :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']), select),
+  :is(.gh-form, .gh-field)
+    :where(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']), select),
   .gh-primary,
   .gh-secondary-button {
     min-height: 44px;
@@ -632,6 +639,65 @@ textarea.gh-input,
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* Notices (src/ui/notify.web.tsx): one stack at the top centre, newest first; the level shows only
+   in the icon colour, an error also on a soft red ground (it stays until dismissed). */
+.gh-notices {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(440px, calc(100vw - 24px));
+  transform: translateX(-50%);
+}
+.gh-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--gh-line);
+  border-radius: 12px;
+  background: var(--gh-raised);
+  box-shadow: var(--gh-shadow-floating);
+  color: var(--gh-text);
+  font-size: 14px;
+  line-height: 20px;
+  animation: gh-notice-in 200ms cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+.gh-notice[data-kind='error'] {
+  background: var(--gh-danger-fill);
+}
+.gh-notice-text {
+  flex: 1;
+  min-width: 0;
+}
+.gh-notice-icon {
+  display: inline-flex;
+  color: var(--gh-success);
+}
+.gh-notice-icon[data-kind='info'] {
+  color: var(--gh-info);
+}
+.gh-notice-icon[data-kind='warning'] {
+  color: var(--gh-warning);
+}
+.gh-notice-icon[data-kind='error'] {
+  color: var(--gh-danger);
+}
+.gh-notice .gh-notice-close {
+  width: 28px;
+  height: 28px;
+}
+@keyframes gh-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
 /* ══ end of Controls ═════════════════════════════════════════════════════════════════════════ */
 
 .gh-row-menu {
@@ -1351,10 +1417,29 @@ button.gh-object-field:hover {
 
 /* The native sidebar material is visible only behind these two chrome columns. */
 html[data-desktop-window] body,
-html[data-desktop-window] #root { background: transparent; }
-html[data-desktop-window] [data-testid="client-main"] { background: var(--gh-canvas); }
-.gh-desktop-error { position: fixed; bottom: 12px; left: 12px; right: 12px; padding: 12px; background: var(--gh-raised); color: var(--gh-text); border: 1px solid var(--gh-line); z-index: 10000; display: flex; justify-content: space-between; }
-html[data-desktop-window="settings"] .gh-settings { padding-top: 52px; box-sizing: border-box; }
+html[data-desktop-window] #root {
+  background: transparent;
+}
+html[data-desktop-window] [data-testid='client-main'] {
+  background: var(--gh-canvas);
+}
+.gh-desktop-error {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  padding: 12px;
+  background: var(--gh-raised);
+  color: var(--gh-text);
+  border: 1px solid var(--gh-line);
+  z-index: 10000;
+  display: flex;
+  justify-content: space-between;
+}
+html[data-desktop-window='settings'] .gh-settings {
+  padding-top: 52px;
+  box-sizing: border-box;
+}
 
 /* Plugin read surfaces without their own screen (src/plugins/resource-screen.web.tsx). */
 .gh-resource-list {
