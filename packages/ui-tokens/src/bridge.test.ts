@@ -140,3 +140,14 @@ it('does not time out once the host answered, and a disconnect declines pending 
   bridge.disconnect();
   expect(await pending).toBe(false);
 });
+
+it('settles a notice with an action when the host reports it gone', async () => {
+  const post = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
+  const bridge = connectGreenhouse();
+  bridges.push(bridge);
+  message(init);
+  const undo = bridge.notify({ kind: 'undo', text: 'Moved', actionLabel: 'undo' });
+  const shown = post.mock.calls.at(-1)?.[0] as { id: string };
+  message({ type: EMBED_PROTOCOL.notifyDismissed, id: shown.id });
+  expect(await undo).toBe('dismissed');
+});

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Copy, Download, Pencil, RotateCcw, Sparkles, Trash2, UserRound } from 'lucide-react';
 import { api } from '../api';
 import { useEmbed } from '../embed';
@@ -55,18 +55,28 @@ export function AssetDetail({ id, onClose, onChanged }: { id: string; onClose: (
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const showSkeleton = useDelayedFlag(!asset && !failed);
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+
+  // Another asset (a Similar link) starts clean: its own record, no draft carried over.
+  useEffect(() => {
+    setAsset(null);
+    setDraft(null);
+    setEditing(false);
+    setFailed(false);
+  }, [id]);
 
   const load = useCallback(async () => {
     setFailed(false);
     try {
       const { asset } = await api.get(id);
+      if (asset.id !== id) return;
       setAsset(asset);
-      setDraft((current) => (current && editing ? current : draftOf(asset)));
+      // an AI poll of the same asset keeps the draft being edited
+      setDraft((current) => (current && editingRef.current ? current : draftOf(asset)));
     } catch {
       setFailed(true);
     }
-    // keep a draft being edited when the AI poll reloads the asset
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
   useEffect(() => {
     void load();

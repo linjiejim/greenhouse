@@ -2,6 +2,8 @@
 export type NotifyKind = 'success' | 'info' | 'warning' | 'undo' | 'error';
 
 export interface NotifyOptions {
+  /** A second, quieter line: what happened or what to do next. */
+  body?: string;
   /** One action beside the text: Retry on an error, Open on a finished export. */
   action?: { label: string; onPress: () => void };
   /** The technical reason, one tap away behind Details (errors). */

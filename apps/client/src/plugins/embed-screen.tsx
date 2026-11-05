@@ -134,11 +134,12 @@ export function EmbedScreen({ plugin, page, title }: { plugin: string; page: Plu
                 }
                 if (m.type === EMBED_PROTOCOL.notify) {
                   const id = m.id;
-                  const action = m.actionLabel
-                    ? { label: m.actionLabel, onPress: () => reply({ type: EMBED_PROTOCOL.notifyAction, id }) }
-                    : undefined;
-                  if (m.kind === 'undo') notify.undo(m.text, () => reply({ type: EMBED_PROTOCOL.notifyAction, id }));
-                  else notify[m.kind](m.text, { action });
+                  const acted = () => reply({ type: EMBED_PROTOCOL.notifyAction, id });
+                  // the page waits on a notice with an action until it is pressed or goes away
+                  const onDismiss = () => reply({ type: EMBED_PROTOCOL.notifyDismissed, id });
+                  const action = m.actionLabel ? { label: m.actionLabel, onPress: acted } : undefined;
+                  if (m.kind === 'undo') notify.undo(m.text, acted, { onDismiss });
+                  else notify[m.kind](m.text, { action, onDismiss: action ? onDismiss : undefined });
                 }
                 if (m.type === EMBED_PROTOCOL.navigate) {
                   const href = normalizeNavigate(m.href, getApiBase());

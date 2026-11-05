@@ -33,8 +33,11 @@ const useNotices = create<{ list: Notice[] }>(() => ({ list: [] }));
 
 function show(kind: NotifyKind, text: string, options: NotifyOptions = {}): () => void {
   const id = ++sequence;
-  if (kind === 'error') recordError(text, options.detail);
-  useNotices.setState((s) => ({ list: [{ id, kind, text, ...options }, ...s.list].slice(0, 3) }));
+  if (kind === 'error') recordError(text, options.body ?? options.detail);
+  const next = [{ id, kind, text, ...options }, ...useNotices.getState().list];
+  useNotices.setState({ list: next.slice(0, 3) });
+  // a notice pushed off the stack ends like a dismissed one
+  for (const evicted of next.slice(3)) evicted.onDismiss?.();
   return () => dismiss(id);
 }
 
@@ -87,13 +90,16 @@ function NoticeRow({ notice, paused }: { notice: Notice; paused: boolean }) {
       <span className="gh-notice-icon" data-kind={notice.kind}>
         <Icon name={ICON[notice.kind]} size={16} />
       </span>
-      <span className="gh-notice-text">{notice.text}</span>
+      <span className="gh-notice-text">
+        {notice.text}
+        {notice.body ? <span className="gh-notice-body">{notice.body}</span> : null}
+      </span>
       {notice.action ? (
         <button
           type="button"
           className="gh-link-button"
           onClick={() => {
-            dismiss(notice.id);
+            useNotices.setState((s) => ({ list: s.list.filter((n) => n.id !== notice.id) }));
             notice.action?.onPress();
           }}
         >
@@ -122,6 +128,10 @@ function NoticeRow({ notice, paused }: { notice: Notice; paused: boolean }) {
 export function NotifyHost() {
   const list = useNotices((s) => s.list);
   const [paused, setPaused] = useState(false);
+  // the last hovered notice can leave without a mouseleave: the next ones must still time out
+  useEffect(() => {
+    if (!list.length) setPaused(false);
+  }, [list.length]);
   if (typeof document === 'undefined' || !list.length) return null;
   return createPortal(
     <div
@@ -131,7 +141,7 @@ export function NotifyHost() {
       onMouseLeave={() => setPaused(false)}
     >
       {list.map((notice) => (
-        <NoticeRow key={notice.id} notice={notice} paused={paused} />
+        <NoticeRow key={notice.id} notice={notice} paused={paused && list.length > 0} />
       ))}
     </div>,
     document.body,

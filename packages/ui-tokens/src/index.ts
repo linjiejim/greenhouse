@@ -93,8 +93,11 @@ export function connectGreenhouse(
     } else if (m.type === EMBED_PROTOCOL.confirmResult && typeof m.id === 'string') {
       confirms.get(m.id)?.(m.ok === true);
       confirms.delete(m.id);
-    } else if (m.type === EMBED_PROTOCOL.notifyAction && typeof m.id === 'string') {
-      notices.get(m.id)?.('action');
+    } else if (
+      (m.type === EMBED_PROTOCOL.notifyAction || m.type === EMBED_PROTOCOL.notifyDismissed) &&
+      typeof m.id === 'string'
+    ) {
+      notices.get(m.id)?.(m.type === EMBED_PROTOCOL.notifyAction ? 'action' : 'dismissed');
       notices.delete(m.id);
     } else if (m.type === EMBED_PROTOCOL.headerAction && typeof m.id === 'string') {
       headerActions.get(m.id)?.();

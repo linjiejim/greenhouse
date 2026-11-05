@@ -53,3 +53,25 @@ it('closes one layer per Escape and dims only behind the lowest one', () => {
   escape();
   expect(onDrawer).toHaveBeenCalledOnce();
 });
+
+function Later({ onDialog }: { onDialog: () => void }) {
+  const [dialog, setDialog] = useState(false);
+  return (
+    <Drawer title="Asset" onClose={() => {}}>
+      <button onClick={() => setDialog(true)}>rename</button>
+      {dialog ? (
+        <Dialog title="Rename" onClose={onDialog}>
+          <input aria-label="later-name" />
+        </Dialog>
+      ) : null}
+    </Drawer>
+  );
+}
+
+it('moves focus into a dialog opened later above a drawer', () => {
+  mount(<Later onDialog={() => {}} />);
+  const open = [...document.querySelectorAll('button')].find((b) => b.textContent === 'rename')!;
+  open.focus();
+  act(() => open.click());
+  expect(document.activeElement?.getAttribute('aria-label')).toBe('later-name');
+});

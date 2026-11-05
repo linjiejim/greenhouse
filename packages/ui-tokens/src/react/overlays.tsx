@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { confirm } from './embed.js';
-import { useLayer } from './layers.js';
+import { isTopLayer, useLayer } from './layers.js';
 import { useKitStrings } from './strings.js';
 import { CloseIcon, IconButton, cx } from './controls.js';
 
@@ -51,9 +51,8 @@ function useFirstFocus(panel: React.RefObject<HTMLDivElement | null>, into: 'fie
   useEffect(() => {
     const root = panel.current;
     if (!root) return;
-    // a layer opened together with one above it leaves the focus to the top one
-    const holder = document.activeElement?.closest('[role="dialog"]');
-    if (holder && holder !== root) return;
+    // a layer mounted together with one above it leaves the focus to that top layer
+    if (!isTopLayer(root)) return;
     const field =
       into === 'field'
         ? (root.querySelector<HTMLElement>('[autofocus],input:not([type=hidden]):not(:disabled),textarea,select') ??

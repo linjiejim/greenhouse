@@ -90,6 +90,11 @@ export function useLayer(options: { modal: boolean; onEscape: () => void; root: 
   return { top: (snapshot & 1) === 1, scrim: (snapshot & 2) === 2 };
 }
 
+/** Whether `root` belongs to the top layer of the stack. */
+export function isTopLayer(root: HTMLElement | null): boolean {
+  return !!root && layers.at(-1)?.root() === root;
+}
+
 /** True while any modal layer is open (a page may pause shortcuts). */
 export function hasModalLayer() {
   return layers.some((layer) => layer.modal);

@@ -41,11 +41,12 @@ export const EMPTY_FILTERS: ListFilters = {
   status: 'active',
 };
 
-/** Filters live in the address (`?q=…&kind=image&f.product=a,b`) so a view reloads and shares. */
+/** Filters live in the address (`?q=…&kind=image&f.product=a&f.product=b`) so a view reloads and shares. */
 function filtersFromQuery(base: ListFilters): ListFilters {
   const q = readQuery();
   const facets: FacetValues = {};
-  for (const [key, value] of q) if (key.startsWith('f.') && value) facets[key.slice(2)] = value.split(',');
+  // one `f.<key>` per chosen value: a value may itself contain commas
+  for (const [key, value] of q) if (key.startsWith('f.') && value) (facets[key.slice(2)] ??= []).push(value);
   const pick = <T extends string>(value: string | null, allowed: readonly T[], fallback: T) =>
     allowed.includes(value as T) ? (value as T) : fallback;
   return {
@@ -70,7 +71,7 @@ function queryFromFilters(f: ListFilters): URLSearchParams {
   if (f.ai) q.set('ai', f.ai);
   if (f.duplicates) q.set('duplicates', '1');
   if (f.sort !== 'new') q.set('sort', f.sort);
-  for (const [key, values] of Object.entries(f.facets)) if (values.length) q.set(`f.${key}`, values.join(','));
+  for (const [key, values] of Object.entries(f.facets)) for (const value of values) q.append(`f.${key}`, value);
   return q;
 }
 

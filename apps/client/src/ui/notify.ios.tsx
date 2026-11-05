@@ -14,7 +14,7 @@ const done = () => () => {};
 
 function plain(icon: 'checkCircle' | 'alertCircle' | 'alert') {
   return (text: string, options?: NotifyOptions) => {
-    if (options?.action) toastWithAction(text, options.action, 6000, icon);
+    if (options?.action) toastWithAction(text, { ...options.action, onDismiss: options.onDismiss }, 6000, icon);
     else toast(text, icon);
     return done();
   };
@@ -23,11 +23,16 @@ function plain(icon: 'checkCircle' | 'alertCircle' | 'alert') {
 function error(text: string, options?: NotifyOptions) {
   if (options?.action) {
     const action = options.action;
-    Alert.alert(text, undefined, [
-      { text: tr('common.ok'), style: 'cancel' },
-      { text: action.label, onPress: action.onPress },
-    ]);
-  } else alertError(text, undefined, options?.detail);
+    Alert.alert(
+      text,
+      options.body,
+      [
+        { text: tr('common.ok'), style: 'cancel', onPress: options.onDismiss },
+        { text: action.label, onPress: action.onPress },
+      ],
+      { cancelable: true, onDismiss: options.onDismiss },
+    );
+  } else alertError(text, options?.body, options?.detail);
   return done();
 }
 
@@ -35,8 +40,8 @@ export const notify: NotifyApi = Object.assign(plain('checkCircle'), {
   success: plain('checkCircle'),
   info: plain('alertCircle'),
   warning: plain('alert'),
-  undo: (text: string, onUndo: () => void) => {
-    toastWithAction(text, { label: tr('common.undo'), onPress: onUndo }, 8000, 'checkCircle');
+  undo: (text: string, onUndo: () => void, options?: NotifyOptions) => {
+    toastWithAction(text, { label: tr('common.undo'), onPress: onUndo, onDismiss: options?.onDismiss }, 8000, 'checkCircle');
     return done();
   },
   error,

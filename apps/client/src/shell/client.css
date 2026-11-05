@@ -674,6 +674,12 @@ textarea.gh-input,
   flex: 1;
   min-width: 0;
 }
+.gh-notice-body {
+  display: block;
+  color: var(--gh-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
 .gh-notice-icon {
   display: inline-flex;
   color: var(--gh-success);

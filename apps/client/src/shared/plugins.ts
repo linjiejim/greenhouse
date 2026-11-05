@@ -206,7 +206,8 @@ export interface PluginEntitySchema {
  *               `greenhouse:confirm` { id, title, body?, confirmLabel, tone? }  (host asks; replies
  *                                                          `greenhouse:confirm-result` { id, ok })
  *               `greenhouse:notify` { id, kind, text, actionLabel? } (host shows it; a press on the
- *                                                          action replies `greenhouse:notify-action` { id })
+ *                                                          action replies `greenhouse:notify-action` { id },
+ *                                                          its end without one `greenhouse:notify-dismissed` { id })
  *               `greenhouse:header` { actions }            (icon actions in the host's title bar; a
  *                                                          press replies `greenhouse:header-action` { id })
  *               `greenhouse:route` { route }               (the page's own view, `#/…`: kept in the
@@ -226,6 +227,7 @@ export const EMBED_PROTOCOL = {
   confirmResult: 'greenhouse:confirm-result',
   notify: 'greenhouse:notify',
   notifyAction: 'greenhouse:notify-action',
+  notifyDismissed: 'greenhouse:notify-dismissed',
   header: 'greenhouse:header',
   headerAction: 'greenhouse:header-action',
   route: 'greenhouse:route',

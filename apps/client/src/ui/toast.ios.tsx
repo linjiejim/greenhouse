@@ -30,6 +30,8 @@ import { selectionTick } from './haptics';
 interface ToastAction {
   label: string;
   onPress: () => void;
+  /** The HUD left without its action being pressed. */
+  onDismiss?: () => void;
 }
 interface ToastState {
   current: { id: number; message: string; icon?: IconName; action?: ToastAction; ms?: number } | null;
@@ -73,7 +75,10 @@ export function ToastHost() {
     if (!current) return;
     const id = current.id;
     AccessibilityInfo.announceForAccessibility(current.message);
-    const timer = setTimeout(() => clear(id), current.ms ?? 1800);
+    const timer = setTimeout(() => {
+      clear(id);
+      current.action?.onDismiss?.();
+    }, current.ms ?? 1800);
     return () => clearTimeout(timer);
   }, [current, clear]);
 
