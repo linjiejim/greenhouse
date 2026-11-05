@@ -5,6 +5,15 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0](https://github.com/linjiejim/greenhouse/compare/v4.2.0...v4.3.0) (2026-11-05)
+
+
+### Added
+
+* **client:** failures stay until dismissed, reversible actions offer Undo ([#110](https://github.com/linjiejim/greenhouse/issues/110)) ([de2886f](https://github.com/linjiejim/greenhouse/commit/de2886fc9978e74e7fc223d863bb5e985d462652))
+* **client:** one Select, filters in the address, members open in a drawer ([#111](https://github.com/linjiejim/greenhouse/issues/111)) ([0a04b6e](https://github.com/linjiejim/greenhouse/commit/0a04b6ed46adb703126bf6d92066e7c2a6f803d9))
+* **ui-tokens:** plugin pages share the host's look and its confirms and notices ([#107](https://github.com/linjiejim/greenhouse/issues/107)) ([4f5ec8f](https://github.com/linjiejim/greenhouse/commit/4f5ec8f9551ceaf99e5686e9f74f47578a015103))
+
 ## [4.2.0](https://github.com/linjiejim/greenhouse/compare/v4.1.0...v4.2.0) (2026-11-05)
 
 
