@@ -102,6 +102,7 @@ export function App() {
           ref={filesInput}
           type="file"
           multiple
+          data-testid="assets-files-input"
           hidden
           accept={[...config.types.image, ...config.types.video, '.heic', '.heif', '.mov'].join(',')}
           onChange={(e) => {

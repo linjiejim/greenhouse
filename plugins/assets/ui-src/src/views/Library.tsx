@@ -275,7 +275,7 @@ export function Library({
             hint={activeFilters || filters.q || bin ? undefined : t('emptyHint')}
           />
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(148px,1fr))] gap-3">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(148px,1fr))] gap-3" data-testid="assets-grid">
             {items.map((asset) => (
               <Tile
                 key={asset.id}

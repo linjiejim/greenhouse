@@ -25,7 +25,7 @@ export function BatchDialog({ files, onClose }: { files: File[]; onClose: () => 
       footer={
         <>
           <Button onClick={onClose}>{t('cancel')}</Button>
-          <Button variant="primary" onClick={start} disabled={!config}>
+          <Button variant="primary" onClick={start} disabled={!config} data-testid="assets-start-upload">
             {t('startUpload')}
           </Button>
         </>
@@ -98,7 +98,9 @@ export function UploadPanel() {
   if (!open || !items.length) return null;
   const count = (s: QueueItem['status']) => items.filter((i) => i.status === s).length;
   return (
-    <div className="fixed right-4 bottom-4 z-30 flex max-h-[60vh] w-[360px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl border border-edge bg-surface-canvas shadow-xl">
+    <div
+      data-testid="assets-upload-queue"
+      className="fixed right-4 bottom-4 z-30 flex max-h-[60vh] w-[360px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl border border-edge bg-surface-canvas shadow-xl">
       <div className="flex h-11 shrink-0 items-center gap-2 border-b border-edge px-3">
         <span className="min-w-0 flex-1 truncate text-[13px] font-bold">
           {active
