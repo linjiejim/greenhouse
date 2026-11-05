@@ -40,3 +40,21 @@ it('prefers dist and caches only fingerprinted assets immutably', async () => {
   expect(await (await host().request('/ext/fixture/ui/')).text()).toBe('built');
   expect((await host().request('/ext/fixture/ui/app-12345678.js')).headers.get('Cache-Control')).toContain('immutable');
 });
+it("adds the plugin's declared media origins to its own CSP only", async () => {
+  writeFileSync(join(dir, 'index.html'), 'ui');
+  const other = mkdtempSync(join(tmpdir(), 'gh-plugin-ui-'));
+  writeFileSync(join(other, 'index.html'), 'other');
+  fixture.extensions.push({ id: 'fixture', ui: { dir }, uiMedia: ['https://cdn.example.com'] } as never, {
+    id: 'other',
+    ui: { dir: other },
+  });
+  try {
+    const own = (await host().request('/ext/fixture/ui/')).headers.get('Content-Security-Policy') ?? '';
+    expect(own).toMatch(/img-src 'self' data: blob:[^;]* https:\/\/cdn\.example\.com/);
+    expect(own).toMatch(/media-src 'self' blob:[^;]* https:\/\/cdn\.example\.com/);
+    const theirs = (await host().request('/ext/other/ui/')).headers.get('Content-Security-Policy') ?? '';
+    expect(theirs).not.toContain('cdn.example.com');
+  } finally {
+    rmSync(other, { recursive: true, force: true });
+  }
+});

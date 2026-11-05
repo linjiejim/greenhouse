@@ -15,7 +15,7 @@
  *   VISION_MODEL                   — multimodal model id (default: gpt-4o-mini)
  */
 
-import { tool, generateText } from 'ai';
+import { tool } from 'ai';
 import { toErrorMessage } from '@greenhouse/utils/error';
 import { defineTool, type ToolMeta } from './define.js';
 import { logger } from '@greenhouse/utils/logger';
@@ -24,9 +24,8 @@ import type { DatabaseProvider } from '@greenhouse/db';
 import { detectImageContentType, getUpload, isValidUploadId } from '../storage/uploads.js';
 import { normalizeFileRef, resolveConversationFiles } from '../files/conversation-files.js';
 import { fetchPublicImage } from '../security/network.js';
-import { getMediaProviderConfig } from '../llm/media-provider.js';
 import { readCabinetFileBytes } from '../drive/kb-cabinet.js';
-import { reserveUserTokenBudget, settleAndRecordBudgetedUsage } from '../llm/usage-budget.js';
+import { createVisionModel, runVision, VISION_IMAGE_TOKEN_ALLOWANCE, type PreparedVisionModel } from '../llm/vision.js';
 import { findBudgetRefusal } from '../usage/budget-errors.js';
 
 const VISION_PROMPT = `Analyze the attached image as neutral source material. Do not assume it is about plants, products, support, or any other domain.
@@ -74,12 +73,6 @@ export const analyzeImageSchema = z.object({
 type AnalyzeImageInput = z.infer<typeof analyzeImageSchema>;
 
 const VISION_MAX_OUTPUT_TOKENS = 1_200;
-// Retries stay at zero until each concrete provider attempt has its own
-// reservation/settlement hook. A timed-out billable first request must never
-// be hidden behind one successful aggregate settlement.
-const VISION_MAX_RETRIES = 0;
-/** Conservative per-attempt allowance for provider-side image tokenization. */
-const VISION_IMAGE_TOKEN_ALLOWANCE = 32_768;
 
 /**
  * Tokenizer-independent admission upper bound. UTF-8 bytes safely dominate
@@ -92,25 +85,8 @@ export function estimateVisionRequestTokens(question?: string): number {
     JSON.stringify([{ role: 'user', content: [{ type: 'text', text: prompt }] }]),
     'utf8',
   );
-  return (Math.max(1, inputBytes) + VISION_MAX_OUTPUT_TOKENS + VISION_IMAGE_TOKEN_ALLOWANCE) * (VISION_MAX_RETRIES + 1);
+  return Math.max(1, inputBytes) + VISION_MAX_OUTPUT_TOKENS + VISION_IMAGE_TOKEN_ALLOWANCE;
 }
-
-/**
- * Create the vision model client on the media endpoint.
- * Uses lazy dynamic import of @ai-sdk/openai.
- */
-async function createVisionModel() {
-  const { apiKey, baseUrl } = getMediaProviderConfig('image analysis');
-  const modelId = process.env.VISION_MODEL || 'gpt-4o-mini';
-  const { createOpenAI } = await import('@ai-sdk/openai');
-  const client = createOpenAI({
-    apiKey,
-    baseURL: baseUrl,
-  });
-  return { model: client.chat(modelId), modelId };
-}
-
-type PreparedVisionModel = Awaited<ReturnType<typeof createVisionModel>>;
 
 interface LoadedImage {
   buffer: Buffer;
@@ -194,24 +170,6 @@ export type VisionGenerate = (args: {
   mimeType: string;
 }) => Promise<{ text: string; usage?: { inputTokens?: number; outputTokens?: number } }>;
 
-const defaultVisionGenerate: VisionGenerate = async ({ prepared, prompt, imageBuffer, mimeType }) => {
-  const result = await generateText({
-    model: prepared.model,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          { type: 'image', image: imageBuffer, mediaType: mimeType },
-        ],
-      },
-    ],
-    maxOutputTokens: VISION_MAX_OUTPUT_TOKENS,
-    maxRetries: VISION_MAX_RETRIES,
-  });
-  return { text: result.text, usage: result.usage };
-};
-
 export interface AnalyzeImageContext {
   db: DatabaseProvider;
   userId: string;
@@ -252,7 +210,6 @@ export function createAnalyzeImageTool(ctx: AnalyzeImageContext) {
     inputSchema: analyzeImageSchema,
     execute: async (input: AnalyzeImageInput) => {
       const { question } = input;
-      const startTime = Date.now();
       if ((input.image_id ? 1 : 0) + (input.file_id ? 1 : 0) !== 1) {
         return {
           error: 'Pass exactly one of image_id (an upload id or a public HTTPS URL) or file_id (a file in Files).',
@@ -295,65 +252,29 @@ export function createAnalyzeImageTool(ctx: AnalyzeImageContext) {
       }
 
       try {
-        // Provider construction is local preflight. Reserve only after the
-        // image and provider configuration are known to be usable.
-        const prepared = await (ctx.prepareModel ?? createVisionModel)();
-        const { modelId } = prepared;
-        const prompt = buildVisionPrompt(question);
-        const estimatedTokens = estimateVisionRequestTokens(question);
-        const budget = await reserveUserTokenBudget({
+        const result = await runVision({
           db: ctx.db,
           userId: ctx.userId,
           caller: 'vision',
-          estimatedTokens,
-          modelId,
-          providerId: 'media',
-          runId: ctx.sessionId,
+          prompt: buildVisionPrompt(question),
+          images: [{ buffer: loaded.buffer, mimeType: loaded.contentType }],
+          maxOutputTokens: VISION_MAX_OUTPUT_TOKENS,
+          estimatedTokens: estimateVisionRequestTokens(question),
           ...(ctx.sessionId ? { sessionId: ctx.sessionId } : {}),
-          // Metered as the `vision` service at its token price (override, else services.yaml).
-          service: 'vision',
-          metadata: {
-            session_id: ctx.sessionId,
-            source: input.file_id ? 'files' : isRemoteUrl(image_id) ? 'remote_url' : 'upload',
-          },
+          metadata: { source: input.file_id ? 'files' : isRemoteUrl(image_id) ? 'remote_url' : 'upload' },
+          prepareModel: ctx.prepareModel ?? createVisionModel,
+          ...(ctx.generate
+            ? {
+                generate: ({ prepared, prompt, images }) =>
+                  ctx.generate!({ prepared, prompt, imageBuffer: images[0].buffer, mimeType: images[0].mimeType }),
+              }
+            : {}),
         });
-
-        // Entering the generate seam is the provider boundary; a thrown error
-        // after this point has an unknown billable outcome and stays reserved.
-        budget.markProviderIoStarted();
-        const result = await (ctx.generate ?? defaultVisionGenerate)({
-          prepared,
-          prompt,
-          imageBuffer: loaded.buffer,
-          mimeType: loaded.contentType,
-        });
-
-        const durationMs = Date.now() - startTime;
+        const { modelId, durationMs } = result;
 
         logger.info(
-          `[Vision] 🔍 Analyzed ${image_id} via ${modelId} in ${durationMs}ms (${result.usage?.inputTokens ?? '?'} in, ${result.usage?.outputTokens ?? '?'} out)`,
+          `[Vision] 🔍 Analyzed ${image_id} via ${modelId} in ${durationMs}ms (${result.usage.inputTokens ?? '?'} in, ${result.usage.outputTokens ?? '?'} out)`,
         );
-
-        try {
-          await settleAndRecordBudgetedUsage(ctx.db, budget, {
-            profile_id: 'vision',
-            caller: 'vision',
-            session_id: ctx.sessionId,
-            user_id: ctx.userId,
-            model: modelId,
-            input_tokens: result.usage?.inputTokens ?? 0,
-            output_tokens: result.usage ? (result.usage.outputTokens ?? 0) : estimatedTokens,
-            cached_tokens: 0,
-            reasoning_tokens: 0,
-            duration_ms: durationMs,
-          });
-        } catch (err) {
-          logger.warn('[Vision] failed to settle budgeted usage', {
-            imageId: image_id,
-            budgetKey: budget.idempotencyKey,
-            error: toErrorMessage(err),
-          });
-        }
 
         return {
           image_id,
@@ -361,8 +282,8 @@ export function createAnalyzeImageTool(ctx: AnalyzeImageContext) {
           model: modelId,
           duration_ms: durationMs,
           usage: {
-            input_tokens: result.usage?.inputTokens,
-            output_tokens: result.usage?.outputTokens,
+            input_tokens: result.usage.inputTokens,
+            output_tokens: result.usage.outputTokens,
           },
         };
       } catch (err) {

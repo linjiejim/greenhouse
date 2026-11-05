@@ -11,7 +11,11 @@
  * dependency tree. The signing algorithm is deterministic and pinned by a unit
  * test against the official AWS SigV4 test-suite vector (s3-lite.test.ts).
  *
- * Limitations (deliberate): no presign or multipart; callers proxy bytes.
+ * Query-string presigning (GET/PUT) is available for deployments that let
+ * browsers reach the bucket (`STORAGE_S3_PRESIGN`); everything else proxies
+ * bytes through the API, streaming when the caller asks for it.
+ *
+ * Limitations (deliberate): no multipart.
  */
 
 import { createHash, createHmac } from 'node:crypto';
@@ -101,8 +105,36 @@ export interface S3LiteConfig {
   forcePathStyle?: boolean;
 }
 
+export interface S3PresignOptions {
+  expiresSec: number;
+  /** Extra signed query parameters, e.g. `response-content-disposition`. */
+  query?: Record<string, string>;
+  /** Test seam: the signing time. */
+  now?: Date;
+}
+
+/** A streamed object body (or byte range of it). */
+export interface S3ObjectStream {
+  /** 200 for the whole object, 206 for a satisfied range. */
+  status: 200 | 206;
+  body: ReadableStream<Uint8Array>;
+  /** Bytes in this response. */
+  contentLength: number;
+  /** Bytes in the whole object. */
+  size: number;
+  contentType: string | null;
+}
+
 export interface S3LiteClient {
   putObject(key: string, body: Buffer | string, contentType: string): Promise<void>;
+  /** Stream a body of known length (S3 needs Content-Length; the payload is unsigned). */
+  putObjectStream(key: string, body: ReadableStream<Uint8Array>, length: number, contentType: string): Promise<void>;
+  /** Stream an object, optionally one inclusive byte range; null on 404, `'unsatisfiable'` on 416. */
+  openObject(key: string, range?: { start: number; end?: number }): Promise<S3ObjectStream | 'unsatisfiable' | null>;
+  /** A query-string SigV4 URL a browser can use directly (signed header: host only). */
+  presignedUrl(method: 'GET' | 'PUT', key: string, opts: S3PresignOptions): string;
+  /** The origin presigned URLs point at (for CSP). */
+  readonly publicOrigin: string;
   /** null when the object does not exist (404). */
   getObject(key: string): Promise<Buffer | null>;
   getObjectWithMetadata(key: string): Promise<{ buffer: Buffer; contentType: string | null } | null>;
@@ -114,8 +146,8 @@ export interface S3LiteClient {
   deleteObject(key: string): Promise<void>;
 }
 
-function amzNow(): string {
-  return new Date()
+function amzNow(now = new Date()): string {
+  return now
     .toISOString()
     .replace(/[-:]/g, '')
     .replace(/\.\d{3}/, '');
@@ -159,6 +191,14 @@ function xmlText(value: string): string {
 export function createS3Client(cfg: S3LiteConfig, fetchImpl: typeof fetch = fetch): S3LiteClient {
   const endpoint = parseS3Endpoint(cfg.endpoint);
   const pathStyle = cfg.forcePathStyle !== false;
+  const host = pathStyle ? endpoint.host : `${cfg.bucket}.${endpoint.host}`;
+  const objectPath = (key: string) =>
+    pathStyle ? `/${encodeRfc3986(cfg.bucket)}/${encodeS3Key(key)}` : `/${encodeS3Key(key)}`;
+  const canonicalQuery = (params: Record<string, string>) =>
+    Object.entries(params)
+      .map(([k, v]) => `${encodeRfc3986(k)}=${encodeRfc3986(v)}`)
+      .sort()
+      .join('&');
 
   async function request(
     method: 'PUT' | 'GET' | 'HEAD' | 'DELETE',
@@ -166,15 +206,13 @@ export function createS3Client(cfg: S3LiteConfig, fetchImpl: typeof fetch = fetc
     body?: Buffer,
     contentType?: string,
     params: Record<string, string> = {},
+    stream?: { body: ReadableStream<Uint8Array>; length: number },
+    unsignedHeaders: Record<string, string> = {},
   ): Promise<Response> {
-    const host = pathStyle ? endpoint.host : `${cfg.bucket}.${endpoint.host}`;
-    const path = pathStyle ? `/${encodeRfc3986(cfg.bucket)}/${encodeS3Key(key)}` : `/${encodeS3Key(key)}`;
+    const path = objectPath(key);
     const amzDate = amzNow();
-    const payloadHash = sha256Hex(body ?? '');
-    const query = Object.entries(params)
-      .map(([k, v]) => `${encodeRfc3986(k)}=${encodeRfc3986(v)}`)
-      .sort()
-      .join('&');
+    const payloadHash = stream ? 'UNSIGNED-PAYLOAD' : sha256Hex(body ?? '');
+    const query = canonicalQuery(params);
 
     const headers: Record<string, string> = {
       host,
@@ -182,6 +220,7 @@ export function createS3Client(cfg: S3LiteConfig, fetchImpl: typeof fetch = fetc
       'x-amz-date': amzDate,
     };
     if (contentType) headers['content-type'] = contentType;
+    if (stream) headers['content-length'] = String(stream.length);
 
     const { authorization } = signV4({
       method,
@@ -200,10 +239,41 @@ export function createS3Client(cfg: S3LiteConfig, fetchImpl: typeof fetch = fetc
     const { host: _host, ...sendHeaders } = headers;
     return fetchImpl(`${endpoint.protocol}//${host}${path}${query ? `?${query}` : ''}`, {
       method,
-      headers: { ...sendHeaders, authorization },
-      body: body as BodyInit | undefined,
+      headers: { ...sendHeaders, ...unsignedHeaders, authorization },
+      body: (stream?.body ?? body) as BodyInit | undefined,
       redirect: 'error',
+      ...(stream ? { duplex: 'half' } : {}),
+    } as RequestInit);
+  }
+
+  function presignedUrl(method: 'GET' | 'PUT', key: string, opts: S3PresignOptions): string {
+    if (!Number.isInteger(opts.expiresSec) || opts.expiresSec < 1 || opts.expiresSec > 604_800)
+      throw new Error('S3 presign expiry must be 1..604800 seconds');
+    const amzDate = amzNow(opts.now);
+    const scope = `${amzDate.slice(0, 8)}/${cfg.region}/s3/aws4_request`;
+    const path = objectPath(key);
+    const params: Record<string, string> = {
+      ...opts.query,
+      'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+      'X-Amz-Credential': `${cfg.accessKeyId}/${scope}`,
+      'X-Amz-Date': amzDate,
+      'X-Amz-Expires': String(opts.expiresSec),
+      'X-Amz-SignedHeaders': 'host',
+    };
+    const query = canonicalQuery(params);
+    const { signature } = signV4({
+      method,
+      path,
+      query,
+      headers: { host },
+      payloadHash: 'UNSIGNED-PAYLOAD',
+      accessKeyId: cfg.accessKeyId,
+      secretAccessKey: cfg.secretAccessKey,
+      region: cfg.region,
+      service: 's3',
+      amzDate,
     });
+    return `${endpoint.protocol}//${host}${path}?${query}&X-Amz-Signature=${signature}`;
   }
 
   async function getObjectWithMetadata(key: string) {
@@ -225,11 +295,57 @@ export function createS3Client(cfg: S3LiteConfig, fetchImpl: typeof fetch = fetc
   }
 
   return {
+    publicOrigin: `${endpoint.protocol}//${host}`,
+    presignedUrl,
+
     async putObject(key, body, contentType) {
       const buf = typeof body === 'string' ? Buffer.from(body, 'utf8') : body;
       const res = await request('PUT', key, buf, contentType);
       if (!res.ok) await fail('PUT', key, res);
       await res.body?.cancel();
+    },
+
+    async putObjectStream(key, body, length, contentType) {
+      if (!Number.isSafeInteger(length) || length < 0) throw new Error('S3 stream length must be a byte count');
+      const res = await request('PUT', key, undefined, contentType, {}, { body, length });
+      if (!res.ok) await fail('PUT', key, res);
+      await res.body?.cancel();
+    },
+
+    async openObject(key, range) {
+      const res = await request(
+        'GET',
+        key,
+        undefined,
+        undefined,
+        {},
+        undefined,
+        range ? { range: `bytes=${range.start}-${range.end ?? ''}` } : {},
+      );
+      if (res.status === 404) {
+        await res.body?.cancel();
+        return null;
+      }
+      if (res.status === 416) {
+        await res.body?.cancel();
+        return 'unsatisfiable';
+      }
+      if ((res.status !== 200 && res.status !== 206) || !res.body) await fail('GET', key, res);
+      const contentLength = Number(res.headers.get('content-length'));
+      // `bytes 0-99/1234` → 1234; a whole-object 200 carries its own length.
+      const total = /\/(\d+)$/.exec(res.headers.get('content-range') ?? '')?.[1];
+      const size = res.status === 206 ? Number(total) : contentLength;
+      if (!Number.isSafeInteger(contentLength) || !Number.isSafeInteger(size)) {
+        await res.body?.cancel();
+        throw new Error('S3 GET returned invalid length metadata');
+      }
+      return {
+        status: res.status as 200 | 206,
+        body: res.body!,
+        contentLength,
+        size,
+        contentType: res.headers.get('content-type')?.split(';')[0].trim() || null,
+      };
     },
 
     async getObject(key) {

@@ -60,6 +60,9 @@ export function isPublicPath(path: string): boolean {
   // unguessable (timestamp + uuid). POST /api/upload (no trailing slash) is NOT
   // matched here, so uploads still require auth via authFetch.
   if (path.startsWith('/api/upload/')) return true;
+  // Plugin object tickets (routes/ext-objects.ts): the signed ticket in the path is the
+  // capability, exactly like a presigned bucket URL; <img>/<video> send no Bearer.
+  if (path.startsWith('/api/ext-objects/')) return true;
   // Agent tool proxy validates app/CLI bearer tokens itself and applies its own audit/rate limit.
   if (path.startsWith('/api/agent/')) return true;
   // MCP server uses its own OAuth token auth (bound to an internal user) + audit/rate limit.

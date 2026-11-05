@@ -9,6 +9,8 @@ export const exampleNotes = pgTable('ext_example_notes', {
   id: serial('id').primaryKey(),
   user_id: text('user_id').notNull(),
   body: text('body').notNull(),
+  /** Content type of the note's picture (`notes/<id>/picture` in the plugin object store), when it has one. */
+  picture_type: text('picture_type'),
   created_at: timestamp('created_at', { withTimezone: true, mode: 'string' }).notNull().defaultNow(),
 });
 

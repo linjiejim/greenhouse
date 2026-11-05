@@ -94,7 +94,11 @@
 ## Uploads and storage
 
 - `storage/uploads.ts` is the only storage layer (chat and generated images, Files objects); never touch disk or the object store directly. `storage/s3-lite.ts` signs S3-compatible requests for uploads and plugin stores.
-- Backend: complete COS or `STORAGE_S3_*`, else local `data/uploads`; partial S3 or both object backends fails at module load. S3 presign returns null (proxy paths); only `getUpload` falls back to disk on an object-store 404.
+- Backend: complete COS or `STORAGE_S3_*`, else local `data/uploads`; partial S3 or both object backends fails at module load. Drive presign is COS-only (S3/local proxy); only `getUpload` falls back to disk on an object-store 404.
+- Plugin objects (`storage/plugin-objects.ts`, kit `pluginObjects`) live under `<drive prefix>plugins/<id>/`; keys never leave it, and the drive scope `plugins` is reserved.
+- Plugin object URLs are presigned on COS and on S3 with `STORAGE_S3_PRESIGN=true`, else `/api/ext-objects/<ticket>` (public path, HMAC ticket, Range reads, streamed capped PUTs); never log a ticket.
+- Inline plugin objects are raster images, video and audio only; everything else is an octet-stream attachment. Direct uploads are not size-capped by the bucket: the plugin checks `head()`.
+- Moving a deployment from disk to a bucket: `pnpm cli storage push-local --dry-run`, then without `--dry-run`; drive reads have no local fallback.
 - `putUpload/getUpload` accept only server-made flat image ids (`timestamp + full UUID`; legacy 8-hex ids read-only) and check path, size and magic bytes; tools never join `UPLOADS_DIR`.
 - `TENCENT_CLOUD_COS_PREFIX`/`_DRIVE_PREFIX` pass `normalizeKeyPrefix()` at module load (bad values fail boot); never make them lazy. Generated images use the fixed `generate/` prefix.
 - Changing a prefix orphans every object (key = prefix + id): inventory `messages.content`, `messages.parts` and plugin rows embedding `/api/upload/<id>` first.
@@ -111,6 +115,7 @@
 - `read_attachment` is session-scoped (the session is the authorization); it reads text/CSV/JSON/xlsx/docx and text-layer PDFs; images, media, archives and >10MB files get an explicit error.
 - `files/conversation-files.ts` resolves both stores (session `files` rows, then images in this transcript); file bytes via `getObjectAtKey`, image bytes via `getUpload`; never add `files` rows for images.
 - `normalizeFileRef` normalizes every model-written image ref; `analyze_image` checks flat storage first (`isValidUploadId`), then session files, returning `not_an_image` for files.
+- Every vision call goes through `llm/vision.ts` `runVision` (one reserve, one provider attempt, one settle as the `vision` service); plugins use kit `analyzeImages`.
 - `files/extract-text.ts` is the only bytes→text path: reasons only (`unsupported`/`encrypted`/`no_text_layer`/`extract_failed`), UTF-16 aware, never NUL; callers add hints that name real exits.
 - Dynamic `import()` of a CJS package uses `default` (`resolveWorkbookCtor()`); vitest interop hides this, so check with real Node. PDFs use `unpdf` text layers only, never rendering or scripts.
 
@@ -288,3 +293,4 @@
 - `POST /api/ext-ui/token` binds member, `auth_version` and a member-visible plugin for ten minutes, rechecked per call; it reaches only `/api/ext/<id>/*` and basic `GET /api/me`, enforced before public bypass.
 - Plugin UIs mount at `/ext/<id>/ui/` before auth and SPA fallback (`ui/dist` preferred, disabled or missing → 404, fingerprinted files immutable).
 - Plugin UI CSP allows frame ancestors `'self' tauri://localhost` (outside production also the CORS allowed origins, for the Expo web dev server) and omits X-Frame-Options; every other response keeps `DENY`.
+- Plugin UI img/media sources are `'self'`, `blob:`/`data:` (img), the object store's direct origin and that plugin's manifest `uiMedia`; connect adds only the store origin; scripts stay `'self'`.

@@ -1,6 +1,7 @@
 import { serveStatic } from '@hono/node-server/serve-static';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { directObjectOrigin } from '../storage/uploads.js';
 import { createIdentityProviderRoutes } from '../auth/identity-providers.js';
 /**
  * Boot-time glue between the active extensions and the core runtime: what
@@ -90,6 +91,11 @@ export function mountExtensionUis(app: Hono<AppEnv>): void {
     const uiDir = ext.ui?.dir;
     if (uiDir) {
       const root = existsSync(join(uiDir, 'dist', 'index.html')) ? join(uiDir, 'dist') : uiDir;
+      const storage = directObjectOrigin();
+      const sources = {
+        media: [...(storage ? [storage] : []), ...(ext.uiMedia ?? [])],
+        connect: storage ? [storage] : [],
+      };
       app.use(
         `/ext/${ext.id}/ui/*`,
         async (c, next) => {
@@ -101,7 +107,7 @@ export function mountExtensionUis(app: Hono<AppEnv>): void {
           }
           if (decoded.includes('\\') || decoded.split('/').some((part) => part.startsWith('.')))
             return c.body(null, 404);
-          c.set('extensionUi', true);
+          c.set('extensionUi', sources);
           c.header(
             'Cache-Control',
             /[-.][a-f0-9]{8,}\./i.test(c.req.path) ? 'public, max-age=31536000, immutable' : 'no-cache',

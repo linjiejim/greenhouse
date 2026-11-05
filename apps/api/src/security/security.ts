@@ -9,6 +9,7 @@ import { extensionRateLimit } from './extension-rate-limits.js';
  */
 
 import type { Context, Next } from 'hono';
+import type { PluginUiSources } from '../app-env.js';
 import { getDb } from '@greenhouse/db';
 import { logger } from '@greenhouse/utils/logger';
 import { toErrorMessage } from '@greenhouse/utils/error';
@@ -117,6 +118,25 @@ export function pluginUiFrameAncestors(): string {
     for (const origin of getAllowedCorsOrigins()) if (CSP_ORIGIN.test(origin)) ancestors.add(origin);
   }
   return [...ancestors].join(' ');
+}
+
+/**
+ * A host-mounted plugin UI: scripts stay same-origin; images and media may also come from
+ * blob:/data: (local previews), the object store's direct origin and the plugin's declared
+ * `uiMedia` origins; uploads may PUT to the object store's direct origin.
+ */
+export function pluginUiContentSecurityPolicy(sources: PluginUiSources): string {
+  const media = sources.media.filter((source) => CSP_ORIGIN.test(source));
+  const connect = sources.connect.filter((source) => CSP_ORIGIN.test(source));
+  return [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    ["img-src 'self' data: blob:", ...media].join(' '),
+    ["media-src 'self' blob:", ...media].join(' '),
+    ["connect-src 'self'", ...connect].join(' '),
+    `frame-ancestors ${pluginUiFrameAncestors()}`,
+  ].join('; ');
 }
 
 function isAllowedCorsOrigin(origin: string): boolean {
@@ -273,14 +293,14 @@ export async function securityHeadersMiddleware(c: Context, next: Next) {
   await next();
 
   c.header('X-Content-Type-Options', 'nosniff');
-  const pluginUi = c.get('extensionUi') === true;
+  const pluginUi = c.get('extensionUi') as PluginUiSources | undefined;
   if (!pluginUi) c.header('X-Frame-Options', 'DENY');
   c.header('X-XSS-Protection', '1; mode=block');
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
   c.header(
     'Content-Security-Policy',
     pluginUi
-      ? `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors ${pluginUiFrameAncestors()}`
+      ? pluginUiContentSecurityPolicy(pluginUi)
       : [
           "default-src 'self'",
           "script-src 'self' 'unsafe-inline' 'unsafe-eval'",

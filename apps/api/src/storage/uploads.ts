@@ -24,7 +24,20 @@
 
 import COS from 'cos-nodejs-sdk-v5';
 import { logger } from '@greenhouse/utils/logger';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, statSync, readdirSync } from 'node:fs';
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  unlinkSync,
+  statSync,
+  readdirSync,
+  renameSync,
+  createReadStream,
+  createWriteStream,
+} from 'node:fs';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { resolve, extname, dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { UPLOADS_DIR } from '../paths.js';
@@ -271,6 +284,22 @@ const DRIVE_PREFIX = normalizeKeyPrefix(
   'drive/',
 );
 
+/** The object key a flat upload id is stored under (for moving local files into a bucket). */
+export function uploadObjectKey(id: string): string {
+  assertValidUploadId(id);
+  return keyFor(id);
+}
+
+/** The drive key prefix; on local disk a drive key is also its path under UPLOADS_DIR. */
+export function driveObjectPrefix(): string {
+  return DRIVE_PREFIX;
+}
+
+/** Root of every plugin object namespace (`<drive prefix>plugins/<plugin id>/…`). */
+export function pluginObjectPrefix(): string {
+  return `${DRIVE_PREFIX}plugins/`;
+}
+
 /** Build the server-owned COS key for a drive file. Namespaced by scope + owner. */
 export function driveKeyFor(opts: {
   scope: string;
@@ -487,4 +516,180 @@ export async function deleteObjectAtKey(key: string): Promise<void> {
   }
   const p = driveLocalPath(key);
   if (existsSync(p)) unlinkSync(p);
+}
+
+// ─── Object streaming and direct URLs (plugin objects) ──────
+//
+// Plugin objects (storage/plugin-objects.ts) live under the drive prefix too, but
+// unlike drive files they may be served inline (safe media types only), streamed in
+// byte ranges, and uploaded without buffering. These helpers are backend-neutral:
+// COS always hands out presigned URLs, S3 only with STORAGE_S3_PRESIGN, local disk never.
+
+export type ObjectStorageBackend = 'cos' | 's3' | 'local';
+
+export function objectStorageBackend(): ObjectStorageBackend {
+  if (s3Config) return 's3';
+  return getCosConfig() ? 'cos' : 'local';
+}
+
+/** Whether browsers can be handed presigned object URLs (else bytes proxy through the API). */
+export function directObjectUrls(): boolean {
+  if (s3Config) return s3Config.presign;
+  return Boolean(getCosConfig());
+}
+
+/** The origin presigned object URLs point at (for CSP), or null when objects are proxied. */
+export function directObjectOrigin(): string | null {
+  if (s3Config) return s3Config.presign ? getS3Client()!.publicOrigin : null;
+  const cfg = getCosConfig();
+  return cfg ? `https://${cfg.bucket}.cos.${cfg.region}.myqcloud.com` : null;
+}
+
+export interface PresignObjectOptions {
+  method: 'GET' | 'PUT';
+  expiresSec: number;
+  /** GET only: a complete Content-Disposition value the bucket echoes back. */
+  disposition?: string;
+  /** GET only: the Content-Type the bucket echoes back. */
+  contentType?: string;
+}
+
+/** A presigned object URL, or null when objects are proxied (see directObjectUrls). */
+export async function presignObjectUrl(key: string, opts: PresignObjectOptions): Promise<string | null> {
+  if (!directObjectUrls()) return null;
+  const query: Record<string, string> = {};
+  if (opts.method === 'GET' && opts.disposition) query['response-content-disposition'] = opts.disposition;
+  if (opts.method === 'GET' && opts.contentType) query['response-content-type'] = opts.contentType;
+  const s3 = getS3Client();
+  if (s3) return s3.presignedUrl(opts.method, key, { expiresSec: opts.expiresSec, query });
+  const cfg = getCosConfig()!;
+  const cos = getClient(cfg);
+  return new Promise<string>((res, rej) =>
+    cos.getObjectUrl(
+      {
+        Bucket: cfg.bucket,
+        Region: cfg.region,
+        Key: key,
+        Method: opts.method,
+        Sign: true,
+        Expires: opts.expiresSec,
+        ...(Object.keys(query).length ? { Query: query } : {}),
+      },
+      (err, data) => (err ? rej(err) : res((data as { Url: string }).Url)),
+    ),
+  );
+}
+
+/** A streamed object (or an inclusive byte range of it). */
+export interface ObjectStream {
+  status: 200 | 206;
+  body: ReadableStream<Uint8Array>;
+  /** Bytes in this response. */
+  contentLength: number;
+  /** Bytes in the whole object. */
+  size: number;
+  contentType: string | null;
+}
+
+/** Stream an object without buffering it; null when absent, `'unsatisfiable'` for a range past the end. */
+export async function openObjectAtKey(
+  key: string,
+  range?: { start: number; end?: number },
+): Promise<ObjectStream | 'unsatisfiable' | null> {
+  const s3 = getS3Client();
+  if (s3) return s3.openObject(key, range);
+  const cfg = getCosConfig();
+  if (cfg) {
+    // The COS SDK buffers; a short presigned GET streams through fetch instead.
+    const url = await presignObjectUrl(key, { method: 'GET', expiresSec: 60 });
+    const res = await fetch(url!, {
+      headers: range ? { range: `bytes=${range.start}-${range.end ?? ''}` } : {},
+      redirect: 'error',
+    });
+    if (res.status === 404) {
+      await res.body?.cancel();
+      return null;
+    }
+    if (res.status === 416) {
+      await res.body?.cancel();
+      return 'unsatisfiable';
+    }
+    if ((res.status !== 200 && res.status !== 206) || !res.body) {
+      await res.body?.cancel();
+      throw new Error(`COS GET "${key}" failed: HTTP ${res.status}`);
+    }
+    const contentLength = Number(res.headers.get('content-length'));
+    const total = /\/(\d+)$/.exec(res.headers.get('content-range') ?? '')?.[1];
+    const size = res.status === 206 ? Number(total) : contentLength;
+    if (!Number.isSafeInteger(contentLength) || !Number.isSafeInteger(size)) {
+      await res.body.cancel();
+      throw new Error('COS GET returned invalid length metadata');
+    }
+    return {
+      status: res.status as 200 | 206,
+      body: res.body,
+      contentLength,
+      size,
+      contentType: res.headers.get('content-type')?.split(';')[0].trim() || null,
+    };
+  }
+  const p = driveLocalPath(key);
+  if (!existsSync(p)) return null;
+  const size = statSync(p).size;
+  if (range && (range.start >= size || (range.end !== undefined && range.end < range.start))) return 'unsatisfiable';
+  const start = range?.start ?? 0;
+  const end = Math.min(range?.end ?? size - 1, size - 1);
+  const stream = size === 0 ? Readable.from([]) : createReadStream(p, { start, end });
+  return {
+    status: range ? 206 : 200,
+    body: Readable.toWeb(stream) as ReadableStream<Uint8Array>,
+    contentLength: size === 0 ? 0 : end - start + 1,
+    size,
+    contentType: contentTypeForId(key),
+  };
+}
+
+/**
+ * Store a stream of exactly `length` bytes at a key without buffering it. The caller
+ * bounds and counts the stream; a stream that ends short or long fails here and leaves
+ * no object behind on local disk (written to a temporary file, then renamed).
+ */
+export async function putObjectStreamAtKey(
+  key: string,
+  body: ReadableStream<Uint8Array>,
+  length: number,
+  contentType: string,
+): Promise<void> {
+  const s3 = getS3Client();
+  if (s3) return s3.putObjectStream(key, body, length, contentType);
+  const cfg = getCosConfig();
+  if (cfg) {
+    const cos = getClient(cfg);
+    await new Promise<void>((res, rej) =>
+      cos.putObject(
+        {
+          Bucket: cfg.bucket,
+          Region: cfg.region,
+          Key: key,
+          Body: Readable.fromWeb(body as import('node:stream/web').ReadableStream),
+          ContentLength: length,
+          ContentType: contentType,
+        },
+        (err) => (err ? rej(err) : res()),
+      ),
+    );
+    return;
+  }
+  const p = driveLocalPath(key);
+  const tmpDir = resolve(UPLOADS_DIR, '.tmp');
+  mkdirSync(tmpDir, { recursive: true });
+  const tmp = resolve(tmpDir, randomUUID());
+  try {
+    await pipeline(Readable.fromWeb(body as import('node:stream/web').ReadableStream), createWriteStream(tmp));
+    if (statSync(tmp).size !== length) throw new Error('Uploaded byte count does not match the declared length');
+    mkdirSync(dirname(p), { recursive: true });
+    renameSync(tmp, p);
+  } finally {
+    if (existsSync(tmp)) unlinkSync(tmp);
+  }
 }

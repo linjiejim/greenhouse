@@ -111,6 +111,55 @@ export function validateExtUiToken(token: string): ExtUiTokenPayload | null {
 }
 
 /**
+ * A plugin object ticket: the capability behind `/api/ext-objects/<ticket>` when the object
+ * backend cannot presign (local disk, S3 without STORAGE_S3_PRESIGN). Like a presigned URL it
+ * names one object, one operation and an expiry, and carries no member credential.
+ */
+export interface ObjectTicket {
+  /** Owning plugin id. */
+  p: string;
+  /** Key inside the plugin's namespace. */
+  k: string;
+  /** `r` read, `u` upload. */
+  o: 'r' | 'u';
+  /** Expiry, unix seconds. */
+  e: number;
+  /** Upload: byte ceiling. */
+  m?: number;
+  /** Upload: required Content-Type. Read: served Content-Type. */
+  t?: string;
+  /** Read: `i` inline, `a` attachment. */
+  d?: 'i' | 'a';
+  /** Read, attachment: download file name. */
+  f?: string;
+}
+
+export function createObjectTicket(claims: ObjectTicket): string {
+  const data = Buffer.from(JSON.stringify(claims)).toString('base64url');
+  return `${data}.${hmac(data, 'ext-objects')}`;
+}
+
+export function validateObjectTicket(ticket: string): ObjectTicket | null {
+  const [data, sig, extra] = ticket.split('.');
+  if (!data || !sig || extra !== undefined || !/^[a-f0-9]{64}$/i.test(sig)) return null;
+  if (!timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(hmac(data, 'ext-objects'), 'hex'))) return null;
+  try {
+    const t = JSON.parse(Buffer.from(data, 'base64url').toString()) as ObjectTicket;
+    const ok =
+      typeof t.p === 'string' &&
+      /^[a-z][a-z0-9-]*$/.test(t.p) &&
+      typeof t.k === 'string' &&
+      (t.o === 'r' || t.o === 'u') &&
+      Number.isInteger(t.e) &&
+      t.e > Math.floor(Date.now() / 1000) &&
+      (t.o === 'r' || (Number.isSafeInteger(t.m) && typeof t.t === 'string'));
+    return ok ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * What a plugin embed token may call: its own `/api/ext/<id>/…`, the member's basic profile, the
  * member directory for owner pickers, and the drive folder/file routes, where drive access then
  * admits only the scopes this plugin declared (routes/drive.ts `accessFor`). Drive search and the
@@ -122,6 +171,8 @@ export function extUiPathAllowed(plugin: string, method: string, path: string): 
   if (path === '/api/me' || path === '/api/people') return method === 'GET';
   if (path === '/api/people/resolve') return method === 'POST';
   if (/^\/api\/drive\/(folders|files|breadcrumb)(\/|$)/.test(path)) return true;
+  // Object tickets authorize themselves; a frame that attaches its token anyway is not refused.
+  if (path.startsWith('/api/ext-objects/')) return method === 'GET' || method === 'HEAD' || method === 'PUT';
   return path.startsWith(`/api/ext/${plugin}/`);
 }
 

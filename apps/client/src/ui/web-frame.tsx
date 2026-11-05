@@ -13,6 +13,8 @@ export function WebFrame({ bridge, ...props }: WebViewProps & { bridge?: FrameBr
     <WebView
       {...props}
       ref={frame}
+      // Plugin pages play their media in place (a video does not leave the page) and may go full screen.
+      {...(bridge ? { allowsInlineMediaPlayback: true, allowsFullscreenVideo: true } : null)}
       onLoad={bridge ? () => bridge.onLoad?.() : props.onLoad}
       onShouldStartLoadWithRequest={
         bridge

@@ -20,7 +20,7 @@ pin an exact version such as `4.0.0` once the service holds data you care about.
 | `BOOTSTRAP_ADMIN_EMAIL` | first boot | While nobody administers the instance, each boot logs a one-time activation link for this address. Open it, set a password, and you are the super admin. Inert afterwards. |
 | `PUBLIC_BASE_URL` | recommended | The public `https://` address. The activation link in the log is then a full URL, and invite/reset links can be emailed later. |
 | `PORT` | set by the platform | The listening port (`API_PORT` wins when both are set; default 3000). |
-| `STORAGE_S3_ENDPOINT`, `STORAGE_S3_BUCKET`, `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY` | without a disk | Uploads, Files and skill bundles go to the bucket instead of `/app/data`. Any store that speaks the S3 API (AWS S3, Cloudflare R2, MinIO, SeaweedFS, Backblaze B2, Tencent COS, Aliyun OSS); files are proxied through Greenhouse, so the bucket needs no CORS setup. Optional `STORAGE_S3_REGION` (default `us-east-1`; R2 uses `auto`) and `STORAGE_S3_FORCE_PATH_STYLE` (default `true`). |
+| `STORAGE_S3_ENDPOINT`, `STORAGE_S3_BUCKET`, `STORAGE_S3_ACCESS_KEY_ID`, `STORAGE_S3_SECRET_ACCESS_KEY` | without a disk | Uploads, Files and skill bundles go to the bucket instead of `/app/data`. Any store that speaks the S3 API (AWS S3, Cloudflare R2, MinIO, SeaweedFS, Backblaze B2, Tencent COS, Aliyun OSS); files are proxied through Greenhouse, so the bucket needs no CORS setup. Optional `STORAGE_S3_REGION` (default `us-east-1`; R2 uses `auto`) and `STORAGE_S3_FORCE_PATH_STYLE` (default `true`). `STORAGE_S3_PRESIGN=true` lets plugin objects (large uploads, video) go straight to the bucket; it needs an endpoint browsers can reach and a CORS rule allowing this site's origin to `PUT`. |
 
 The model, search and other credentials are not deploy variables: sign in and fill them
 in under Admin › Runtime Config. The full list of optional variables is in
@@ -33,7 +33,8 @@ Requirements the platform must meet:
 - About 300 MB of memory at idle with the default plugins; give it at least 1 GB (report rendering and parallel chats need headroom).
 - Health check: `GET /health`.
 - Persistent data: either a volume at `/app/data` or the `STORAGE_S3_*` bucket. Without
-  either, uploaded files disappear on every redeploy.
+  either, uploaded files disappear on every redeploy. Moving an existing volume to a bucket:
+  set the bucket, then `pnpm cli storage push-local --dry-run` and without `--dry-run`.
 - The image is `linux/amd64`.
 
 First boot: deploy, open the service log, find the line with the activation link, open

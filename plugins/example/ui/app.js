@@ -26,3 +26,49 @@ document.getElementById('refresh').onclick = async () => {
     document.getElementById('status').textContent = error.message;
   }
 };
+
+// A note with a picture: the plugin API hands out an upload target from its own object store
+// (a presigned bucket URL, or an /api/ext-objects ticket on local disk). The PUT carries no
+// Bearer — the URL is the capability — and the API checks the stored size before attaching it.
+const api = async (path, body) => {
+  const response = await fetch(`/api/ext/example${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${bridge.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(json.error || `HTTP ${response.status}`);
+  return json;
+};
+let pictureNote = null;
+document.getElementById('picture-file').onchange = async (event) => {
+  const file = event.target.files?.[0];
+  const status = document.getElementById('picture-status');
+  if (!file) return;
+  try {
+    status.textContent = 'Uploading…';
+    const { note } = await api('/notes', { body: `Picture: ${file.name}`.slice(0, 500) });
+    const { upload } = await api(`/notes/${note.id}/picture`, { content_type: file.type, size: file.size });
+    const put = await fetch(upload.url, { method: upload.method, headers: upload.headers, body: file });
+    if (!put.ok) throw new Error(`Upload failed (HTTP ${put.status})`);
+    const done = await api(`/notes/${note.id}/picture/complete`, { content_type: file.type });
+    pictureNote = note.id;
+    const preview = document.getElementById('picture-preview');
+    preview.src = done.picture_url;
+    preview.alt = file.name;
+    preview.hidden = false;
+    document.getElementById('picture-describe').hidden = false;
+    status.textContent = 'Attached to a new note.';
+  } catch (error) {
+    status.textContent = error.message;
+  }
+};
+document.getElementById('picture-describe').onclick = async () => {
+  const out = document.getElementById('picture-description');
+  try {
+    out.textContent = 'Looking…';
+    out.textContent = (await api(`/notes/${pictureNote}/picture/describe`, {})).description;
+  } catch (error) {
+    out.textContent = error.message;
+  }
+};
