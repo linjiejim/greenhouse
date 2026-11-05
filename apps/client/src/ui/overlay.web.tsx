@@ -132,11 +132,6 @@ export function Overlay({
       }
     };
     document.addEventListener('keydown', key, true);
-    const box = root?.getBoundingClientRect();
-    if (root && pointX !== undefined && pointY !== undefined && box) {
-      root.style.left = `${Math.max(8, Math.min(pointX, innerWidth - box.width - 8))}px`;
-      root.style.top = `${Math.max(8, Math.min(pointY, innerHeight - box.height - 8))}px`;
-    }
     return () => {
       unlabel();
       layers.splice(layers.indexOf(layer), 1);
@@ -144,6 +139,14 @@ export function Overlay({
       if (previous?.isConnected) previous.focus();
     };
   }, [interactive, role, pointX, pointY, trapTab, initialFocus]);
+  // An anchored panel (menu, listbox, tooltip) stays inside the window, measured as rendered.
+  React.useLayoutEffect(() => {
+    const root = panel.current;
+    if (!root || pointX === undefined || pointY === undefined) return;
+    const box = root.getBoundingClientRect();
+    root.style.left = `${Math.max(8, Math.min(pointX, innerWidth - box.width - 8))}px`;
+    root.style.top = `${Math.max(8, Math.min(pointY, innerHeight - box.height - 8))}px`;
+  }, [pointX, pointY]);
   if (typeof document === 'undefined') return null;
   return createPortal(
     <div

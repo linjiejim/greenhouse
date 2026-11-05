@@ -1,11 +1,8 @@
 import React, { useState } from 'react';
 import { Overlay } from './overlay.web';
-/** Tooltips stay inside the window: a long one wraps at TOOLTIP_MAX and shifts left near the edge. */
+/** A long tooltip wraps at TOOLTIP_MAX; the overlay keeps it inside the window at its rendered width. */
 const TOOLTIP_MAX = 320;
-const placeTip = (r: DOMRect) => ({
-  x: Math.max(8, Math.min(r.left, window.innerWidth - Math.min(TOOLTIP_MAX, window.innerWidth - 16) - 8)),
-  y: r.bottom + 4,
-});
+const placeTip = (r: DOMRect) => ({ x: r.left, y: r.bottom + 4 });
 export function Tooltip({ children, label }: { children: React.ReactNode; label: string }) {
   const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
   return (
@@ -22,7 +19,8 @@ export function Tooltip({ children, label }: { children: React.ReactNode; label:
           modal={false}
           point={point}
           onClose={() => setPoint(null)}
-          panelStyle={{ maxWidth: Math.min(TOOLTIP_MAX, window.innerWidth - 16), whiteSpace: 'normal' }}
+          // its own width (up to TOOLTIP_MAX) before the overlay measures and clamps it
+          panelStyle={{ width: 'max-content', maxWidth: Math.min(TOOLTIP_MAX, window.innerWidth - 16), whiteSpace: 'normal' }}
         >
           {label}
         </Overlay>
