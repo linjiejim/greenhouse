@@ -53,7 +53,7 @@ button:disabled {
 /* Pressing shrinks a little on touch only; a mouse press shows the pressed fill of each control. */
 @media (pointer: coarse) {
   button:not(:disabled):active {
-    transform: scale(0.97);
+    scale: 0.97;
   }
 }
 textarea {
@@ -71,7 +71,7 @@ textarea {
     animation-name: gh-fade-only !important;
   }
   button:not(:disabled):active {
-    transform: none;
+    scale: none;
   }
 }
 @keyframes gh-fade-only {

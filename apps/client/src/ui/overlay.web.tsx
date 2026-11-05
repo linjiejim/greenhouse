@@ -93,6 +93,8 @@ export function Overlay({
   size?: DialogSize;
 }) {
   const { hex: c, isDark } = useTheme();
+  // only the lowest open layer dims the page; one opened above it (a confirm over a drawer) does not
+  const [stacked] = React.useState(() => layers.length > 0);
   const pointX = point?.x,
     pointY = point?.y;
   const panel = useRef<HTMLDivElement>(null);
@@ -153,7 +155,7 @@ export function Overlay({
         alignItems: point ? 'flex-start' : role === 'status' ? 'flex-start' : 'center',
         justifyContent: 'center',
         padding: role === 'status' ? 24 : 16,
-        background: modal ? c.scrim : 'transparent',
+        background: modal && !stacked ? c.scrim : 'transparent',
         pointerEvents: interactive ? 'auto' : 'none',
         color: c.label,
         fontFamily: 'Nunito, sans-serif',
