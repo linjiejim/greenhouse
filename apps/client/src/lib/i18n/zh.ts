@@ -108,6 +108,7 @@ export const zh: Catalog = {
     moreActions: '更多操作',
   },
   common: {
+    labelSep: '：',
     about: '说明',
     saveChanges: '保存修改',
     clear: '清除',

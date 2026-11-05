@@ -313,7 +313,7 @@ export function Select({
         <span className={cx('truncate', !chosen && !clearable && 'text-faint-foreground')}>
           {clearable && label
             ? chosen
-              ? `${label}：${chosen.label}`
+              ? `${label}${s.labelSep}${chosen.label}`
               : label
             : (chosen?.label ?? placeholder ?? s.choose)}
         </span>

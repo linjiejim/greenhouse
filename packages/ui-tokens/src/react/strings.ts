@@ -19,6 +19,7 @@ const zh = {
   choose: '请选择',
   noOptions: '没有可选项',
   required: '必填',
+  labelSep: '：',
 };
 const en: typeof zh = {
   close: 'Close',
@@ -38,6 +39,7 @@ const en: typeof zh = {
   choose: 'Choose',
   noOptions: 'Nothing to choose',
   required: 'Required',
+  labelSep: ': ',
 };
 export type KitStrings = typeof zh;
 
