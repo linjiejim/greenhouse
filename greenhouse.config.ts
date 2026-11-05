@@ -25,6 +25,7 @@ export default defineConfig({
     './plugins/tables',
     './plugins/knowledge',
     './plugins/retro',
+    './plugins/assets',
   ],
   extensions: {
     // The packages above are compiled in; this switches them on.

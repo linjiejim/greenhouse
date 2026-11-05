@@ -400,8 +400,8 @@ Keep schema/services in the package; core has no plugin service accessor. New ta
 them as numbers. Plugin tables may reference core; core must not acquire plugin FKs. Use
 `db.users`, `db.drive`, `db.platform` and kit facades for core data (organization `'default'`).
 
-Core schema owns 49 tables and a fresh install creates only those. Ten official data plugins own
-24 more: each plugin's `0001_adopt.sql` is its baseline, creates its tables only when the plugin
+Core schema owns 49 tables and a fresh install creates only those. Eleven official data plugins own
+30 more: each plugin's `0001_adopt.sql` is its baseline, creates its tables only when the plugin
 is enabled, and guards every table/index/constraint so a database upgraded from 3.x adopts the
 tables its 3.x baseline created in place. Example's extra table is separate. See
 [DB ownership](packages/db/src/db-schema.md).

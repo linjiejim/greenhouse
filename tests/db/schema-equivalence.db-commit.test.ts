@@ -65,10 +65,10 @@ describe('4.0 schema equivalence', () => {
       const catalog = await readSchemaCatalog(url);
       expect(new Set(catalog.tables)).toEqual(coreTableNames());
       expect(catalog.tables).toHaveLength(50);
-      // The comparison has teeth: enabling the plugins adds their 25 tables and nothing else.
+      // The comparison has teeth: enabling the plugins adds their 31 tables and nothing else.
       const plugins = await freshWithPlugins();
       const pluginTables = plugins.tables.filter((table) => !catalog.tables.includes(table));
-      expect(pluginTables).toHaveLength(25);
+      expect(pluginTables).toHaveLength(31);
       const diff = diffSchemaCatalogs(catalog, plugins);
       expect(diff.filter((line) => !pluginTables.some((table) => line.includes(` ${table}`)))).toEqual([]);
     });

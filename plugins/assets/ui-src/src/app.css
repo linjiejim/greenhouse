@@ -1,0 +1,16 @@
+@import 'tailwindcss';
+@import '@greenhouse/ui-tokens/tailwind.css';
+
+@source './';
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--gh-background);
+  color: var(--gh-label);
+  font-family: Nunito, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}

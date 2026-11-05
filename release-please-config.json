@@ -113,6 +113,11 @@
         },
         {
           "type": "json",
+          "path": "plugins/assets/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
           "path": "plugins/computer/package.json",
           "jsonpath": "$.version"
         },

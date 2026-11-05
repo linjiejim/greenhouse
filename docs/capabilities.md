@@ -13,7 +13,7 @@ Greenhouse 是团队自托管的 Agent 中台：核心管身份、权限、运�
 |---|---|
 | 核心 | 账号、角色与实体/字段策略，对话与自定义 Agent，保存的提示词，模型目录/网关/计价预算，工具与 Runs，MCP 服务端与连接器，自动化，文件，通知/推送，运行时配置/品牌，插件宿主，Admin 与 CLI |
 | 默认开启的插件 | Knowledge、Tables、Skills、Feedback、Memory |
-| 编入但默认关闭的插件 | Projects、Reports、Email、Feishu、WeCom、Computer、Retro；另有关闭的 Example 参考包 |
+| 编入但默认关闭的插件 | Projects、Reports、Email、Feishu、WeCom、Computer、Retro、Assets；另有关闭的 Example 参考包 |
 
 Retro 依赖 Knowledge。`greenhouse.config.ts.plugins` 决定编入包，`extensions.enabled` /
 `GREENHOUSE_EXTENSIONS` 决定启用。新增编译包要重建，启停要重启；只配凭证不会自动启用。
@@ -53,6 +53,7 @@ Retro 依赖 Knowledge。`greenhouse.config.ts.plugins` 决定编入包，`exten
 | [WeCom](../plugins/wecom) | 关 | 账号绑定、个人消息/群 webhook 投递；不提供登录。 | 设置 › 连接里绑定 |
 | [Computer](../plugins/computer) | 关 | E2B 按需 Linux 沙箱、命令/文件/传输/停止，按分钟计价；还需凭证与工作区开关。 | 「更多」：状态、价格与限额，启动与停止；Admin › 云电脑管理（开关、运行中实例、停止） |
 | [Retro](../plugins/retro) | 关 | 每月 1 日 09:00 按工作区时区生成上月汇总文档；依赖 Knowledge；没有自己的表或 Agent 工具。 | Admin › 月度复盘：立即生成、查看历次 |
+| [Assets](../plugins/assets) | 关 | 素材库：图片 / 视频上传（含整个文件夹）、按 sha256 自动去重、感知哈希疑似重复、成员补充信息与管理员配置的分类、AI 提炼标题 / 描述 / 标签 / 画面文字、中文全文检索、合集、回收站；`assets_query` 只读工具。 | 「更多」：素材库（浏览、筛选、上传、详情与下载）；Admin › 素材库（AI 开关与语言） |
 
 Tables/Memory 及启用后的 Email 还有成员级功能开关；启用插件不会绕过这些权限。
 会话分享由核心 `conversations.sharing` 配置控制，默认开。

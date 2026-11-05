@@ -31,7 +31,7 @@ flowchart TB
   universal & external --> ingress
   subgraph plugins[插件]
     defaults[默认开：Knowledge / Tables / Skills / Feedback / Memory]
-    optional[默认关：Projects / Reports / Email / WeCom / Feishu / Computer / Retro / Example]
+    optional[默认关：Projects / Reports / Email / WeCom / Feishu / Computer / Retro / Assets / Example]
     private[自有插件 / 已安装的插件包]
   end
   host <--> defaults & optional & private
@@ -79,7 +79,7 @@ API 与 Expo Web；`pnpm app:build` 把 Web 导出到 `public/app`，API 在 `/`
 设置（偏好、账号、我的 Agent、连接、站点）。界面规则见 [apps/client/DESIGN.md](../apps/client/DESIGN.md)。
 Admin 位置 `/admin` 只给 super，只在浏览器与桌面端的宽窗口可用。核心分区固定 11 个（`apps/client/src/admin/sections.ts`）：
 成员、操作记录、客户端错误、用量、服务与计价、团队上下文、品牌、运行时配置、MCP 接入、团队连接器、插件；
-插件分区来自清单：Feedback 的问题与需求、Retro 的月度复盘、Computer 的云电脑管理，全开时共 14 个。
+插件分区来自清单：Feedback 的问题与需求、Retro 的月度复盘、Computer 的云电脑管理、Assets 的素材库设置，全开时共 15 个。
 
 服务端链接来自 `@greenhouse/types/client-routes`，一次性凭证只放在 URL 片段。入口页有 `/activate`、
 `/oauth-consent`、`/connectors/oauth-finish`、`/bindings`，飞书登录回到 `/login`，会话通知链到
@@ -185,7 +185,7 @@ origin。凭证只允许所属插件 API、`GET /api/me`、成员目录（`GET /
 | `tests/` | 共享 API / DB / e2e 测试层；`tests/client-e2e/` 是客户端 Playwright 用例 |
 
 核心 schema 管 49 张表（`packages/db/migrations/0000_v4_baseline.sql`，含插件迁移账本
-`extension_migrations`）；十个官方数据插件在启用时经各自车道（`0001_adopt.sql`）建 24 张表，
+`extension_migrations`）；十一个官方数据插件在启用时经各自车道（`0001_adopt.sql`，Assets 为 `0001_assets.sql`）建 30 张表，
 Retro 与 WeCom 没有表，Example 的表另计。3.x 库由 `pnpm db:migrate` 原地桥接：跑完归档链、记下
 4.0 基线，插件车道幂等认领原表，不搬家、不删行；未桥接的 3.x 库 API 拒绝启动。1.6 须先经 3.0.2 再升级；2.x 库没有升级路径。
 插件可以引用核心表，核心不新增指向插件表的外键。开放判别值由启用注册表校验，历史读取不因停用
