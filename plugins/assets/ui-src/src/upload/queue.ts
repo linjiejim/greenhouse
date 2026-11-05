@@ -99,11 +99,13 @@ export const useQueue = create<QueueState>((set, get) => {
     }
     const started = await api.startUpload(facts);
     if (started.status !== 'upload') {
-      patch(item.id, { status: started.status, progress: 1, assetId: started.asset.id });
+      patch(item.id, { status: started.status, progress: 1, assetId: started.asset?.id });
       set((s) => ({ revision: s.revision + 1 }));
       return;
     }
     const { targets } = started;
+    // A retried unfinished upload was "known", so nothing was derived yet; its targets still want previews.
+    if (!derived && targets.preview) derived = await derive(file, kind);
     const parts: Array<{ target: UploadTarget; body: Blob }> = [{ target: targets.original, body: file }];
     if (derived?.thumb && derived.preview && targets.thumb && targets.preview) {
       parts.push({ target: targets.thumb, body: derived.thumb }, { target: targets.preview, body: derived.preview });

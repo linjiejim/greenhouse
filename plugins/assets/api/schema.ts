@@ -17,7 +17,8 @@ import { bigint, boolean, check, index, integer, pgTable, primaryKey, text, uniq
 import { at, createdAt, id, json, oneOf, searchColumns, updatedAt } from '@greenhouse/api/extension-kit';
 
 export const ASSET_KINDS = ['image', 'video'] as const;
-export const ASSET_STATUSES = ['uploading', 'active', 'invalid', 'deleted'] as const;
+/** `purging`: claimed by cleanup while its objects are deleted; nothing may complete, restore or reuse it. */
+export const ASSET_STATUSES = ['uploading', 'active', 'invalid', 'deleted', 'purging'] as const;
 export const AI_STATUSES = ['pending', 'running', 'done', 'failed', 'skipped'] as const;
 export const SIMILAR_STATUSES = ['open', 'dismissed', 'merged'] as const;
 
@@ -68,7 +69,9 @@ export const assets = pgTable(
     ai_started_at: at('ai_started_at'),
     ai_at: at('ai_at'),
 
-    /** When the server re-hashed the stored original and it matched `sha256`. */
+    /** When the last upload targets handed out for this row stop working; bytes are final after it. */
+    upload_expires_at: at('upload_expires_at'),
+    /** When the server re-hashed the stored original (after `upload_expires_at`) and it matched `sha256`. */
     verified_at: at('verified_at'),
     uploaded_by: text('uploaded_by').notNull(),
     created_at: createdAt(),

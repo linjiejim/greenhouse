@@ -226,9 +226,16 @@ function listQuery(c: Context<AppEnv>, me: Member): AssetListQuery | null {
   };
 }
 
+const UPLOAD_TTL_SEC = 3600;
+
+/**
+ * Targets for every object of an unfinished upload. The row remembers when they expire:
+ * byte verification waits until then, so nobody can still overwrite what it checked.
+ */
 async function uploadTargets(asset: AssetRow) {
+  await assetStore().setUploadExpiry(asset.id, new Date(Date.now() + (UPLOAD_TTL_SEC + 60) * 1000).toISOString());
   const target = (key: string, contentType: string, maxBytes: number) =>
-    objects.uploadUrl({ key, contentType, maxBytes, expiresInSec: 3600 });
+    objects.uploadUrl({ key, contentType, maxBytes, expiresInSec: UPLOAD_TTL_SEC });
   return {
     original: await target(objectKeys.original(asset.sha256, asset.ext), asset.content_type, asset.size),
     ...(asset.has_preview
@@ -274,16 +281,21 @@ export const assetRoutes = new Hono<AppEnv>()
       }),
     );
     if (!input) return c.json({ error: 'items: 1–200 {sha256, size}' }, 400);
+    const me = member(c);
     return run(c, 'listAssets', async () => {
       const rows = await assetStore().bySha([...new Set(input.items.map((i) => i.sha256))]);
       const bySha = new Map(rows.filter((r) => r.status !== 'invalid').map((r) => [r.sha256, r]));
+      const manager = await canManage(me);
       return ok({
         results: await Promise.all(
           input.items.map(async (item) => {
             const row = bySha.get(item.sha256);
-            return row
-              ? { sha256: item.sha256, exists: true, asset: await card(row) }
-              : { sha256: item.sha256, exists: false };
+            if (!row) return { sha256: item.sha256, exists: false };
+            // The bin is for managers: others learn only that the content is there.
+            const hidden = (row.status === 'deleted' || row.status === 'purging') && !manager;
+            return hidden
+              ? { sha256: item.sha256, exists: true, binned: true }
+              : { sha256: item.sha256, exists: true, asset: await card(row) };
           }),
         ),
       });
@@ -311,24 +323,20 @@ export const assetRoutes = new Hono<AppEnv>()
       if (input.collection_id && !(await store.getCollection(input.collection_id)))
         return fail('NOT_FOUND', 'collection not found');
       const join = async (existing: AssetRow) => {
+        if (existing.status === 'purging') return fail('CONFLICT', 'this file is being removed; try again in a minute');
         if (existing.status === 'uploading' && existing.uploaded_by === me.id)
           // The same person retrying an unfinished upload: hand the targets out again.
           return ok({ status: 'upload' as const, asset: await card(existing), targets: await uploadTargets(existing) });
         await store.recordUploader(existing.id, me.id, name);
-        const updated =
-          existing.status === 'deleted' ? existing : ((await store.contribute(existing, fields)) ?? existing);
-        if (input.collection_id && existing.status !== 'deleted')
-          await store.addToCollection(input.collection_id, [existing.id], me.id);
-        return ok({
-          status: existing.status === 'deleted' ? ('binned' as const) : ('duplicate' as const),
-          asset: await card(updated),
-        });
+        if (existing.status === 'deleted')
+          // In the bin: only a manager sees what it is (and can restore it).
+          return ok({ status: 'binned' as const, asset: (await canManage(me)) ? await card(existing) : null });
+        const updated = (await store.contribute(existing.id, fields)) ?? existing;
+        if (input.collection_id) await store.addToCollection(input.collection_id, [existing.id], me.id);
+        return ok({ status: 'duplicate' as const, asset: await card(updated) });
       };
       let existing: AssetRow | undefined = (await store.bySha([input.sha256]))[0];
-      if (existing?.status === 'invalid') {
-        await store.removeRow(existing.id);
-        existing = undefined;
-      }
+      if (existing?.status === 'invalid' && (await store.removeRow(existing.id, 'invalid'))) existing = undefined;
       if (existing) return join(existing);
       const created = await store.insertUploading({
         ...fields,
@@ -465,11 +473,11 @@ export const assetRoutes = new Hono<AppEnv>()
           skipped.push(asset.id);
           continue;
         }
-        const remove = new Set((input.remove_tags ?? []).map((t) => t.trim().toLowerCase()));
-        const tags = [...asset.tags.filter((t) => !remove.has(t.toLowerCase())), ...(input.add_tags ?? [])];
-        const facets = input.facets ? { ...asset.facets, ...input.facets } : undefined;
-        await store.update(asset.id, { tags, ...(facets ? { facets } : {}) });
-        updated += 1;
+        if (
+          await store.adjust(asset.id, { addTags: input.add_tags, removeTags: input.remove_tags, facets: input.facets })
+        )
+          updated += 1;
+        else skipped.push(asset.id);
       }
       return ok({ updated, skipped });
     });
@@ -560,7 +568,8 @@ export const assetRoutes = new Hono<AppEnv>()
         if (!asset || asset.status !== 'active') return fail('NOT_FOUND', 'not found');
         if (!(await canEdit(me, asset)))
           return fail('FORBIDDEN', 'only its uploaders or a library manager can edit it');
-        const updated = await store.acceptAi(asset, input.fields);
+        const updated = await store.acceptAi(asset.id, input.fields);
+        if (!updated) return fail('NOT_FOUND', 'not found');
         return ok({ asset: await detail(updated!, me) });
       },
       id,

@@ -62,15 +62,15 @@ export function IconButton({
 }
 
 const fieldClass =
-  'w-full rounded-lg border border-edge bg-surface-raised px-2.5 text-[14px] text-fg placeholder:text-fg-faint focus:border-accent focus:outline-none';
+  'rounded-lg border border-edge bg-surface-raised px-2.5 text-[14px] text-fg placeholder:text-fg-faint focus:border-accent focus:outline-none';
 
 export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement> & { compact?: boolean }) {
   const { compact, className, ...rest } = props;
-  return <input {...rest} className={cx(fieldClass, compact ? 'h-7' : 'h-8', className)} />;
+  return <input {...rest} className={cx(fieldClass, 'w-full', compact ? 'h-7' : 'h-8', className)} />;
 }
 
 export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea rows={3} {...props} className={cx(fieldClass, 'py-1.5 leading-[22px]', props.className)} />;
+  return <textarea rows={3} {...props} className={cx(fieldClass, 'w-full py-1.5 leading-[22px]', props.className)} />;
 }
 
 export function Select({
@@ -78,7 +78,7 @@ export function Select({
   className,
   ...props
 }: React.SelectHTMLAttributes<HTMLSelectElement> & { compact?: boolean }) {
-  return <select {...props} className={cx(fieldClass, compact ? 'h-7 w-auto pr-7' : 'h-8', className)} />;
+  return <select {...props} className={cx(fieldClass, compact ? 'h-7' : 'h-8', 'pr-7', className ?? 'w-full')} />;
 }
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -177,7 +177,7 @@ export function TagInput({
     setDraft('');
   };
   return (
-    <div className={cx(fieldClass, 'flex min-h-8 flex-wrap items-center gap-1 py-1')}>
+    <div className={cx(fieldClass, 'flex min-h-8 w-full flex-wrap items-center gap-1 py-1')}>
       {value.map((tag) => (
         <Chip key={tag} onRemove={() => onChange(value.filter((t) => t !== tag))}>
           {tag}

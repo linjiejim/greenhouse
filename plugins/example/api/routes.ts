@@ -85,7 +85,8 @@ export const exampleRoutes = new Hono<AppEnv>()
     if (!id) return c.json({ error: 'invalid id' }, 400);
     const parsed = PictureInput.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return c.json({ error: 'a jpeg, png, webp or gif of at most 5 MB' }, 400);
-    const note = await noteAction(humanActor(user, c), 'read', () => services().notes.get(user.id, id));
+    // Handing out a write capability is the update itself: authorize it before any storage access.
+    const note = await noteAction(humanActor(user, c), 'update', () => services().notes.get(user.id, id));
     if (!note) return c.json({ error: 'not found' }, 404);
     const upload = await objects.uploadUrl({
       key: pictureKey(id),
@@ -100,6 +101,8 @@ export const exampleRoutes = new Hono<AppEnv>()
     if (!id) return c.json({ error: 'invalid id' }, 400);
     const parsed = PictureInput.pick({ content_type: true }).safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return c.json({ error: 'content_type is required' }, 400);
+    const owned = await noteAction(humanActor(user, c), 'update', () => services().notes.get(user.id, id));
+    if (!owned) return c.json({ error: 'not found' }, 404);
     // Trust the store, not the client: a direct upload is not size-capped by the bucket.
     const stored = await objects.head(pictureKey(id));
     if (!stored) return c.json({ error: 'picture not uploaded' }, 400);

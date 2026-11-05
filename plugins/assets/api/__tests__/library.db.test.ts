@@ -82,7 +82,7 @@ async function put(api: Hono<AppEnv>, target: Target, body: Buffer) {
   const res = await api.request(target.url, {
     method: 'PUT',
     headers: { ...target.headers, 'content-length': String(body.length) },
-    body,
+    body: new Uint8Array(body),
   });
   expect(res.status, `PUT ${target.url}`).toBe(200);
 }
@@ -258,6 +258,96 @@ describe('uploading', () => {
   });
 });
 
+describe('the bin and removals stay consistent', () => {
+  it('tells members only that binned content exists, and managers what it is', async () => {
+    const file = jpeg(`binned-${crypto.randomUUID()}`);
+    const { started } = await upload(alice, file);
+    await assetStore(db).softDelete(started.asset.id, admin.id);
+    const ask = async (user: UserRow) =>
+      (
+        (await (
+          await app(user).request(
+            '/api/ext/assets/uploads/check',
+            json('POST', { items: [{ sha256: sha(file), size: file.length }] }),
+          )
+        ).json()) as { results: Array<{ exists: boolean; binned?: boolean; asset?: unknown }> }
+      ).results[0]!;
+    expect(await ask(bob)).toEqual({ sha256: sha(file), exists: true, binned: true });
+    expect((await ask(admin)).asset).toBeTruthy();
+    const again = await upload(bob, file);
+    expect(again.started).toMatchObject({ status: 'binned', asset: null });
+  });
+
+  it('refuses to merge into an asset that left the library', async () => {
+    const a = await upload(alice, jpeg(`m-a-${crypto.randomUUID()}`), { phash: 'f0f0f0f0f0f0f0f0' });
+    const b = await upload(alice, jpeg(`m-b-${crypto.randomUUID()}`), { phash: 'f0f0f0f0f0f0f0f1' });
+    await assetStore(db).softDelete(a.started.asset.id, admin.id);
+    const merged = await app(admin).request(
+      '/api/ext/assets/duplicates/merge',
+      json('POST', { keep: a.started.asset.id, drop: b.started.asset.id }),
+    );
+    expect(merged.status).toBe(404);
+    expect((await assetStore(db).get(b.started.asset.id))!.status).toBe('active');
+  });
+
+  it('blocks completing, restoring or re-uploading a row being purged', async () => {
+    const file = jpeg(`purge-${crypto.randomUUID()}`);
+    const api = app(alice);
+    const started = (await (
+      await api.request(
+        '/api/ext/assets/uploads',
+        json('POST', {
+          sha256: sha(file),
+          size: file.length,
+          filename: 'p.jpg',
+          content_type: 'image/jpeg',
+          has_preview: false,
+          frame_count: 0,
+        }),
+      )
+    ).json()) as { asset: { id: string }; targets: { original: Target } };
+    await put(api, started.targets.original, file);
+    const store = assetStore(db);
+    await db.executeRaw(
+      sql`UPDATE ext_assets_assets SET upload_expires_at = now() - interval '1 minute' WHERE id = ${started.asset.id}`,
+    );
+    expect(await store.claimPurge(started.asset.id, ['uploading'], { uploadsExpired: true })).toBeTruthy();
+    expect((await api.request(`/api/ext/assets/assets/${started.asset.id}/complete`, json('POST'))).status).toBe(404);
+    const retry = await api.request(
+      '/api/ext/assets/uploads',
+      json('POST', {
+        sha256: sha(file),
+        size: file.length,
+        filename: 'p.jpg',
+        content_type: 'image/jpeg',
+        has_preview: false,
+        frame_count: 0,
+      }),
+    );
+    expect(retry.status).toBe(409);
+    expect(await store.restore(started.asset.id)).toBeUndefined();
+  });
+
+  it('keeps an upload whose owner just got fresh targets out of the stale sweep', async () => {
+    const store = assetStore(db);
+    const row = await store.insertUploading({
+      kind: 'image',
+      sha256: sha(Buffer.from(`fresh-${crypto.randomUUID()}`)),
+      size: 3,
+      content_type: 'image/jpeg',
+      ext: 'jpg',
+      original_name: 'fresh.jpg',
+      has_preview: false,
+      frame_count: 0,
+      uploaded_by: alice.id,
+    });
+    await store.setUploadExpiry(row!.id, new Date(Date.now() + 600_000).toISOString());
+    await db.executeRaw(sql`UPDATE ext_assets_assets SET created_at = now() - interval '2 days' WHERE id = ${row!.id}`);
+    await runCleanup();
+    expect((await store.get(row!.id))!.status).toBe('uploading');
+  });
+});
+
 describe('who may change what', () => {
   it('lets uploaders and managers edit, only managers delete, and hides the bin from members', async () => {
     const { started } = await upload(alice, jpeg(`perm-${crypto.randomUUID()}`));
@@ -420,8 +510,12 @@ describe('background work', () => {
     const good = await upload(alice, jpeg(`v-good-${crypto.randomUUID()}`));
     const liar = jpeg(`v-claimed-${crypto.randomUUID()}`);
     const forged = await upload(alice, jpeg(`v-real-${crypto.randomUUID()}`), { sha256: sha(liar) });
-    // The forged row claims liar's hash while its original holds other bytes of the same length.
+    // The forged row claims liar's hash while its original holds other bytes.
     expect(forged.started.status).toBe('upload');
+    // Nothing is verified while an upload target could still rewrite the bytes.
+    await runVerification(50);
+    expect((await assetStore(db).get(good.started.asset.id))!.verified_at).toBeNull();
+    await db.executeRaw(sql`UPDATE ext_assets_assets SET upload_expires_at = now() - interval '1 minute'`);
     for (let i = 0; i < 30; i++) {
       const store = assetStore(db);
       const [g, f] = [await store.get(good.started.asset.id), await store.get(forged.started.asset.id)];

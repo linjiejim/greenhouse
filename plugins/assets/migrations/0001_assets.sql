@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS "ext_assets_assets" (
 	"ai_attempts" integer DEFAULT 0 NOT NULL,
 	"ai_started_at" timestamp with time zone,
 	"ai_at" timestamp with time zone,
+	"upload_expires_at" timestamp with time zone,
 	"verified_at" timestamp with time zone,
 	"uploaded_by" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -43,7 +44,7 @@ CREATE TABLE IF NOT EXISTS "ext_assets_assets" (
 	"search_c" text DEFAULT '' NOT NULL,
 	"search_tsv" "tsvector" GENERATED ALWAYS AS (setweight(to_tsvector('simple', search_a), 'A') || setweight(to_tsvector('simple', search_b), 'B') || setweight(to_tsvector('simple', search_c), 'C')) STORED,
 	CONSTRAINT "chk_ext_assets_assets_kind" CHECK ("ext_assets_assets"."kind" IN ('image', 'video')),
-	CONSTRAINT "chk_ext_assets_assets_status" CHECK ("ext_assets_assets"."status" IN ('uploading', 'active', 'invalid', 'deleted')),
+	CONSTRAINT "chk_ext_assets_assets_status" CHECK ("ext_assets_assets"."status" IN ('uploading', 'active', 'invalid', 'deleted', 'purging')),
 	CONSTRAINT "chk_ext_assets_assets_ai_status" CHECK ("ext_assets_assets"."ai_status" IN ('pending', 'running', 'done', 'failed', 'skipped'))
 );
 --> statement-breakpoint

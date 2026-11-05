@@ -27,8 +27,9 @@ export function assetObjectKeys(asset: Pick<AssetRow, 'sha256' | 'ext'>): string
   ];
 }
 
+/** Deleting a missing object succeeds on every backend; any other failure propagates so the row is kept for a retry. */
 export async function deleteAssetObjects(asset: Pick<AssetRow, 'sha256' | 'ext'>): Promise<void> {
-  for (const key of assetObjectKeys(asset)) await objects.delete(key).catch(() => {});
+  for (const key of assetObjectKeys(asset)) await objects.delete(key);
 }
 
 /** Stream the stored original and compare its sha256 with the one the browser claimed. */
@@ -55,9 +56,12 @@ export async function runVerification(limit = VERIFY_PER_RUN): Promise<number> {
     });
     if (outcome === 'ok') await store.markVerified(asset.id);
     if (outcome === 'mismatch' || outcome === 'missing') {
-      // The bytes are not what the row says: nobody can rely on this asset.
-      await store.markInvalid(asset.id);
+      // The bytes are not what the row says: nobody can rely on this asset. Claim it first so
+      // no re-upload of the same content reuses the keys while they are being deleted.
+      const claimed = await store.claimPurge(asset.id, ['active']);
+      if (!claimed) continue;
       await deleteAssetObjects(asset);
+      await store.finishInvalid(asset.id);
       await notify({
         user_id: asset.uploaded_by,
         kind: 'ext:assets:rejected',
@@ -96,15 +100,24 @@ export async function runCleanup(now = Date.now()): Promise<{ stale: number; pur
   const binBefore = new Date(now - BIN_DAYS * 86_400_000).toISOString();
   let stale = 0;
   let purged = 0;
+  // Claim, delete objects, then drop the row: a failure leaves a `purging` row the next run retries.
   for (const asset of await store.staleUploads(staleBefore)) {
-    await deleteAssetObjects(asset);
-    await store.removeRow(asset.id);
-    stale += 1;
+    if (!(await store.claimPurge(asset.id, ['uploading'], { uploadsExpired: true }))) continue;
+    try {
+      await deleteAssetObjects(asset);
+      if (await store.removeRow(asset.id, 'purging')) stale += 1;
+    } catch (err) {
+      logger.warn('[assets] cleanup of an unfinished upload failed', { asset: asset.id, error: toErrorMessage(err) });
+    }
   }
   for (const asset of await store.binnedBefore(binBefore)) {
-    await deleteAssetObjects(asset);
-    await store.removeRow(asset.id);
-    purged += 1;
+    if (!(await store.claimPurge(asset.id, ['deleted', 'invalid', 'purging']))) continue;
+    try {
+      await deleteAssetObjects(asset);
+      if (await store.removeRow(asset.id, 'purging')) purged += 1;
+    } catch (err) {
+      logger.warn('[assets] emptying the bin failed', { asset: asset.id, error: toErrorMessage(err) });
+    }
   }
   return { stale, purged };
 }

@@ -57,7 +57,9 @@ export type UploadStart =
       asset: AssetCard;
       targets: { original: UploadTarget; thumb?: UploadTarget; preview?: UploadTarget; frames?: UploadTarget[] };
     }
-  | { status: 'duplicate' | 'binned'; asset: AssetCard };
+  | { status: 'duplicate'; asset: AssetCard }
+  /** In the bin; only managers are told which asset it is. */
+  | { status: 'binned'; asset: AssetCard | null };
 
 export interface HumanPatch {
   title?: string | null;
@@ -103,7 +105,7 @@ export const api = {
     call<{ asset: AssetDetail }>(`/assets/${encodeURIComponent(id)}/ai/accept`, { method: 'POST', json: { fields } }),
 
   check: (items: Array<{ sha256: string; size: number }>) =>
-    call<{ results: Array<{ sha256: string; exists: boolean; asset?: AssetCard }> }>('/uploads/check', {
+    call<{ results: Array<{ sha256: string; exists: boolean; binned?: boolean; asset?: AssetCard }> }>('/uploads/check', {
       method: 'POST',
       json: { items },
     }),

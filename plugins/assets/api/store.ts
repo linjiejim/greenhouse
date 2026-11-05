@@ -107,16 +107,29 @@ export function createAssetStore(db: Db) {
     return { display_title: displayTitleFor(next), ...searchColumnsFor(next, defs) };
   }
 
-  async function writeFields(id: string, patch: Partial<AssetRow>): Promise<AssetRow | undefined> {
-    const current = await get(id);
-    if (!current) return undefined;
+  /**
+   * Lock the row, compute the patch from what is stored now and write it with the derived
+   * columns in the same transaction, so concurrent member and AI edits never leave a title or
+   * search column computed from a stale row. Rows outside `statuses` are left alone.
+   */
+  async function writeFields(
+    id: string,
+    patchFor: (current: AssetRow, defs: readonly FacetRow[]) => Partial<AssetRow>,
+    statuses: readonly AssetStatus[] = ['active'],
+  ): Promise<AssetRow | undefined> {
     const defs = await facetDefs();
-    const [row] = await db
-      .update(assets)
-      .set({ ...patch, ...derived(current, patch, defs), updated_at: nowIso() })
-      .where(eq(assets.id, id))
-      .returning();
-    return row;
+    return db.transaction(async (tx) => {
+      const [current] = await tx.select().from(assets).where(eq(assets.id, id)).for('update');
+      if (!current || !statuses.includes(current.status)) return undefined;
+      const patch = patchFor(current, defs);
+      if (!Object.keys(patch).length) return current;
+      const [row] = await tx
+        .update(assets)
+        .set({ ...patch, ...derived(current, patch, defs), updated_at: nowIso() })
+        .where(eq(assets.id, id))
+        .returning();
+      return row;
+    });
   }
 
   async function get(id: string): Promise<AssetRow | undefined> {
@@ -227,9 +240,13 @@ export function createAssetStore(db: Db) {
       }
     },
 
-    /** Drop an abandoned or rejected row so the same content can be uploaded again. */
-    async removeRow(id: string): Promise<void> {
-      await db.delete(assets).where(eq(assets.id, id));
+    /** Drop a row: an `invalid` one before its content is uploaded again, a `purging` one after its objects are gone. */
+    async removeRow(id: string, status: Extract<AssetStatus, 'invalid' | 'purging'>): Promise<boolean> {
+      const rows = await db
+        .delete(assets)
+        .where(and(eq(assets.id, id), eq(assets.status, status)))
+        .returning({ id: assets.id });
+      return rows.length > 0;
     },
 
     async recordUploader(assetId: string, userId: string, originalName: string): Promise<void> {
@@ -252,15 +269,20 @@ export function createAssetStore(db: Db) {
     },
 
     /** A later uploader's information fills what is still empty; tags and facets add up. */
-    async contribute(asset: AssetRow, fields: HumanFields): Promise<AssetRow | undefined> {
-      const defs = await facetDefs();
-      const patch: Partial<AssetRow> = {};
-      if (!asset.title && fields.title?.trim()) patch.title = nullable(fields.title, 200);
-      if (!asset.description && fields.description?.trim()) patch.description = nullable(fields.description, 4000);
-      if (!asset.source && fields.source?.trim()) patch.source = nullable(fields.source, 500);
-      if (fields.tags?.length) patch.tags = normalizeTags([...asset.tags, ...fields.tags]);
-      if (fields.facets) patch.facets = mergeFacets(asset.facets, normalizeFacets(fields.facets, defs), defs);
-      return Object.keys(patch).length ? writeFields(asset.id, patch) : asset;
+    async contribute(id: string, fields: HumanFields): Promise<AssetRow | undefined> {
+      return writeFields(
+        id,
+        (asset, defs) => {
+          const patch: Partial<AssetRow> = {};
+          if (!asset.title && fields.title?.trim()) patch.title = nullable(fields.title, 200);
+          if (!asset.description && fields.description?.trim()) patch.description = nullable(fields.description, 4000);
+          if (!asset.source && fields.source?.trim()) patch.source = nullable(fields.source, 500);
+          if (fields.tags?.length) patch.tags = normalizeTags([...asset.tags, ...fields.tags]);
+          if (fields.facets) patch.facets = mergeFacets(asset.facets, normalizeFacets(fields.facets, defs), defs);
+          return patch;
+        },
+        ['active', 'uploading'],
+      );
     },
 
     /** The browser promised derivatives it did not deliver: show no preview, skip AI. */
@@ -278,28 +300,44 @@ export function createAssetStore(db: Db) {
     },
 
     async update(id: string, fields: HumanFields): Promise<AssetRow | undefined> {
-      const defs = await facetDefs();
-      const patch: Partial<AssetRow> = {};
-      if (fields.title !== undefined) patch.title = nullable(fields.title, 200);
-      if (fields.description !== undefined) patch.description = nullable(fields.description, 4000);
-      if (fields.source !== undefined) patch.source = nullable(fields.source, 500);
-      if (fields.tags !== undefined) patch.tags = normalizeTags(fields.tags);
-      if (fields.facets !== undefined) patch.facets = normalizeFacets(fields.facets, defs);
-      return writeFields(id, patch);
+      return writeFields(id, (_asset, defs) => {
+        const patch: Partial<AssetRow> = {};
+        if (fields.title !== undefined) patch.title = nullable(fields.title, 200);
+        if (fields.description !== undefined) patch.description = nullable(fields.description, 4000);
+        if (fields.source !== undefined) patch.source = nullable(fields.source, 500);
+        if (fields.tags !== undefined) patch.tags = normalizeTags(fields.tags);
+        if (fields.facets !== undefined) patch.facets = normalizeFacets(fields.facets, defs);
+        return patch;
+      });
+    },
+
+    /** A batch edit applied to what is stored now: tags removed then added, facet keys replaced. */
+    async adjust(
+      id: string,
+      change: { addTags?: string[]; removeTags?: string[]; facets?: FacetValues },
+    ): Promise<AssetRow | undefined> {
+      return writeFields(id, (asset, defs) => {
+        const remove = new Set((change.removeTags ?? []).map((t) => t.trim().toLowerCase()));
+        const kept = asset.tags.filter((t) => !remove.has(t.toLowerCase()));
+        const patch: Partial<AssetRow> = { tags: normalizeTags([...kept, ...(change.addTags ?? [])]) };
+        if (change.facets) patch.facets = normalizeFacets({ ...asset.facets, ...change.facets }, defs);
+        return patch;
+      });
     },
 
     /** Copy AI suggestions into the member's fields (title/description replace, tags/facets add). */
     async acceptAi(
-      asset: AssetRow,
+      id: string,
       which: ReadonlyArray<'title' | 'description' | 'tags' | 'facets'>,
     ): Promise<AssetRow | undefined> {
-      const defs = await facetDefs();
-      const patch: Partial<AssetRow> = {};
-      if (which.includes('title') && asset.ai_title) patch.title = asset.ai_title;
-      if (which.includes('description') && asset.ai_caption) patch.description = asset.ai_caption;
-      if (which.includes('tags')) patch.tags = normalizeTags([...asset.tags, ...asset.ai_tags]);
-      if (which.includes('facets')) patch.facets = mergeFacets(asset.facets, asset.ai_facets, defs);
-      return writeFields(asset.id, patch);
+      return writeFields(id, (asset, defs) => {
+        const patch: Partial<AssetRow> = {};
+        if (which.includes('title') && asset.ai_title) patch.title = asset.ai_title;
+        if (which.includes('description') && asset.ai_caption) patch.description = asset.ai_caption;
+        if (which.includes('tags')) patch.tags = normalizeTags([...asset.tags, ...asset.ai_tags]);
+        if (which.includes('facets')) patch.facets = mergeFacets(asset.facets, asset.ai_facets, defs);
+        return patch;
+      });
     },
 
     async softDelete(id: string, userId: string): Promise<AssetRow | undefined> {
@@ -373,8 +411,7 @@ export function createAssetStore(db: Db) {
     },
 
     async saveAi(id: string, ai: AiFields): Promise<AssetRow | undefined> {
-      const defs = await facetDefs();
-      return writeFields(id, {
+      return writeFields(id, (_asset, defs) => ({
         ai_status: 'done',
         ai_title: nullable(ai.title, 200),
         ai_caption: nullable(ai.caption, 4000),
@@ -385,7 +422,7 @@ export function createAssetStore(db: Db) {
         ai_model: ai.model,
         ai_error: null,
         ai_at: nowIso(),
-      });
+      }));
     },
 
     async failAi(id: string, error: string): Promise<void> {
@@ -406,21 +443,67 @@ export function createAssetStore(db: Db) {
 
     // ── Verification ──
 
+    /** Record when the upload targets just handed out stop working; the bytes are final after it. */
+    async setUploadExpiry(id: string, at: string): Promise<void> {
+      await db.update(assets).set({ upload_expires_at: at }).where(eq(assets.id, id));
+    },
+
+    /** Active, not yet verified, and no upload target can still write its objects. */
     async unverified(limit: number): Promise<AssetRow[]> {
       return db
         .select()
         .from(assets)
-        .where(and(eq(assets.status, 'active'), sql`${assets.verified_at} IS NULL`))
+        .where(
+          and(
+            eq(assets.status, 'active'),
+            sql`${assets.verified_at} IS NULL`,
+            sql`(${assets.upload_expires_at} IS NULL OR ${assets.upload_expires_at} < now())`,
+          ),
+        )
         .orderBy(asc(assets.created_at))
         .limit(limit);
     },
 
     async markVerified(id: string): Promise<void> {
-      await db.update(assets).set({ verified_at: nowIso() }).where(eq(assets.id, id));
+      await db
+        .update(assets)
+        .set({ verified_at: nowIso() })
+        .where(and(eq(assets.id, id), eq(assets.status, 'active')));
     },
 
-    async markInvalid(id: string): Promise<void> {
-      await db.update(assets).set({ status: 'invalid', updated_at: nowIso() }).where(eq(assets.id, id));
+    /**
+     * Claim a row before deleting its objects: only from the given statuses, so a concurrent
+     * complete, restore, merge or re-upload finds `purging` and stops. Undefined when the row
+     * has moved on in the meantime.
+     */
+    async claimPurge(
+      id: string,
+      from: readonly AssetStatus[],
+      opts: { uploadsExpired?: boolean } = {},
+    ): Promise<AssetRow | undefined> {
+      const [row] = await db
+        .update(assets)
+        .set({ status: 'purging', updated_at: nowIso() })
+        .where(
+          and(
+            eq(assets.id, id),
+            inArray(assets.status, [...from]),
+            // An unfinished upload whose owner just got fresh targets is not abandoned.
+            opts.uploadsExpired
+              ? sql`(${assets.upload_expires_at} IS NULL OR ${assets.upload_expires_at} < now())`
+              : undefined,
+          ),
+        )
+        .returning();
+      return row;
+    },
+
+    /** A mismatch whose objects are gone: kept as `invalid` so the right bytes can be uploaded again. */
+    async finishInvalid(id: string): Promise<void> {
+      await db
+        .update(assets)
+        .set({ status: 'invalid', updated_at: nowIso() })
+        .where(and(eq(assets.id, id), eq(assets.status, 'purging')));
     },
 
     // ── Near duplicates ──
@@ -484,6 +567,14 @@ export function createAssetStore(db: Db) {
     async merge(keepId: string, dropId: string, userId: string): Promise<boolean> {
       return db.transaction(async (tx) => {
         const [lo, hi] = keepId < dropId ? [keepId, dropId] : [dropId, keepId];
+        // Lock both in id order (two merges never deadlock) and require both still in the library.
+        const locked = await tx
+          .select({ id: assets.id, status: assets.status })
+          .from(assets)
+          .where(inArray(assets.id, [lo, hi]))
+          .orderBy(asc(assets.id))
+          .for('update');
+        if (locked.length !== 2 || locked.some((row) => row.status !== 'active')) return false;
         const pair = await tx
           .update(similar)
           .set({ status: 'merged', resolved_by: userId, resolved_at: nowIso() })
@@ -607,15 +698,14 @@ export function createAssetStore(db: Db) {
         .limit(100);
     },
 
+    /** Bin and invalid rows past their time, plus `purging` claims a failed run left behind. */
     async binnedBefore(before: string): Promise<AssetRow[]> {
       return db
         .select()
         .from(assets)
         .where(
-          and(
-            sql`${assets.status} IN ('deleted', 'invalid')`,
-            lt(sql`coalesce(${assets.deleted_at}, ${assets.updated_at})`, before),
-          ),
+          sql`(${assets.status} IN ('deleted', 'invalid') AND coalesce(${assets.deleted_at}, ${assets.updated_at}) < ${before})
+            OR (${assets.status} = 'purging' AND ${assets.updated_at} < now() - interval '1 hour')`,
         )
         .limit(100);
     },
