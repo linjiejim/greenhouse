@@ -1,6 +1,9 @@
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { PluginUiSources } from '../app-env.js';
 import { securityHeadersMiddleware } from './security.js';
+
+const NO_EXTRA_SOURCES: PluginUiSources = { media: [], connect: [] };
 
 /**
  * The CSP only applies in deployed environments (the API serves the built SPA);
@@ -34,10 +37,12 @@ describe('Content-Security-Policy', () => {
 });
 
 function pluginApp() {
-  return new Hono<{ Variables: { extensionUi: boolean } }>().use('*', securityHeadersMiddleware).get('/plugin', (c) => {
-    c.set('extensionUi', true);
-    return c.text('plugin');
-  });
+  return new Hono<{ Variables: { extensionUi: PluginUiSources } }>()
+    .use('*', securityHeadersMiddleware)
+    .get('/plugin', (c) => {
+      c.set('extensionUi', NO_EXTRA_SOURCES);
+      return c.text('plugin');
+    });
 }
 
 async function pluginFrameAncestors(): Promise<string> {
@@ -69,10 +74,10 @@ describe('plugin UI frame-ancestors', () => {
 });
 
 it('allows same-origin and desktop frames only for host-mounted plugin UI with a strict CSP', async () => {
-  const app = new Hono<{ Variables: { extensionUi: boolean } }>()
+  const app = new Hono<{ Variables: { extensionUi: PluginUiSources } }>()
     .use('*', securityHeadersMiddleware)
     .get('/plugin', (c) => {
-      c.set('extensionUi', true);
+      c.set('extensionUi', NO_EXTRA_SOURCES);
       return c.text('plugin');
     })
     .get('/other', (c) => c.text('other'));
@@ -81,4 +86,43 @@ it('allows same-origin and desktop frames only for host-mounted plugin UI with a
   expect(plugin.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'self' tauri://localhost");
   expect(plugin.headers.get('Content-Security-Policy')).not.toContain('unsafe-eval');
   expect((await app.request('/other')).headers.get('X-Frame-Options')).toBe('DENY');
+});
+
+describe('plugin UI media sources', () => {
+  async function policyFor(sources: PluginUiSources): Promise<string> {
+    const app = new Hono<{ Variables: { extensionUi: PluginUiSources } }>()
+      .use('*', securityHeadersMiddleware)
+      .get('/plugin', (c) => {
+        c.set('extensionUi', sources);
+        return c.text('plugin');
+      });
+    return (await app.request('/plugin')).headers.get('Content-Security-Policy') ?? '';
+  }
+
+  it('lets plugin frames show local previews and keeps everything else same-origin', async () => {
+    const policy = await policyFor(NO_EXTRA_SOURCES);
+    expect(policy).toContain("img-src 'self' data: blob:;");
+    expect(policy).toContain("media-src 'self' blob:;");
+    expect(policy).toContain("connect-src 'self';");
+    expect(policy).toContain("script-src 'self';");
+  });
+
+  it('adds the object store origin and declared media origins, never to scripts', async () => {
+    const policy = await policyFor({
+      media: ['https://bucket.cos.ap-guangzhou.myqcloud.com', 'https://*.cdn.example.com'],
+      connect: ['https://bucket.cos.ap-guangzhou.myqcloud.com'],
+    });
+    expect(policy).toMatch(
+      /img-src [^;]*https:\/\/bucket\.cos\.ap-guangzhou\.myqcloud\.com [^;]*https:\/\/\*\.cdn\.example\.com/,
+    );
+    expect(policy).toMatch(/media-src [^;]*https:\/\/\*\.cdn\.example\.com/);
+    expect(policy).toMatch(/connect-src 'self' https:\/\/bucket\.cos\.ap-guangzhou\.myqcloud\.com;/);
+    expect(policy).not.toMatch(/connect-src[^;]*cdn\.example/);
+    expect(policy).not.toMatch(/script-src[^;]*https/);
+  });
+
+  it('drops a source that would break out of its directive', async () => {
+    const policy = await policyFor({ media: ['https://ok.example.com; script-src *'], connect: [] });
+    expect(policy).not.toContain('script-src *');
+  });
 });

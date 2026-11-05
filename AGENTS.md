@@ -4,7 +4,7 @@
 
 - Greenhouse is a self-hosted internal Agent hub: a governance core, official plugins and deployment-specific plugins.
 - Core owns identity/permissions, conversations/Agents, models/budgets/gateway, tools/runs/audit, MCP/connectors, automations, saved prompts, Files, notifications/push, settings/branding, the plugin host, administration and CLI.
-- Knowledge, Tables, Skills, Feedback and Memory are default-on plugins; Projects, Reports, Email, Feishu, WeCom, Computer, Retro and Example are compiled but default-off.
+- Knowledge, Tables, Skills, Feedback and Memory are default-on plugins; Projects, Reports, Email, Feishu, WeCom, Computer, Retro, Assets and Example are compiled but default-off.
 - Retro depends on Knowledge; saved prompts, `/api/prompts` and `task_capture` stay core without SkillHub.
 - Core consumes active registries and never imports plugins or branches on plugin ids.
 - There is one client, the universal client in `apps/client` (web, iOS, Android; `apps/desktop` wraps it); there is no second web app.

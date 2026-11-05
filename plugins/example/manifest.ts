@@ -32,5 +32,7 @@ export default {
   },
   dependsOn: [],
   ui: './ui',
+  // Origins the embed may show images / video from besides its own object store (CSP img-src, media-src).
+  uiMedia: ['https://upload.wikimedia.org'],
   features: ['example'],
 };

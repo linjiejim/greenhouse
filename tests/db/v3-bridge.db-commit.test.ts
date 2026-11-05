@@ -77,8 +77,21 @@ describe('3.x → 4.0 in-place bridge', () => {
       expect(result.bridged?.archived.at(-1)).toBe('0009_knowledge_plugin_ownership');
       const after = await inventory(url);
       expect(Object.fromEntries(Object.keys(before).map((table) => [table, after[table]]))).toEqual(before);
-      // The only new tables are 4.0's own core addition and the Example lane's (3.0.2 never had either).
-      expect(Object.keys(after).filter((table) => !(table in before))).toEqual(['client_reports', 'ext_example_notes']);
+      // The only new tables are 4.0's own core addition and the lanes of plugins 3.0.2 never had (Example, Assets).
+      expect(
+        Object.keys(after)
+          .filter((table) => !(table in before))
+          .sort(),
+      ).toEqual([
+        'client_reports',
+        'ext_assets_assets',
+        'ext_assets_collection_items',
+        'ext_assets_collections',
+        'ext_assets_facets',
+        'ext_assets_similar',
+        'ext_assets_uploads',
+        'ext_example_notes',
+      ]);
       expect(await queryRows(url, `SELECT DISTINCT profile_id FROM conversations`)).toEqual([
         { profile_id: 'sprouty' },
       ]);

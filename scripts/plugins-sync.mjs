@@ -13,6 +13,7 @@ import { format } from 'prettier';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 const inside = (root, path) => path === root || path.startsWith(root + sep);
+const UI_MEDIA_ORIGIN = /^https:\/\/(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:\d{1,5})?$/;
 
 function jsonData(value, at = 'manifest', seen = new Set()) {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
@@ -131,6 +132,14 @@ export async function resolvePlugins(root = REPO_ROOT, env = process.env) {
         !statSync(resolve(dir, manifest.ui)).isDirectory())
     )
       throw new Error(`${entry}: ui must name a directory inside the plugin`);
+    // Mirrors validateUiMedia in apps/api/src/plugin-host/define.ts.
+    if (
+      manifest.uiMedia !== undefined &&
+      (!Array.isArray(manifest.uiMedia) ||
+        manifest.uiMedia.length > 8 ||
+        manifest.uiMedia.some((origin) => typeof origin !== 'string' || !UI_MEDIA_ORIGIN.test(origin)))
+    )
+      throw new Error(`${entry}: uiMedia must list at most 8 https origins (https://host or https://*.host)`);
     for (const half of ['api']) {
       const target = declaration[half];
       if (target === undefined) continue;
@@ -203,7 +212,8 @@ export async function syncPlugins({ root = REPO_ROOT, env = process.env, check =
       );
     } else {
       // A plugin without an api half (manifest and ui only) still has an identity in /api/extensions.
-      const { id, name, description, version, sdk, core, dependsOn, surfaces, official, client_min } = plugin.manifest;
+      const { id, name, description, version, sdk, core, dependsOn, surfaces, official, client_min, uiMedia } =
+        plugin.manifest;
       const identity = JSON.stringify({
         id,
         name,
@@ -215,6 +225,7 @@ export async function syncPlugins({ root = REPO_ROOT, env = process.env, check =
         surfaces,
         official,
         client_min,
+        uiMedia,
       });
       values.push(
         plugin.uiDir ? `{ ...${identity}, publicPaths: { prefixes: [${uiPrefix(plugin)}] }, ${ui(plugin)} }` : identity,

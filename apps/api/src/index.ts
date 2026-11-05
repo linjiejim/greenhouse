@@ -80,6 +80,7 @@ import adminSettingsRoutes from './routes/admin-settings.js';
 import { adminTeamContextRoutes } from './routes/admin-team-context.js';
 import { applyWorkspaceEnvOverlay } from './settings/workspace-config.js';
 import uploadRoutes from './routes/upload.js';
+import extObjectRoutes from './routes/ext-objects.js';
 import adminRoutes from './routes/admin.js';
 import platformAdminRoutes from './routes/platform-admin.js';
 import { bootstrapPlatform } from './plugin-host/bootstrap.js';
@@ -151,7 +152,8 @@ app.use('*', rateLimitMiddleware);
 app.use('*', async (c, next) => {
   const start = Date.now();
   const method = c.req.method;
-  const path = c.req.path;
+  // Object tickets are capabilities, like presigned URLs: keep them out of the log.
+  const path = c.req.path.startsWith('/api/ext-objects/') ? '/api/ext-objects/[ticket]' : c.req.path;
   const url = new URL(c.req.url);
   const query = redactQueryForLog(url);
 
@@ -194,6 +196,8 @@ function mountRoutes(toolRegistry: ToolRegistry) {
       .route('/api/extensions', extensionsRoutes)
       .route('/api/admin/plugins', adminPluginRoutes)
       .route('/api/upload', uploadRoutes)
+      // Plugin object tickets authorize themselves (a public path, like a presigned URL).
+      .route('/api/ext-objects', extObjectRoutes)
       // A connector's OAuth provider redirects the browser to `/oauth/callback`
       // without a Bearer (a public path, rate-limited); it only redirects back to
       // the app. Must sit before every wildcard role guard.

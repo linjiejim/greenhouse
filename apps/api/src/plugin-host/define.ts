@@ -131,6 +131,11 @@ export interface GreenhouseExtension {
   official?: boolean;
   client_min?: number;
   ui?: { dir: string };
+  /**
+   * Extra https origins the plugin's UI may load images, video and audio from (CSP img-src /
+   * media-src only), e.g. `https://cdn.example.com` or `https://*.example.com`. At most 8.
+   */
+  uiMedia?: string[];
   hooks?: (hooks: import('./events.js').ExtensionHooks) => void;
   onInstall?: (ctx: ExtensionBootContext) => Promise<void> | void;
 
@@ -274,6 +279,17 @@ export interface GreenhouseExtension {
 }
 
 const ID_PATTERN = /^[a-z][a-z0-9-]*$/;
+/** `https://host[:port]` or `https://*.host[:port]`: an origin, no path, no query. */
+const UI_MEDIA_ORIGIN = /^https:\/\/(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:\d{1,5})?$/;
+
+/** Mirrored by scripts/plugins-sync.mjs so a bad manifest fails assembly too. */
+export function validateUiMedia(value: unknown): string | null {
+  if (value === undefined) return null;
+  if (!Array.isArray(value)) return 'must be an array of https origins';
+  if (value.length > 8) return 'declares more than 8 origins';
+  const bad = value.find((origin) => typeof origin !== 'string' || !UI_MEDIA_ORIGIN.test(origin));
+  return bad === undefined ? null : `${JSON.stringify(bad)} is not an https origin (https://host or https://*.host)`;
+}
 
 /**
  * Identity helper with the validations worth doing early: a well-formed id, and
@@ -287,6 +303,8 @@ export function defineExtension(extension: GreenhouseExtension): GreenhouseExten
     throw new Error(`Extension id "${extension.id}" must match ${ID_PATTERN} (it is also the config switch)`);
   }
   extension = deriveDataSources(extension);
+  const uiMediaError = validateUiMedia(extension.uiMedia);
+  if (uiMediaError) throw new Error(`Extension "${extension.id}" uiMedia: ${uiMediaError}`);
   if (extension.ui)
     extension.publicPaths = {
       ...extension.publicPaths,

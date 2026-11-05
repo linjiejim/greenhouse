@@ -15,6 +15,14 @@
       <button id="navigate">Open notes</button>
       <button id="prompt">Ask the assistant</button>
       <button id="refresh">Refresh token</button>
+      <section id="picture">
+        <h2>A note with a picture</h2>
+        <input id="picture-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif" />
+        <p id="picture-status"></p>
+        <img id="picture-preview" alt="" hidden />
+        <button id="picture-describe" hidden>Describe it</button>
+        <p id="picture-description"></p>
+      </section>
     </main>
     <script type="module" src="./app.js"></script>
   </body>

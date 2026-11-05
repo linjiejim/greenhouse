@@ -52,6 +52,9 @@ export function WebFrame({
       ref={frame}
       title={bridge?.title ?? 'Greenhouse preview'}
       sandbox={bridge ? 'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads' : 'allow-scripts allow-downloads'}
+      // Plugin frames may play video full screen; previews may not.
+      allow={bridge ? 'fullscreen' : undefined}
+      allowFullScreen={bridge ? true : undefined}
       onLoad={() => {
         setLoadedSrc(frameSrc);
         bridge?.onLoad?.();

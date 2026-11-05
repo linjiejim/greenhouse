@@ -68,6 +68,9 @@ export { CITE_URL_INSTRUCTION } from './tools/cite-url.js';
 // ─── Files and storage ──────────────────────────────────
 export { driveKeyFor, getObjectAtKey, putObjectAtKey } from './storage/uploads.js';
 export type { StoredObject } from './storage/uploads.js';
+// A plugin's own namespaced object store: direct (presigned) or ticketed uploads and reads.
+export { pluginObjects } from './storage/plugin-objects.js';
+export type { PluginObjectStore, PluginUploadTarget } from './storage/plugin-objects.js';
 export { safeDriveContentType, validateDriveUpload, MAX_DRIVE_FILE_SIZE } from './drive/upload-policy.js';
 export type { DriveUploadCandidate, DriveUploadValidation } from './drive/upload-policy.js';
 export { extractText, MAX_READABLE_BYTES, DEFAULT_MAX_CHARS, HARD_MAX_CHARS } from './files/extract-text.js';
@@ -251,6 +254,9 @@ export { resolveDriveAccess } from './drive/access.js';
 export { canWriteDrive } from './drive/access.js';
 export { checkPromptInjection } from './security/security.js';
 export { completeJson } from './llm/complete.js';
+// Metered image understanding (the `vision` service, the member's budget).
+export { analyzeImages } from './llm/vision.js';
+export type { AnalyzeImagesInput, AnalyzeImagesResult } from './llm/vision.js';
 export { searchColumns } from '@greenhouse/db/plugin-schema';
 export { folders } from '@greenhouse/db/plugin-schema';
 export { queueMobilePush } from './notifications/push/queue.js';

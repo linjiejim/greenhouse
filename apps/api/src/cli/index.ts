@@ -49,6 +49,7 @@ ${chalk.bold('Manage')}
   db baseline               Adopt an existing database: record the migration chain as applied (--dry-run, --yes)
   platform bootstrap        Synchronize system roles / baseline policies with the manifests
   seed                      Load the example dataset from data/examples (--reset | --keep)
+  storage push-local        Copy local-disk uploads and files into the configured COS / S3 bucket (--dry-run)
 
 ${chalk.bold('Diagnose')}
   doctor                    Check env + DB readiness for this deployment
@@ -109,6 +110,8 @@ async function dispatch(command: string, rest: string[]): Promise<number> {
       return (await import('./commands/platform.js')).run(rest);
     case 'seed':
       return (await import('./commands/seed.js')).run(rest);
+    case 'storage':
+      return (await import('./commands/storage.js')).run(rest);
     // ── HTTP-driven scripts (child-process delegation) ──
     case 'chat':
       return delegate('chat.ts', rest);

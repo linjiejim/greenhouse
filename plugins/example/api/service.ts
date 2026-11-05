@@ -8,7 +8,7 @@ import {
   fieldPolicyFor,
 } from '@greenhouse/api/extension-kit';
 import { HTTPException } from 'hono/http-exception';
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { Db } from '@greenhouse/api/extension-kit';
 import { exampleNotes, type ExampleNoteRow } from './schema.js';
 
@@ -41,6 +41,25 @@ export function createExampleNoteService(db: Db) {
         .limit(1);
       return row;
     },
+    /** Picture content types of the caller's notes, by note id (notes without a picture are absent). */
+    async pictureTypes(userId: string, ids: number[]): Promise<Map<number, string>> {
+      if (ids.length === 0) return new Map();
+      const rows = await db
+        .select({ id: exampleNotes.id, type: exampleNotes.picture_type })
+        .from(exampleNotes)
+        .where(
+          and(eq(exampleNotes.user_id, userId), inArray(exampleNotes.id, ids), isNotNull(exampleNotes.picture_type)),
+        );
+      return new Map(rows.map((row) => [row.id, row.type!]));
+    },
+    async setPicture(userId: string, id: number, pictureType: string | null): Promise<ExampleNoteRow | undefined> {
+      const [row] = await db
+        .update(exampleNotes)
+        .set({ picture_type: pictureType })
+        .where(sql`${exampleNotes.id} = ${id} AND ${exampleNotes.user_id} = ${userId}`)
+        .returning();
+      return row;
+    },
     async search(userId: string, query: string, limit: number): Promise<ExampleNoteRow[]> {
       return db
         .select()
@@ -66,7 +85,7 @@ export type ExampleServices = ReturnType<typeof createExampleServices>;
 /** Compatibility adapters retain their wire shape while using the data app's permissions and audit. */
 export async function noteAction<T>(
   actor: string | import('@greenhouse/api/extension-kit').ActorContext,
-  action: 'read' | 'create' | 'delete' | 'export',
+  action: 'read' | 'create' | 'update' | 'delete' | 'export',
   operation: () => Promise<T>,
 ): Promise<T> {
   const request = {

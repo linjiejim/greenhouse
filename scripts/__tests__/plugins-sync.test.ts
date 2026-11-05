@@ -178,3 +178,31 @@ it('resolves manifest UI paths independently of cwd and refuses paths outside th
   );
   expect(() => sync(root)).toThrow(/inside the plugin/);
 });
+
+it('carries declared uiMedia origins and refuses anything that is not an https origin', { timeout: 20_000 }, () => {
+  const root = fixture();
+  const manifest = join(root, 'plugins/beta/manifest.ts');
+  mkdirSync(join(root, 'plugins/beta/ui'));
+  const write = (uiMedia: string) =>
+    writeFileSync(
+      manifest,
+      `export default { id: 'beta', name: 'Beta', sdk: 2, version: '1.0.0', dependsOn: [], ui: './ui', uiMedia: ${uiMedia} }`,
+    );
+  change(root, 'beta', 'api', undefined);
+  write("['https://cdn.example.com', 'https://*.example.org:8443']");
+  sync(root);
+  expect(readFileSync(join(root, 'apps/api/src/plugin-host/compiled.generated.ts'), 'utf8')).toContain(
+    'https://*.example.org:8443',
+  );
+  for (const bad of [
+    "['http://cdn.example.com']",
+    "['https://cdn.example.com/path']",
+    "['https://cdn.example.com; script-src *']",
+    "['*']",
+    "'https://cdn.example.com'",
+    `[${Array.from({ length: 9 }, (_, i) => `'https://c${i}.example.com'`).join(',')}]`,
+  ]) {
+    write(bad);
+    expect(() => sync(root)).toThrow(/uiMedia/);
+  }
+});

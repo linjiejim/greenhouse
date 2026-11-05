@@ -12,7 +12,8 @@ preserves data.
 | Environment | None. |
 | Owned tables | `ext_example_notes` |
 | Tools | Generated `example_query`, `example_mutation`; compatible `example_notes_query`, `example_notes_mutation` |
-| Routes | Generated `/api/ext/example/entities/note`, legacy `/api/ext/example/notes`, public static `/ext/example/ui/` |
+| Routes | Generated `/api/ext/example/entities/note`, legacy `/api/ext/example/notes` (plus `/notes/:id/picture`, `/complete`, `/describe`), public static `/ext/example/ui/` |
+| Objects | One picture per note at `notes/<id>/picture` in the plugin object store; `describe` is one metered vision call. |
 | Client | Generated entity pages, an Admin settings form and the embedded `Example UI` page under More. |
 
 CLI `example:count`; note-count job, welcome event and install hook. Build the frontend with

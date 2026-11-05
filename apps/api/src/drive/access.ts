@@ -67,6 +67,9 @@ export function driveScopeOwner(scope: string): string | undefined {
 export function registerDriveScopes(defs: readonly DriveScopeDef[], owner?: string): void {
   for (const def of defs) {
     if (extensionScopes.has(def.scope)) throw new Error(`Drive scope "${def.scope}" is already registered`);
+    // `<drive prefix>plugins/` holds plugin object namespaces (storage/plugin-objects.ts).
+    if (def.scope.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32) === 'plugins')
+      throw new Error('Drive scope "plugins" is reserved for plugin objects');
     if (owner) scopeOwners.set(def.scope, owner);
     if (def.cabinet && [...extensionScopes.values()].some((scope) => scope.cabinet))
       throw new Error('Only one plugin file cabinet may be selected');

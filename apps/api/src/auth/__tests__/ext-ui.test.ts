@@ -143,3 +143,11 @@ it('reaches the member directory and the drive folder/file routes, naming its pl
   ])
     expect((await app.request(path, { headers, method })).status, `${method} ${path}`).toBe(403);
 });
+
+it('lets a frame that attaches its token anyway reach object tickets, and only read/upload them', async () => {
+  const { extUiPathAllowed } = await import('../token.js');
+  expect(extUiPathAllowed('example', 'GET', '/api/ext-objects/ticket.sig')).toBe(true);
+  expect(extUiPathAllowed('example', 'PUT', '/api/ext-objects/ticket.sig')).toBe(true);
+  expect(extUiPathAllowed('example', 'DELETE', '/api/ext-objects/ticket.sig')).toBe(false);
+  expect(extUiPathAllowed('example', 'GET', '/api/ext-objects/%2e%2e/x')).toBe(false);
+});

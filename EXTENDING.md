@@ -75,7 +75,7 @@ plugins/<id>/
 ```
 
 A manifest supplies `id`, `name`, `version`, `sdk`, `core`, `dependsOn`, optional `features`,
-`client_min`, `surfaces` and `ui`. Import package.json for the package version; do not import API
+`client_min`, `surfaces`, `ui` and `uiMedia` (see below). Import package.json for the package version; do not import API
 code into the manifest. Package id/SDK/version must agree with the manifest. The folder is `<id>`
 (installed packages may use `plugin-<id>`). Cycles, duplicate ids, missing exports, invalid
 metadata, an SDK other than 2 or a `web` entry fail assembly. There is no web half: client UI
@@ -352,6 +352,51 @@ opaque-origin sandboxes and receive no credentials. Static UI CSP permits frame 
 allowlist `host_origin=tauri://localhost` before passing it to `connectGreenhouse({hostOrigin})`.
 Never trust arbitrary origin hints. Remote-origin credentialed embeds/OAuth are not implemented.
 
+Static UI CSP keeps scripts same-origin. Images may also come from `data:`/`blob:` (local
+previews before upload), images and media from the object store's direct origin and the
+plugin's own `uiMedia` list, and `connect-src` adds the store's direct origin (presigned
+uploads). `uiMedia` is pure manifest data: at most eight `https://host[:port]` or
+`https://*.host` origins, refused at assembly and definition time otherwise, and never shared
+with another plugin's page. Web plugin frames may go full screen; native frames play media inline.
+
+## Plugin objects and image understanding
+
+`pluginObjects('<id>')` from the kit is the plugin's own object store on whichever backend the
+deployment configured (COS, S3, local disk). Keys are relative paths (`[A-Za-z0-9._-]`
+segments, at most 200 characters) filed under `<drive prefix>plugins/<id>/`; nothing can leave
+that namespace.
+
+```ts
+const objects = pluginObjects('assets');
+const upload = await objects.uploadUrl({ key: 'a/original.mp4', contentType: 'video/mp4', maxBytes: 1024 ** 3 });
+// the browser PUTs the file to upload.url with upload.headers, then calls the plugin back
+const stored = await objects.head('a/original.mp4'); // trust the store, not the client
+const src = await objects.readUrl('a/thumb.webp', { disposition: 'inline' });
+```
+
+- `uploadUrl` is a presigned PUT on COS and on S3 with `STORAGE_S3_PRESIGN=true` (`direct: true`);
+  otherwise an `/api/ext-objects/<ticket>` URL that streams the body to storage and stops at
+  `maxBytes`. A bucket does not enforce `maxBytes`, so check `head()` before accepting a direct
+  upload and delete what is too large.
+- `readUrl` is a presigned GET or a ticket URL (Range reads, so video seeks); default one hour,
+  at most twelve. `inline` applies to raster images, video and audio only; anything else is
+  served as an `application/octet-stream` attachment.
+- A ticket is a capability like a presigned URL (signed, one object, one operation, expiring);
+  it carries no member credential and reaches nothing once the plugin is disabled. Authorize the
+  member in your own route before handing one out.
+- `put`/`get` keep bytes in memory; `open(key, range)` streams (hashing a large file);
+  `list(prefix)` lists keys; `copy(from, to)` copies inside the namespace server-side (≤ 5 GB).
+- An upload URL can be used until it expires. When bytes must not change after you accept them,
+  hand out targets under a staging key and `copy` to the final key on completion, so no browser
+  URL ever points at what you publish (the asset library does this).
+- `pnpm cli plugins drop` removes tables, not objects.
+
+`analyzeImages({ userId, images: [{ bytes }], prompt, json?, caller })` is the metered vision
+call (the same path as the `analyze_image` tool): one to eight images of at most 10 MB, the
+member's budget, the `vision` service price. It throws on bad input, a missing media provider,
+a budget refusal (`findBudgetRefusal`) or a provider error; `json: true` also returns the parsed
+reply as `json` when it contains one.
+
 ## Database ownership and migrations
 
 Keep schema/services in the package; core has no plugin service accessor. New tables use
@@ -359,8 +404,8 @@ Keep schema/services in the package; core has no plugin service accessor. New ta
 them as numbers. Plugin tables may reference core; core must not acquire plugin FKs. Use
 `db.users`, `db.drive`, `db.platform` and kit facades for core data (organization `'default'`).
 
-Core schema owns 49 tables and a fresh install creates only those. Ten official data plugins own
-24 more: each plugin's `0001_adopt.sql` is its baseline, creates its tables only when the plugin
+Core schema owns 49 tables and a fresh install creates only those. Eleven official data plugins own
+30 more: each plugin's `0001_adopt.sql` is its baseline, creates its tables only when the plugin
 is enabled, and guards every table/index/constraint so a database upgraded from 3.x adopts the
 tables its 3.x baseline created in place. Example's extra table is separate. See
 [DB ownership](packages/db/src/db-schema.md).

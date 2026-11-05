@@ -26,7 +26,7 @@ the [capability reference](docs/capabilities.md) (Chinese) and the
 | Ring | Responsibility |
 |---|---|
 | Governance core | Internal accounts and permissions; conversations and Agent profiles; saved prompts; tools and runs; audit and usage; models, budgets and gateway; MCP server and remote connectors; automations; notifications and push; Files; runtime configuration, branding, plugin host, administration and CLI. |
-| Official plugins | Knowledge, Tables, SkillHub, Memory, Feedback, Projects, Reports, Email, Feishu, WeCom, Computer and Retro. They use the same kit and import boundaries as private plugins. |
+| Official plugins | Knowledge, Tables, SkillHub, Memory, Feedback, Projects, Reports, Email, Feishu, WeCom, Computer, Retro and Assets. They use the same kit and import boundaries as private plugins. |
 | Your plugins | Domain data, integrations, tools and pages in `plugins/<id>/` or installed packages. SDK 2 derives governed data tools, REST and client pages from an entity definition. |
 
 The default build compiles all twelve official plugins plus the disabled Example reference.
@@ -34,7 +34,7 @@ Compilation and enablement are separate:
 
 | Enabled by default | Compiled, disabled by default |
 |---|---|
-| [Knowledge](plugins/knowledge), [Tables](plugins/tables), [SkillHub](plugins/skills), [Feedback](plugins/feedback), [Memory](plugins/memory) | [Projects](plugins/projects), [Reports](plugins/reports), [Email](plugins/email), [Feishu](plugins/feishu), [WeCom](plugins/wecom), [Computer](plugins/computer), [Retro](plugins/retro), [Example](plugins/example) |
+| [Knowledge](plugins/knowledge), [Tables](plugins/tables), [SkillHub](plugins/skills), [Feedback](plugins/feedback), [Memory](plugins/memory) | [Projects](plugins/projects), [Reports](plugins/reports), [Email](plugins/email), [Feishu](plugins/feishu), [WeCom](plugins/wecom), [Computer](plugins/computer), [Retro](plugins/retro), [Assets](plugins/assets), [Example](plugins/example) |
 
 `greenhouse.config.ts` `plugins` selects compiled packages and `extensions.enabled` selects active
 ids; `GREENHOUSE_EXTENSIONS` replaces that list at boot. Keep existing ids when adding one.

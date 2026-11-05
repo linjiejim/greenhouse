@@ -28,6 +28,12 @@ describe('public-read boundary', () => {
     expect(isPublicPath('/api/chat-files/abc-123/content')).toBe(false);
   });
 
+  it('exempts plugin object tickets only under their own prefix (the signed ticket is the capability)', () => {
+    expect(isPublicPath('/api/ext-objects/eyJwIjoiZXhhbXBsZSJ9.abc')).toBe(true);
+    expect(isPublicPath('/api/ext-objects')).toBe(false);
+    expect(isPublicPath('/api/ext/example/notes')).toBe(false);
+  });
+
   it('no longer exempts the retired Mission runner or LLM relay paths', () => {
     expect(isPublicPath('/api/missions/internal/runs/car_1/events')).toBe(false);
     expect(isPublicPath('/api/cloud-agent/internal/runs/car_1/events')).toBe(false);

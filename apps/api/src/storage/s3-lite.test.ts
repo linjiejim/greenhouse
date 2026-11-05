@@ -221,3 +221,106 @@ describe('HEAD and ListObjectsV2', () => {
     }
   });
 });
+
+describe('presignedUrl (official AWS query-string vector)', () => {
+  // "Authenticating Requests: Using Query Parameters (AWS Signature Version 4)" — GET
+  // examplebucket/test.txt, 24 h expiry, signed header host, virtual-host style.
+  it('reproduces the AWS S3 docs presigned GET signature', () => {
+    const client = createS3Client({
+      endpoint: 'https://s3.amazonaws.com',
+      region: 'us-east-1',
+      bucket: 'examplebucket',
+      accessKeyId: 'AKIAIOSFODNN7EXAMPLE',
+      secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+      forcePathStyle: false,
+    });
+    const url = new URL(
+      client.presignedUrl('GET', 'test.txt', { expiresSec: 86400, now: new Date('2013-05-24T00:00:00Z') }),
+    );
+    expect(url.origin).toBe('https://examplebucket.s3.amazonaws.com');
+    expect(url.pathname).toBe('/test.txt');
+    expect(url.searchParams.get('X-Amz-Credential')).toBe('AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request');
+    expect(url.searchParams.get('X-Amz-SignedHeaders')).toBe('host');
+    expect(url.searchParams.get('X-Amz-Signature')).toBe(
+      'aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404',
+    );
+    expect(client.publicOrigin).toBe('https://examplebucket.s3.amazonaws.com');
+  });
+
+  it('signs response overrides into the URL and refuses unbounded expiry', () => {
+    const client = createS3Client({ ...CFG });
+    const url = new URL(
+      client.presignedUrl('GET', 'a b.png', {
+        expiresSec: 60,
+        query: { 'response-content-disposition': 'inline', 'response-content-type': 'image/png' },
+      }),
+    );
+    expect(url.origin).toBe('http://127.0.0.1:9000');
+    expect(url.pathname).toBe('/example-bucket/a%20b.png');
+    expect(url.searchParams.get('response-content-disposition')).toBe('inline');
+    expect(() => client.presignedUrl('PUT', 'k', { expiresSec: 0 })).toThrow(/expiry/);
+    expect(() => client.presignedUrl('PUT', 'k', { expiresSec: 604_801 })).toThrow(/expiry/);
+  });
+});
+
+describe('streaming', () => {
+  it('opens a byte range and reports the whole size', async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const client = createS3Client({ ...CFG }, (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response('bcd', {
+        status: 206,
+        headers: { 'content-length': '3', 'content-range': 'bytes 1-3/10', 'content-type': 'video/mp4' },
+      });
+    }) as unknown as typeof fetch);
+    const object = await client.openObject('v.mp4', { start: 1, end: 3 });
+    expect(object).toMatchObject({ status: 206, contentLength: 3, size: 10, contentType: 'video/mp4' });
+    expect((calls[0].init.headers as Record<string, string>).range).toBe('bytes=1-3');
+    expect(await new Response((object as { body: ReadableStream }).body).text()).toBe('bcd');
+  });
+
+  it('maps 404 and 416', async () => {
+    const statuses = [404, 416];
+    const client = createS3Client(
+      { ...CFG },
+      (async () => new Response(null, { status: statuses.shift() })) as unknown as typeof fetch,
+    );
+    expect(await client.openObject('missing')).toBeNull();
+    expect(await client.openObject('short', { start: 99 })).toBe('unsatisfiable');
+  });
+
+  it('streams a PUT with its declared length and an unsigned payload', async () => {
+    let seen: RequestInit | undefined;
+    const client = createS3Client({ ...CFG }, (async (_url: string, init: RequestInit) => {
+      seen = init;
+      await new Response(init.body as ReadableStream).arrayBuffer();
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch);
+    const body = new Response('hello').body!;
+    await client.putObjectStream('k.bin', body, 5, 'application/octet-stream');
+    const headers = seen!.headers as Record<string, string>;
+    expect(headers['content-length']).toBe('5');
+    expect(headers['x-amz-content-sha256']).toBe('UNSIGNED-PAYLOAD');
+    expect((seen as { duplex?: string }).duplex).toBe('half');
+  });
+});
+
+describe('copyObject', () => {
+  it('signs the copy source and reads a late <Error> as a failure', async () => {
+    const seen: Array<Record<string, string>> = [];
+    const replies = [
+      new Response('<CopyObjectResult/>', { status: 200 }),
+      new Response('<Error><Code>InternalError</Code></Error>', { status: 200 }),
+      new Response(null, { status: 404 }),
+    ];
+    const client = createS3Client({ ...CFG }, (async (_url: string, init: RequestInit) => {
+      seen.push(init.headers as Record<string, string>);
+      return replies.shift()!;
+    }) as unknown as typeof fetch);
+    expect(await client.copyObject('a b/src.bin', 'dst.bin')).toBe(true);
+    expect(seen[0]!['x-amz-copy-source']).toBe('/example-bucket/a%20b/src.bin');
+    expect(seen[0]!.authorization).toContain('x-amz-copy-source');
+    await expect(client.copyObject('src', 'dst')).rejects.toThrow(/COPY/);
+    expect(await client.copyObject('missing', 'dst')).toBe(false);
+  });
+});

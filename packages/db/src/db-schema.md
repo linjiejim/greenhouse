@@ -2,7 +2,7 @@
 
 > 事实源：`packages/db/src/schema/*.ts`（每个域一个文件，文件头写着本域的表）。迁移链从 `packages/db/migrations/0000_v4_baseline.sql` 起步；3.x 的 0000–0009 归档在 `migrations/archive-3x/`，只供 3.x 库原地桥接。
 >
-> 核心 schema **50 张表**（含 `extension_migrations`；baseline 建 49 张，`0002_client_reports` 加 `client_reports`），新装只建这些；十个数据插件启用时各自建 24 张表（Example 另有 1 张）。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
+> 核心 schema **50 张表**（含 `extension_migrations`；baseline 建 49 张，`0002_client_reports` 加 `client_reports`），新装只建这些；十一个数据插件启用时各自建 30 张表（其中 Assets 6 张，Example 另有 1 张）。字段类型、默认值、索引以 schema 与最新 snapshot 为准；本文只写用途、关键列和关系。
 
 ## 设计约定
 

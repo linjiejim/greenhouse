@@ -1,0 +1,30 @@
+{
+  "name": "@greenhouse/plugin-assets",
+  "version": "4.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "ui:build": "node scripts/build-ui.mjs"
+  },
+  "greenhouse": {
+    "id": "assets",
+    "sdk": 2,
+    "api": "./api/index.ts"
+  },
+  "exports": {
+    "./api": "./api/index.ts",
+    "./manifest": "./manifest.ts"
+  },
+  "dependencies": {
+    "@greenhouse/api": "workspace:*",
+    "@greenhouse/types": "workspace:*",
+    "ai": "^6.0.176",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.18",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@greenhouse/db": "workspace:*",
+    "drizzle-kit": "^0.31.10"
+  }
+}
