@@ -1,5 +1,5 @@
 /** Browser place chrome; domain reads and writes stay in existing APIs. */
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
 import { useWideShell } from '../shell/wide-shell.web';
@@ -164,6 +164,14 @@ export function PlaceEmpty({
   action?: React.ReactNode;
 }) {
   const t = useT();
+  // a quick load shows nothing; a slow one says so after 300 ms (never a flash of words)
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!loading) return setSlow(false);
+    const timer = setTimeout(() => setSlow(true), 300);
+    return () => clearTimeout(timer);
+  }, [loading]);
+  if (loading && !slow) return <div className="gh-place-empty" role="status" aria-busy="true" />;
   if (loading || error || !title)
     return (
       <div className="gh-place-empty" role="status">

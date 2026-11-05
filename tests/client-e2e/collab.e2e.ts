@@ -65,8 +65,9 @@ test('project members: a refusal turns the panel read-only', async ({ page }) =>
   const dialog = page.getByTestId('project-members');
   await dialog.getByRole('combobox', { name: '成员', exact: true }).selectOption('usr_zhao');
   await dialog.getByRole('button', { name: '添加', exact: true }).click();
-  await expect(page.getByRole('dialog').last()).toContainText('添加成员失败');
-  await confirm(page, '好');
+  const notice = page.getByRole('alert').filter({ hasText: '添加成员失败' });
+  await expect(notice).toBeVisible();
+  await notice.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(dialog).toContainText('只有项目负责人可以调整成员。');
   await expect(dialog.getByRole('combobox')).toHaveCount(0);
   expect(f.writes).toHaveLength(1);

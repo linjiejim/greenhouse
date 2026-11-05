@@ -85,7 +85,9 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 ## States and feedback
 
 - Every list has empty, loading and failed states; a cached copy shown offline says so above the list.
-- Success shows a toast; failure shows `alertError` with technical detail behind Details; never both.
+- A result on screen needs no notice; a result out of sight gets `notify` (success and info 4 s, warning 6 s), one sentence naming the object.
+- A reversible action (archive, move to a bin) runs at once with `notify.undo` (8 s); only irreversible ones ask first with `confirmAction` (title a question, button repeating its verb).
+- A failed action is `alertError`: on the web a notice that stays until dismissed (the reason as its second line, raw detail behind Details), on phones the system alert. A failure that belongs to a field or a block shows there, with Retry. Never a notice and a dialog for the same thing.
 - A refresh never moves a list: pull spinner for a pull, a small bar spinner otherwise.
 - Optimistic writes roll back and say so when the station refuses.
 - Haptics only for selection changes, long presses, the drawer reaching open and Sprouty on home.

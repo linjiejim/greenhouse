@@ -139,7 +139,7 @@
 - Accessible names come from en/zh i18n, never hard-coded English; `tests/client-e2e/a11y.e2e.ts` runs axe on representative pages and dialogs and fails on serious/critical findings, so fix the shared primitive in src/ui before widening its allowlist.
 - Declare presentation only in app/\_layout platform layouts with the src/ui/nav presets; screens declare their own title and actions; native back buttons stay system-owned.
 - Glass (src/ui/glass.tsx) is for the control layer only; content sits on solid system colors.
-- A failed user action shows alertError; toast is for success only; a failed load shows EmptyState with retry; login errors stay inline.
+- A failed user action shows alertError (a lasting notice on the web, the system alert on phones); notices go through notify (toast is its success); reversible actions use notify.undo instead of a confirm; a failed load shows EmptyState with retry; login errors stay inline.
 - Forms use NativeForm with FormNavRow; content buttons use NativeButton, never Pressable plus Text.
 - Every SwiftUI Host you create gets the useLocaleEnv() modifier, and inline hosts in RN content get ignoreSafeArea="all".
 - Lists use src/ui/list.tsx; virtualized rows pass rowPosition() instead of sitting in a Section; show Skeleton or LoadingState and EmptyState.

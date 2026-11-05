@@ -22,13 +22,16 @@ export type DialogSize = keyof typeof DIALOG_SIZES;
 const TABBABLE = 'button:not(:disabled),input,textarea,select,a[href],[tabindex="0"]';
 export const tabbablesIn = (root: HTMLElement | null) =>
   Array.from(root?.querySelectorAll<HTMLElement>(TABBABLE) ?? []).filter((node) => !node.closest('[inert]'));
+/** Notices float above every layer: a modal's Tab cycle includes their buttons (Retry, Details, Close). */
+const noticeTabbables = () => tabbablesIn(document.querySelector<HTMLElement>('.gh-notices'));
 /** Keeps Tab and Shift+Tab inside a modal surface; returns whether it handled the key. */
 export function trapTabIn(root: HTMLElement | null, e: KeyboardEvent) {
   if (e.key !== 'Tab' || !root) return false;
-  const nodes = tabbablesIn(root);
+  const notices = noticeTabbables();
+  const nodes = [...tabbablesIn(root), ...notices];
   const first = nodes[0];
   const last = nodes.at(-1);
-  const inside = root.contains(document.activeElement);
+  const inside = root.contains(document.activeElement) || notices.includes(document.activeElement as HTMLElement);
   if (!first) {
     e.preventDefault();
     root.focus();
