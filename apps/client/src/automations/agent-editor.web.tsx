@@ -31,6 +31,7 @@ import {
   type ToolMeta,
 } from './agents';
 import { Check, EditorDialog, Field, focusFirstInvalid, useTouched } from './form-parts.web';
+import { Select } from '../ui/select.web';
 
 export type AgentEditorMode =
   | { kind: 'new' }
@@ -221,7 +222,7 @@ export function AgentEditor({
           <div className="gh-form-grid">
             <Field label={t('agents.editor.model')} hint={t('agents.editor.modelHint')}>
               {({ id, describedBy }) => (
-                <select
+                <Select
                   id={id}
                   className="gh-input"
                   value={draft.modelId}
@@ -237,7 +238,7 @@ export function AgentEditor({
                       {model.name && model.name !== model.id ? `${model.name} · ${model.id}` : model.id}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
             </Field>
             <Field label={t('agents.editor.maxSteps')} hint={t('agents.editor.maxStepsHint')} error={shown('maxSteps')}>
@@ -295,7 +296,7 @@ export function AgentEditor({
             <div className="gh-form-grid">
               <Field label={t('agents.editor.risk')}>
                 {({ id }) => (
-                  <select
+                  <Select
                     id={id}
                     className="gh-input"
                     value={draft.riskLevel}
@@ -306,7 +307,7 @@ export function AgentEditor({
                         {t(`agents.riskLevel.${level}`)}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 )}
               </Field>
             </div>

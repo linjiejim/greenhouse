@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { useEntityList } from './entity-hooks';
-import { NativeMenu } from '../ui/menu.web';
+import { Select } from '../ui/select.web';
 import { FieldValue, FieldTypeIcon } from '../ui/field-value.web';
 import { entityColumns, fieldText } from './surface-model';
 import { localize, type PluginEntitySchema, type PluginEntityListPage } from '../shared/plugins';
@@ -29,8 +30,26 @@ export function EntityList({
   const t = useT(),
     lang = usePrefs((s) => s.lang),
     open = useOpenObject();
-  const [filters, setFilters] = useState<Record<string, string>>({}),
-    [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' }>();
+  // Filters and sort live in the address (`?f.status=open&sort=amount:desc`): a filtered view
+  // reloads, shares and comes back with the browser's Back.
+  const params = useLocalSearchParams<Record<string, string>>(),
+    router = useRouter();
+  const filters = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(params)
+          .filter(([key, value]) => key.startsWith('f.') && typeof value === 'string' && value)
+          .map(([key, value]) => [key.slice(2), value]),
+      ) as Record<string, string>,
+    [params],
+  );
+  const sort = useMemo(() => {
+    const [field, dir] = (typeof params.sort === 'string' ? params.sort : '').split(':');
+    return field && (dir === 'asc' || dir === 'desc') ? { field, dir: dir as 'asc' | 'desc' } : undefined;
+  }, [params.sort]);
+  const setFilter = (key: string, value: string) => router.setParams({ [`f.${key}`]: value || undefined });
+  const setSort = (next: { field: string; dir: 'asc' | 'desc' } | undefined) =>
+    router.setParams({ sort: next ? `${next.field}:${next.dir}` : undefined });
   const view = entity.views.find((v) => v.id === (page.view ?? 'default')) ?? entity.views[0],
     fields = entityColumns(entity, view);
   const [context, setContext] = useState<PlaceContextPoint | null>(null);
@@ -73,78 +92,58 @@ export function EntityList({
           {(view?.filters ?? []).map((key) => {
             const f = entity.fields.find((f) => f.key === key && f.filterable);
             if (!f) return null;
+            const label = localize(f.title, lang);
             return (
               <div className="gh-filter" key={key}>
-                {localize(f.title, lang)}{' '}
                 {f.kind === 'enum' || f.kind === 'boolean' || f.kind === 'user' ? (
-                  <NativeMenu
-                    title={localize(f.title, lang)}
-                    items={[
-                      { id: '', title: t('places.all'), checked: !filters[key] },
-                      ...(f.kind === 'boolean'
-                        ? ['true', 'false']
-                        : f.kind === 'user'
-                          ? memberChoices(me?.id, peopleIds([f], list.items), filters[key])
-                          : (f.values ?? [])
-                      ).map((value) => ({
-                        id: value,
-                        title:
-                          f.kind === 'user' && value === me?.id
-                            ? t('places.me')
-                            : fieldText(f, f.kind === 'boolean' ? value === 'true' : value, lang, names),
-                        checked: filters[key] === value,
-                      })),
-                    ]}
-                    onSelect={(value) => setFilters((v) => ({ ...v, [key]: value }))}
-                  >
-                    <button className="gh-input" aria-label={localize(f.title, lang)}>
-                      {!filters[key]
-                        ? t('places.all')
-                        : f.kind === 'user' && filters[key] === me?.id
+                  <Select clearable aria-label={label} value={filters[key] ?? ''} onChange={(e) => setFilter(key, e.target.value)}>
+                    <option value="">{label}</option>
+                    {(f.kind === 'boolean'
+                      ? ['true', 'false']
+                      : f.kind === 'user'
+                        ? memberChoices(me?.id, peopleIds([f], list.items), filters[key])
+                        : (f.values ?? [])
+                    ).map((value) => (
+                      <option key={value} value={value}>
+                        {f.kind === 'user' && value === me?.id
                           ? t('places.me')
-                          : fieldText(f, f.kind === 'boolean' ? filters[key] === 'true' : filters[key], lang, names)}{' '}
-                      ▾
-                    </button>
-                  </NativeMenu>
+                          : fieldText(f, f.kind === 'boolean' ? value === 'true' : value, lang, names)}
+                      </option>
+                    ))}
+                  </Select>
                 ) : (
                   <input
                     className="gh-input"
-                    aria-label={localize(f.title, lang)}
+                    aria-label={label}
+                    placeholder={label}
                     value={filters[key] ?? ''}
-                    onChange={(e) => setFilters((v) => ({ ...v, [key]: e.target.value }))}
+                    onChange={(e) => setFilter(key, e.target.value)}
                   />
                 )}
               </div>
             );
           })}
           <div className="gh-filter">
-            {t('places.sort')}{' '}
-            <NativeMenu
-              title={t('places.sort')}
-              items={[
-                { id: '', title: '—', checked: !sort },
-                ...fields
-                  .filter((f) => f.sortable)
-                  .flatMap((f) =>
-                    (['asc', 'desc'] as const).map((dir) => ({
-                      id: `${f.key}:${dir}`,
-                      title: `${localize(f.title, lang)} ${dir === 'asc' ? '↑' : '↓'}`,
-                      checked: sort?.field === f.key && sort.dir === dir,
-                    })),
-                  ),
-              ]}
-              onSelect={(value) => {
-                const [field, dir] = value.split(':');
+            <Select
+              clearable
+              aria-label={t('places.sort')}
+              value={sort ? `${sort.field}:${sort.dir}` : ''}
+              onChange={(e) => {
+                const [field, dir] = e.target.value.split(':');
                 setSort(field ? { field, dir: dir as 'asc' | 'desc' } : undefined);
               }}
             >
-              <button className="gh-input" aria-label={t('places.sort')}>
-                {sort
-                  ? `${localize(fields.find((f) => f.key === sort.field)?.title ?? sort.field, lang)} ${sort.dir === 'asc' ? '↑' : '↓'}`
-                  : '—'}{' '}
-                ▾
-              </button>
-            </NativeMenu>
+              <option value="">{t('places.sort')}</option>
+              {fields
+                .filter((f) => f.sortable)
+                .flatMap((f) =>
+                  (['asc', 'desc'] as const).map((dir) => (
+                    <option key={`${f.key}:${dir}`} value={`${f.key}:${dir}`}>
+                      {`${localize(f.title, lang)} ${dir === 'asc' ? '↑' : '↓'}`}
+                    </option>
+                  )),
+                )}
+            </Select>
           </div>
         </div>
         <div

@@ -704,6 +704,117 @@ textarea.gh-input,
   }
 }
 
+/* Select (src/ui/select.web.tsx): the field look with a chevron; a filter's unset state is dashed,
+   a set one sits on the selection fill with ✕. */
+.gh-select {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+.gh-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+}
+.gh-select-trigger:disabled {
+  cursor: default;
+}
+.gh-select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-select-trigger[data-unset] {
+  border-style: dashed;
+  color: var(--gh-secondary);
+}
+.gh-select-trigger[data-set] {
+  padding-right: 30px;
+  border-color: var(--gh-accent-edge);
+  background: var(--gh-accent-fill);
+  color: var(--gh-accent-text-strong);
+}
+.gh-select-clear {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--gh-accent-text-strong);
+  transform: translateY(-50%);
+}
+.gh-select-clear:hover {
+  background: var(--gh-hover);
+}
+
+/* Drawer (src/admin/kit.web.tsx AdminDrawer): a header with title and one line of meta, label / value
+   rows that keep their places when values become controls. */
+.gh-drawer-header {
+  min-height: 60px;
+}
+.gh-drawer-body {
+  padding: 16px 20px 24px;
+  font-size: 14px;
+  line-height: 22px;
+}
+.gh-drawer-title {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.gh-drawer-title strong,
+.gh-drawer-title small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-drawer-title small {
+  color: var(--gh-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+.gh-detail-rows {
+  display: grid;
+  grid-template-columns: minmax(80px, max-content) 1fr;
+  gap: 4px 24px;
+  margin: 0 0 24px;
+}
+.gh-detail-rows dt {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  color: var(--gh-secondary);
+}
+.gh-detail-rows dd {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 32px;
+  margin: 0;
+  color: var(--gh-text);
+  user-select: text;
+}
+.gh-detail-rows dd > .gh-input,
+.gh-detail-rows dd > .gh-select {
+  width: 100%;
+}
+.gh-required {
+  color: var(--gh-danger);
+}
+
 /* ══ end of Controls ═════════════════════════════════════════════════════════════════════════ */
 
 .gh-row-menu {
@@ -905,9 +1016,11 @@ textarea.gh-input,
   width: 100%;
   font-size: 14px;
 }
+/* Rows are separated by lines only: no vertical rules, no zebra (jim-uiux tables). */
 .gh-data-grid td,
 .gh-data-grid th {
-  border: 1px solid var(--gh-line);
+  border: 0;
+  border-bottom: 1px solid var(--gh-line);
   padding: 4px 12px;
   height: 40px;
   white-space: nowrap;
@@ -916,9 +1029,10 @@ textarea.gh-input,
   color: var(--gh-secondary);
   background: var(--gh-surface);
   text-align: left;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   padding-block: 8px;
+  border-top: 1px solid var(--gh-line);
 }
 .gh-data-grid tbody tr:hover {
   background: var(--gh-hover);

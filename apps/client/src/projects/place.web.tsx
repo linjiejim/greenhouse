@@ -10,7 +10,8 @@ import { captureIdentity } from '../data/identity';
 import { PlaceSecondary } from '../shell/place-secondary.web';
 import { useOpenObject } from '../shell/open-object';
 import { Place, PlaceSidebar, PlaceRow, PlaceEmpty, PlaceContext, type PlaceContextPoint } from '../ui/place.web';
-import { useT } from '../lib/i18n';
+import { localeOf, useT } from '../lib/i18n';
+import { usePrefs } from '../store/prefs';
 import { useAuth } from '../store/auth';
 import { alertError, promptText } from '../ui/dialogs';
 import { flattenTasks, withTaskPatched } from '../data/tasks';
@@ -185,6 +186,7 @@ function ProjectsDesktop() {
                 ...statuses.map((status) => [status, t(`projects.status.${status}` as never)]),
                 ['status', t('projects.changeStatus')],
                 ['today', t('projects.dueGroup.today')],
+                ['locale', localeOf(usePrefs.getState().lang)],
                 ['unassigned', t('projects.unassigned')],
                 ...['low', 'normal', 'high', 'urgent'].map((priority) => [
                   priority,

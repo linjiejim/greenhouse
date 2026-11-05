@@ -14,6 +14,8 @@ import {
 } from './format';
 import {
   EMPTY_QUERY,
+  paramsFromQuery,
+  queryFromParams,
   createProblem,
   deliveryFailed,
   editable,
@@ -385,5 +387,14 @@ describe('client errors model', () => {
       kinds: 2,
       fatal: 1,
     });
+  });
+});
+
+describe('users view in the address', () => {
+  it('round-trips a filtered view and drops defaults and unknown values', () => {
+    const view = { search: 'li', role: 'team' as const, status: 'invited' as const, sort: 'last_login' as const };
+    expect(queryFromParams(paramsFromQuery(view) as Record<string, string>)).toEqual(view);
+    expect(paramsFromQuery(EMPTY_QUERY)).toEqual({ q: undefined, role: undefined, status: undefined, sort: undefined });
+    expect(queryFromParams({ role: 'owner', status: 'gone', sort: 'x' })).toEqual(EMPTY_QUERY);
   });
 });

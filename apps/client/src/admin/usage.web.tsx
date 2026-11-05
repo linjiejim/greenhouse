@@ -29,6 +29,7 @@ import {
   type UsageSummary,
   type UserUsage,
 } from './usage-model';
+import { Select } from '../ui/select.web';
 
 type Tab = 'users' | 'profiles' | 'callers' | 'modules';
 
@@ -58,7 +59,7 @@ export default function UsageSection() {
       actions={
         <>
           {tab === 'modules' ? (
-            <select
+            <Select
               className="gh-input"
               aria-label={t('admin.usage.range')}
               value={days}
@@ -69,9 +70,9 @@ export default function UsageSection() {
                   {t('admin.usage.lastDays', { n: d })}
                 </option>
               ))}
-            </select>
+            </Select>
           ) : (
-            <select
+            <Select
               className="gh-input"
               aria-label={t('admin.usage.range')}
               value={period}
@@ -82,7 +83,7 @@ export default function UsageSection() {
                   {periodLabel(p)}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
           <button className="gh-icon-button" aria-label={t('common.refresh')} onClick={() => setVersion((v) => v + 1)}>
             <Icon name="refresh" size={16} />

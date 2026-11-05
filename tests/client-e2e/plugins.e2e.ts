@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { installPlaces, officialManifest } from './p3-fixture';
 import { API_BASE } from '../../playwright.client.config';
+import { choose } from './select';
 const endpoint = '/api/ext/crm/entities/company';
 async function pluginStation(page: Page) {
   const base = await installPlaces(page),
@@ -177,15 +178,15 @@ test('Plugins entity list filters, sort, infinite pages, inspector edit and conf
   await page.evaluate(() => localStorage.setItem('greenhouse_pref_theme', 'light'));
   await page.reload();
   await expect(list.getByText('Acme Analytics', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '状态', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'open', exact: true }).click();
+  // filters are clearable selects kept in the address (no "All" choice)
+  await choose(page.getByRole('combobox', { name: '状态', exact: true }), 'open');
   await expect
     .poll(() => f.queries.some((q) => JSON.parse(q.get('filter') || '[]')[0]?.value[0] === 'open'))
     .toBeTruthy();
-  await page.getByRole('button', { name: '状态', exact: true }).click();
-  await page.getByRole('menuitem', { name: '全部', exact: true }).click();
-  await page.getByRole('button', { name: '排序', exact: true }).click();
-  await page.getByRole('menuitem', { name: '金额 ↓', exact: true }).click();
+  await expect(page).toHaveURL(/f\.status=open/);
+  await page.getByRole('button', { name: '清除 状态', exact: true }).click();
+  await expect(page).not.toHaveURL(/f\.status=/);
+  await choose(page.getByRole('combobox', { name: '排序', exact: true }), { label: '金额 ↓' });
   await page.getByRole('button', { name: '加载更多', exact: true }).click();
   await expect.poll(() => f.queries.some((q) => q.get('skip') === '50')).toBeTruthy();
   // the list resolves its rows' members once per load; the inspector reuses the names

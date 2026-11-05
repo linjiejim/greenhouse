@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { installPlaces, officialManifest, AUTO } from './p3-fixture';
+import { choose } from './select';
 
 // The editor's default zone is the browser's; pin it so bodies and previews are exact.
 test.use({ timezoneId: 'Asia/Taipei' });
@@ -310,7 +311,7 @@ test('duplicate a team agent, and pick an agent in the automation editor', async
   const dialog = editor(page);
   const runsAs = dialog.getByLabel('运行身份');
   await expect(runsAs.locator('optgroup[label="自定义 Agent"] option')).toHaveText(['周报写手', '周报写手（副本）']);
-  await runsAs.selectOption({ label: '周报写手' });
+  await choose(runsAs, { label: '周报写手' });
   await dialog.getByLabel('名称').fill('周五周报');
   await dialog.getByLabel('要做的事').fill('每周五下午写本周周报，发到我的通知。');
   await dialog.getByRole('button', { name: '创建', exact: true }).click();

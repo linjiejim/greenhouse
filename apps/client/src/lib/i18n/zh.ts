@@ -108,6 +108,8 @@ export const zh: Catalog = {
     moreActions: '更多操作',
   },
   common: {
+    saveChanges: '保存修改',
+    clear: '清除',
     undo: '撤销',
     loading: '加载中…',
     cancel: '取消',
@@ -1716,6 +1718,7 @@ export const zh: Catalog = {
       plugins: '插件',
     },
     users: {
+      edit: '编辑',
       add: '添加用户',
       addTitle: '添加用户',
       create: '创建',
@@ -1727,8 +1730,6 @@ export const zh: Catalog = {
       role: '角色',
       status: '状态',
       sort: '排序',
-      allRoles: '全部角色',
-      allStatuses: '全部状态',
       roleSuper: '超级管理员',
       roleTeam: '团队成员',
       roleHistorical: '历史账户',
@@ -2268,10 +2269,8 @@ export const zh: Catalog = {
       export: '导出 CSV',
       exportFailed: '导出操作记录失败',
       source: '来源',
-      allSources: '全部来源',
       sources: { person: '成员', agent: '成员的 Agent', automation: '定时任务', admin: '管理员' },
       moduleLabel: '模块',
-      allModules: '全部模块',
       module: {
         knowledge: '知识库',
         files: '云盘',
@@ -2286,7 +2285,6 @@ export const zh: Catalog = {
         connectors: '连接器',
       },
       person: '成员',
-      everyone: '所有人',
       from: '开始日期',
       to: '结束日期',
       when: '时间',
@@ -2375,7 +2373,6 @@ export const zh: Catalog = {
       feedback: {
         requests: '功能需求',
         frictions: '问题反馈',
-        allStatuses: '全部状态',
         total: '共 {n} 条',
         title: '需求',
         priority: '优先级',

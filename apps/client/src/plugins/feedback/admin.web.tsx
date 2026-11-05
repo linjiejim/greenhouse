@@ -17,6 +17,7 @@ import { AdminDialog, AdminPage, Badge, Field, SectionState, Tabs, type Tone } f
 import { useWrite } from '../../admin/use-write';
 import { dateTimeLabel } from '../../admin/format';
 import type { AdminScreenEntry, AdminScreenProps } from '../admin-types';
+import { Select } from '../../ui/select.web';
 
 interface FeatureRequest {
   id: string;
@@ -108,19 +109,20 @@ function Requests() {
   return (
     <>
       <div className="gh-toolbar" style={{ padding: 0, marginBottom: 12 }}>
-        <select
+        <Select
+            clearable
           className="gh-input"
           aria-label={t('admin.metering.status')}
           value={status}
           onChange={(e) => setStatus(e.target.value)}
         >
-          <option value="">{t('admin.ext.feedback.allStatuses')}</option>
+          <option value="">{t('admin.metering.status')}</option>
           {(['pending', 'accepted', 'rejected', 'done'] as const).map((s) => (
             <option key={s} value={s}>
               {statusLabel(s)}
             </option>
           ))}
-        </select>
+        </Select>
         <button
           className="gh-icon-button"
           aria-label={t('common.refresh')}
@@ -155,7 +157,7 @@ function Requests() {
                   <Badge tone={REQUEST_TONE[r.status]}>{statusLabel(r.status)}</Badge>
                 </td>
                 <td onClick={(e) => e.stopPropagation()}>
-                  <select
+                  <Select
                     className="gh-input"
                     style={{ height: 26 }}
                     aria-label={t('admin.ext.feedback.priority')}
@@ -168,7 +170,7 @@ function Requests() {
                         {t(`admin.ext.feedback.priorities.${p}`)}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </td>
                 <td>
                   {r.submitted_by_nickname ?? '—'}
@@ -337,7 +339,7 @@ function Frictions() {
     <>
       <p className="gh-hint">{t('admin.ext.feedback.frictionsHint')}</p>
       <div className="gh-toolbar" style={{ padding: 0, marginBottom: 12 }}>
-        <select
+        <Select
           className="gh-input"
           aria-label={t('admin.metering.status')}
           value={status}
@@ -349,7 +351,7 @@ function Frictions() {
               {statusLabel(s)}
             </option>
           ))}
-        </select>
+        </Select>
         <button className="gh-secondary-button" disabled={busy} onClick={() => void scan()}>
           <Icon name="refresh" size={14} />
           {t('admin.ext.feedback.scan')}
@@ -464,13 +466,13 @@ function FrictionDialog({ friction, close, changed }: { friction: Friction; clos
         {friction.detail ? <p className="gh-admin-code">{friction.detail}</p> : null}
         <Field label={t('admin.metering.status')}>
           {(id) => (
-            <select id={id} value={status} onChange={(e) => setStatus(e.target.value as FrictionStatus)}>
+            <Select id={id} value={status} onChange={(e) => setStatus(e.target.value as FrictionStatus)}>
               {(['new', 'acknowledged', 'resolved', 'archived'] as const).map((s) => (
                 <option key={s} value={s}>
                   {t(`admin.ext.feedback.frictionStatusHint.${s}`)}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
         </Field>
         <Field label={t('admin.ext.feedback.resolution')}>

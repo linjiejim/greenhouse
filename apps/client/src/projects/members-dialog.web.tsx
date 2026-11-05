@@ -12,6 +12,7 @@ import { Icon } from '../ui/core';
 import { DialogBody, Overlay } from '../ui/overlay.web';
 import { MEMBER_ROLES, type MemberRole } from './members-model';
 import { useProjectMembers } from './use-project-members';
+import { Select } from '../ui/select.web';
 
 export function ProjectMembersDialog({ projectId, close }: { projectId: string; close: () => void }) {
   const t = useT();
@@ -75,7 +76,7 @@ export function ProjectMembersDialog({ projectId, close }: { projectId: string; 
                         }
                       }}
                     >
-                      <select
+                      <Select
                         className="gh-input"
                         style={{ flex: 1, minWidth: 160 }}
                         aria-label={t('projects.members.person')}
@@ -88,8 +89,8 @@ export function ProjectMembersDialog({ projectId, close }: { projectId: string; 
                             {user.nickname}
                           </option>
                         ))}
-                      </select>
-                      <select
+                      </Select>
+                      <Select
                         className="gh-input"
                         style={{ width: 'auto' }}
                         aria-label={t('projects.members.role')}
@@ -101,7 +102,7 @@ export function ProjectMembersDialog({ projectId, close }: { projectId: string; 
                             {t(`projects.members.roles.${value}`)}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                       <button
                         type="button"
                         className="gh-primary"
@@ -142,7 +143,7 @@ export function ProjectMembersDialog({ projectId, close }: { projectId: string; 
                             </td>
                             <td>
                               {can.role ? (
-                                <select
+                                <Select
                                   className="gh-input"
                                   aria-label={`${t('projects.members.role')} · ${name}`}
                                   value={member.role}
@@ -154,7 +155,7 @@ export function ProjectMembersDialog({ projectId, close }: { projectId: string; 
                                       {t(`projects.members.roles.${value}`)}
                                     </option>
                                   ))}
-                                </select>
+                                </Select>
                               ) : (
                                 t(`projects.members.roles.${member.role}`)
                               )}

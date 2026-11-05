@@ -32,6 +32,7 @@ import {
   type EmailPreset,
 } from './model';
 import '../app-pages.css';
+import { Select } from '../../ui/select.web';
 
 const TONE = { green: 'success', red: 'danger', neutral: 'neutral' } as const;
 
@@ -310,7 +311,7 @@ function AccountDialog({
             <div className="gh-form-grid">
               <div className="gh-field">
                 <label htmlFor="email-preset">{t('appPages.email.provider')}</label>
-                <select
+                <Select
                   id="email-preset"
                   value={draft.preset}
                   disabled={editing}
@@ -327,7 +328,7 @@ function AccountDialog({
                       {p.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               {field('email_address', t('appPages.email.address'), {
                 type: 'email',

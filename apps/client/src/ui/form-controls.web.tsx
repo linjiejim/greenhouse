@@ -11,6 +11,7 @@ import { NativeButton } from './button.web';
 import { NativeToggle } from './toggle.web';
 import { localDay } from '../data/tasks';
 import { DialogFrameContext } from './dialog-frame';
+import { Select } from './select.web';
 
 /** Text in a desktop section's footer reads as a hint. */
 const HintText = createContext(false);
@@ -199,9 +200,9 @@ export function Picker({
     return (
       <div className="gh-field">
         <label htmlFor={id}>{label}</label>
-        <select id={id} value={selection} onChange={(e) => onSelectionChange(e.target.value)} className="gh-input">
+        <Select id={id} value={selection} onChange={(e) => onSelectionChange(e.target.value)} className="gh-input">
           {choices}
-        </select>
+        </Select>
       </div>
     );
   return (
@@ -209,14 +210,14 @@ export function Picker({
       style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: space.md, color: c.label }}
     >
       {label}
-      <select
+      <Select
         aria-label={label}
         value={selection}
         onChange={(e) => onSelectionChange(e.target.value)}
         className="gh-input"
       >
         {choices}
-      </select>
+      </Select>
     </label>
   );
 }

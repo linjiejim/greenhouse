@@ -14,6 +14,7 @@ import { toast } from '../ui/toast';
 import { AdminPage, Badge, Card, Field, SectionState } from './kit.web';
 import { useWrite } from './use-write';
 import { dateTimeLabel } from './format';
+import { Select } from '../ui/select.web';
 
 interface DocRef {
   doc_id: string;
@@ -138,7 +139,7 @@ export default function TeamContextSection() {
                 )}
                 {conventions.length < MAX_CONVENTION_DOCS ? (
                   <div className="gh-button-row">
-                    <select
+                    <Select
                       className="gh-input"
                       aria-label={t('admin.teamContext.pickDocument')}
                       value={adding}
@@ -151,7 +152,7 @@ export default function TeamContextSection() {
                           {doc.title}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                     <button
                       type="button"
                       className="gh-secondary-button"
@@ -171,7 +172,7 @@ export default function TeamContextSection() {
             </Card>
             <Card title={t('admin.teamContext.glossaryTitle')} icon="note" hint={t('admin.teamContext.glossaryHint')}>
               <div className="gh-button-row">
-                <select
+                <Select
                   className="gh-input"
                   aria-label={t('admin.teamContext.glossaryTitle')}
                   value={glossary}
@@ -187,7 +188,7 @@ export default function TeamContextSection() {
                       {doc.title}
                     </option>
                   ))}
-                </select>
+                </Select>
                 {glossaryRef ? <Problem problem={glossaryRef.problem} /> : null}
               </div>
             </Card>

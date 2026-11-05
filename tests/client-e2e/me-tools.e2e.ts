@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { installPlaces, officialManifest } from './p3-fixture';
+import { choose } from './select';
 
 // The classic screens ported to the universal client: gateway keys, the agent-connection guide,
 // my own connectors, my activity, skill upload and history, and report-template editing.
@@ -309,7 +310,7 @@ test('A member adds, refreshes and deletes a connector of their own', async ({ p
   await form.getByLabel('名称').fill('我的笔记');
   await form.getByLabel('标识').fill('Notes');
   await form.getByLabel('MCP 地址').fill('https://notes.example.com/mcp');
-  await form.getByLabel('需要').selectOption('key');
+  await choose(form.getByLabel('需要'), 'key');
   await page.screenshot({ path: `${shots}/personal-connector-form.png` });
   await form.getByRole('button', { name: '添加连接器', exact: true }).click();
   await expect(form).toHaveCount(0);

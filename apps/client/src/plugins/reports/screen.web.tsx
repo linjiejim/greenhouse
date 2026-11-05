@@ -38,6 +38,7 @@ import {
   withKind,
   type TemplateDraft,
 } from './template-draft';
+import { Select } from '../../ui/select.web';
 
 type Open = { template?: ReportTemplateView } | null;
 
@@ -280,7 +281,7 @@ function TemplateEditor({
             </Field>
             <Field label={t('reportTemplates.kindLabel')}>
               {(id) => (
-                <select
+                <Select
                   id={id}
                   value={draft.kind}
                   onChange={(e) => setDraft((d) => withKind(d, e.target.value as TemplateDraft['kind']))}
@@ -290,7 +291,7 @@ function TemplateEditor({
                       {t(`reportTemplates.kind.${kind}`)}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
             </Field>
           </div>
@@ -329,7 +330,7 @@ function TemplateEditor({
               help={t(`reportTemplates.visibilityHint.${draft.visibility}`)}
             >
               {(id) => (
-                <select
+                <Select
                   id={id}
                   value={draft.visibility}
                   onChange={(e) =>
@@ -338,7 +339,7 @@ function TemplateEditor({
                 >
                   <option value="team">{t('reportTemplates.team')}</option>
                   {existing?.is_default ? null : <option value="personal">{t('reportTemplates.draft')}</option>}
-                </select>
+                </Select>
               )}
             </Field>
           </div>
@@ -427,7 +428,7 @@ function TemplateEditor({
                 </Field>
                 <Field label={t('reportTemplates.content')}>
                   {(id) => (
-                    <select
+                    <Select
                       id={id}
                       value={section.content}
                       onChange={(e) =>
@@ -439,7 +440,7 @@ function TemplateEditor({
                           {t(`reportTemplates.contentKind.${kind}`)}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   )}
                 </Field>
                 <label className="gh-check" style={{ alignSelf: 'end' }}>

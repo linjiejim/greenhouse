@@ -41,6 +41,7 @@ import { Check, EditorDialog, Field, focusFirstInvalid, useTouched } from './for
 import type { Automation } from './model';
 import { describeSchedule, zonePlace } from './schedule';
 import { runLabel, timeZoneIds, zoneLabel } from './zones';
+import { Select } from '../ui/select.web';
 
 export type AutomationEditorMode =
   | { kind: 'new' }
@@ -489,7 +490,7 @@ function ScheduleSection({
           {builder.freq === 'monthly' ? (
             <Field label={t('automations.editor.monthDay')}>
               {({ id }) => (
-                <select
+                <Select
                   id={id}
                   className="gh-input"
                   data-narrow=""
@@ -501,7 +502,7 @@ function ScheduleSection({
                       {t('automations.editor.monthDayOption', { day })}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
             </Field>
           ) : null}
@@ -557,7 +558,7 @@ function TimeZoneSelect({
   // built once per dialog (a few hundred zones with their offsets); the stored zone is among them
   const [zones] = useState(() => timeZoneIds(value, DEVICE_ZONE).map((zone) => [zone, zoneLabel(zone, now)] as const));
   return (
-    <select
+    <Select
       id={id}
       className="gh-input"
       value={value}
@@ -570,7 +571,7 @@ function TimeZoneSelect({
           {label}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }
 
@@ -598,7 +599,7 @@ function AgentSelect({
   // a stored pin, or an id no longer listed, stays visible until another is chosen
   const listed = [...builtIn, ...custom].some((profile) => profile.id === value);
   return (
-    <select
+    <Select
       id={id}
       className="gh-input"
       value={value}
@@ -632,7 +633,7 @@ function AgentSelect({
           ))}
         </optgroup>
       ) : null}
-    </select>
+    </Select>
   );
 }
 

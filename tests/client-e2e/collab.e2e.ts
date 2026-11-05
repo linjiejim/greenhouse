@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { installCollab, collabShot, PRIVATE_DOC } from './collab-fixture';
 import { DOC } from './p2-fixture';
 import { PROJECT } from './p3-fixture';
+import { choose } from './select';
 const ready = async (page: Page, path: string) => {
   await page.goto(path);
   await expect(page.getByTestId('startup-splash')).toHaveCount(0);
@@ -25,14 +26,14 @@ test('project members: a manager adds, re-roles and removes members in the dialo
   // only people who are not members yet are offered
   const person = dialog.getByRole('combobox', { name: '成员', exact: true });
   await expect(person.locator('option')).toHaveText(['选择一位成员', '赵敏']);
-  await person.selectOption('usr_zhao');
-  await dialog.getByRole('combobox', { name: '角色', exact: true }).selectOption('owner');
+  await choose(person, 'usr_zhao');
+  await choose(dialog.getByRole('combobox', { name: '角色', exact: true }), 'owner');
   await dialog.getByRole('button', { name: '添加', exact: true }).click();
   await expect(list).toContainText('赵敏');
   expect(f.writes.find((w) => w.method === 'POST')?.body).toEqual({ user_id: 'usr_zhao', role: 'owner' });
   await collabShot(page, 'project-members-1280');
 
-  await dialog.getByRole('combobox', { name: '角色 · 钱多' }).selectOption('owner');
+  await choose(dialog.getByRole('combobox', { name: '角色 · 钱多' }), 'owner');
   await expect
     .poll(() => f.writes.find((w) => w.method === 'PATCH'))
     .toMatchObject({ path: `/api/projects/${PROJECT}/members/usr_qian`, body: { role: 'owner' } });
@@ -63,7 +64,7 @@ test('project members: a refusal turns the panel read-only', async ({ page }) =>
   await ready(page, '/projects');
   await page.getByRole('button', { name: '成员', exact: true }).click();
   const dialog = page.getByTestId('project-members');
-  await dialog.getByRole('combobox', { name: '成员', exact: true }).selectOption('usr_zhao');
+  await choose(dialog.getByRole('combobox', { name: '成员', exact: true }), 'usr_zhao');
   await dialog.getByRole('button', { name: '添加', exact: true }).click();
   const notice = page.getByRole('alert').filter({ hasText: '添加成员失败' });
   await expect(notice).toBeVisible();
@@ -103,8 +104,8 @@ test('document sharing: the owner shares a private document, changes access and 
   await expect(person.locator('option')).toHaveCount(3);
   await expect(person).toContainText('钱多');
   await expect(person).toContainText('赵敏');
-  await person.selectOption('usr_zhao');
-  await dialog.getByRole('combobox', { name: '权限', exact: true }).selectOption('editor');
+  await choose(person, 'usr_zhao');
+  await choose(dialog.getByRole('combobox', { name: '权限', exact: true }), 'editor');
   await dialog.getByRole('button', { name: '共享', exact: true }).click();
   await expect(list).toContainText('赵敏');
   expect(f.writes[0]).toMatchObject({
@@ -114,7 +115,7 @@ test('document sharing: the owner shares a private document, changes access and 
   });
   await collabShot(page, 'doc-share-1280');
 
-  await dialog.getByRole('combobox', { name: '权限 · 王宁' }).selectOption('editor');
+  await choose(dialog.getByRole('combobox', { name: '权限 · 王宁' }), 'editor');
   await expect.poll(() => f.writes[1]?.body).toEqual({ user_ids: ['usr_wang'], role: 'editor' });
   await dialog.getByRole('button', { name: '取消共享给王宁' }).click();
   await confirm(page, '取消共享');

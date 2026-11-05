@@ -68,9 +68,12 @@ export function periodSince(period: UsagePeriod, now = Date.now()): string | und
 }
 
 /** Calendar date of a timestamp in the app's locale (`2026/10/27`), or null. */
-export function dayLabel(value: string | null | undefined, locale: string): string | null {
+export function dayLabel(value: string | null | undefined, locale: string, now = Date.now()): string | null {
   const ms = parseMs(value);
-  return Number.isFinite(ms) ? new Date(ms).toLocaleDateString(locale) : null;
+  if (!Number.isFinite(ms)) return null;
+  // short dates (jim-uiux content): this year "7月2日" / "Jul 2", another year with the year
+  const thisYear = new Date(ms).getFullYear() === new Date(now).getFullYear();
+  return new Date(ms).toLocaleDateString(locale, thisYear ? { month: 'short', day: 'numeric' } : { dateStyle: 'medium' });
 }
 
 /** Date and time of a timestamp in the app's locale, or null. */

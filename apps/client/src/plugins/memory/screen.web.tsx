@@ -30,6 +30,7 @@ import {
   type MemoryDraft,
 } from './model';
 import '../app-pages.css';
+import { Select } from '../../ui/select.web';
 
 export function MemoryScreen({ title }: { title: string }) {
   const t = useT();
@@ -300,7 +301,7 @@ function MemoryDialog({
             </div>
             <div className="gh-field">
               <label htmlFor="memory-kind">{t('appPages.memory.kind')}</label>
-              <select
+              <Select
                 id="memory-kind"
                 value={draft.category}
                 onChange={(e) => set({ category: e.target.value as MemoryCategory })}
@@ -310,7 +311,7 @@ function MemoryDialog({
                     {t(`appPages.memory.category.${category}`)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <label className="gh-check">
               <input type="checkbox" checked={draft.pinned} onChange={(e) => set({ pinned: e.target.checked })} />

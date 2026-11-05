@@ -111,6 +111,8 @@ export const en = {
     moreActions: 'More actions',
   },
   common: {
+    saveChanges: 'Save changes',
+    clear: 'Clear',
     undo: 'Undo',
     loading: 'Loading…',
     cancel: 'Cancel',
@@ -1739,6 +1741,7 @@ export const en = {
       plugins: 'Plugins',
     },
     users: {
+      edit: 'Edit',
       add: 'Add user',
       addTitle: 'Add user',
       create: 'Create',
@@ -1750,8 +1753,6 @@ export const en = {
       role: 'Role',
       status: 'Status',
       sort: 'Sort',
-      allRoles: 'All roles',
-      allStatuses: 'All statuses',
       roleSuper: 'Super',
       roleTeam: 'Team',
       roleHistorical: 'Historical account',
@@ -2300,10 +2301,8 @@ export const en = {
       export: 'Export CSV',
       exportFailed: 'Couldn’t export the activity',
       source: 'Source',
-      allSources: 'All sources',
       sources: { person: 'People', agent: 'Members’ agents', automation: 'Automations', admin: 'Administrators' },
       moduleLabel: 'Module',
-      allModules: 'All modules',
       module: {
         knowledge: 'Knowledge',
         files: 'Drive',
@@ -2318,7 +2317,6 @@ export const en = {
         connectors: 'Connectors',
       },
       person: 'Person',
-      everyone: 'Everyone',
       from: 'From',
       to: 'To',
       when: 'When',
@@ -2407,7 +2405,6 @@ export const en = {
       feedback: {
         requests: 'Feature requests',
         frictions: 'Frictions',
-        allStatuses: 'All statuses',
         total: '{n} in all',
         title: 'Request',
         priority: 'Priority',

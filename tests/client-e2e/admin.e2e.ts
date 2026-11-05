@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { installPlaces, officialManifest } from './p3-fixture';
+import { choose } from './select';
 
 const at = '2026-10-20T09:00:00Z';
 
@@ -214,13 +215,17 @@ test('Admin opens from the account menu; users list, role edit and the create di
   await expect(list.locator('tbody tr')).toHaveCount(1);
   await page.getByRole('searchbox', { name: '搜索名称或邮箱' }).fill('');
 
-  // a historical account converts to a team member from the edit dialog
+  // a row opens the member's drawer; a historical account converts to a team member in place
   await list.getByRole('row', { name: '陈曦' }).click();
-  const edit = page.getByTestId('admin-user-edit');
-  await expect(edit).toBeVisible();
-  await edit.getByLabel('角色').selectOption('team');
-  await edit.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(edit).toHaveCount(0);
+  const detail = page.getByTestId('admin-user-detail');
+  await expect(detail).toBeVisible();
+  await detail.getByRole('button', { name: '编辑', exact: true }).click();
+  await choose(detail.getByRole('combobox', { name: '角色' }), 'team');
+  await detail.getByRole('button', { name: '保存修改', exact: true }).click();
+  // saving returns to reading in the same drawer
+  await expect(detail.getByRole('button', { name: '保存修改', exact: true })).toHaveCount(0);
+  await detail.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(detail).toHaveCount(0);
   await expect.poll(() => f.writes.find((w) => w.method === 'PATCH')?.body).toEqual({ role: 'team' });
   expect(f.writes.find((w) => w.method === 'PATCH')?.path).toBe('/api/admin/users/chen');
 
@@ -230,7 +235,7 @@ test('Admin opens from the account menu; users list, role edit and the create di
   await expect(create).toHaveCSS('width', '560px');
   await create.getByLabel('邮箱').fill('li@test.local');
   await create.getByLabel('名称').fill('李想');
-  await create.getByLabel('密码设置方式').selectOption('direct_password');
+  await choose(create.getByLabel('密码设置方式'), 'direct_password');
   await create.getByRole('button', { name: '创建', exact: true }).click();
   await expect(create.getByRole('alert')).toContainText('至少 8 位');
   await create.getByRole('textbox', { name: '密码', exact: true }).fill('Passw0rd!x');
@@ -282,7 +287,7 @@ test('Client errors lists the kinds of error and opens the latest report', async
   await page.screenshot({ path: '.work/crash/admin-client-errors.png' });
 
   // a longer window with nothing in it
-  await page.getByRole('combobox', { name: '时间范围' }).selectOption('30');
+  await choose(page.getByRole('combobox', { name: '时间范围' }), '30');
   await expect(section).toContainText('没有客户端错误');
 });
 
