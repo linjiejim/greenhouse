@@ -5,6 +5,19 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0](https://github.com/linjiejim/greenhouse/compare/v4.1.0...v4.2.0) (2026-11-05)
+
+
+### Added
+
+* plugin media seams and the asset library plugin ([#105](https://github.com/linjiejim/greenhouse/issues/105)) ([1aaa8f5](https://github.com/linjiejim/greenhouse/commit/1aaa8f5e0371cfeb8ddd6bb68699ef1e33c77161))
+
+
+### Fixed
+
+* **client:** settings close, a quieter rail and plugin pages without a light flash ([#103](https://github.com/linjiejim/greenhouse/issues/103)) ([6f19dad](https://github.com/linjiejim/greenhouse/commit/6f19dade43d431c5d9d6265b8b888e94b56d5ed2))
+* **client:** the second column shows only the place on screen ([#101](https://github.com/linjiejim/greenhouse/issues/101)) ([d62d506](https://github.com/linjiejim/greenhouse/commit/d62d506f43e6851d1f04f00dff5278c4717771bf))
+
 ## [4.1.0](https://github.com/linjiejim/greenhouse/compare/v4.0.1...v4.1.0) (2026-11-01)
 
 
