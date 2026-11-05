@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { installPlaces, officialManifest } from './p3-fixture';
+import { choose } from './select';
 
 // Email, Memory and Computer pages against mocked plugin APIs (plugins/<id>/api routes).
 const at = '2026-10-28T09:00:00Z';
@@ -212,7 +213,7 @@ test('Email adds a mailbox through a failed test, edits it without the password,
   await page.getByRole('button', { name: '添加邮箱', exact: true }).click();
   const dialog = page.getByTestId('email-account');
   await expect(dialog.getByText('添加邮箱', { exact: true })).toBeVisible();
-  await dialog.getByLabel('邮箱服务商').selectOption('gmail');
+  await choose(dialog.getByLabel('邮箱服务商'), 'gmail');
   await expect(dialog.getByText('先开启两步验证', { exact: false })).toBeVisible();
   await dialog.getByLabel('邮箱地址').fill('jim@example.com');
   await dialog.getByLabel('收件人看到的名字').fill('Jim Work');
@@ -298,9 +299,9 @@ test('Memory groups memories, edits one, pins, archives and deletes; creation st
 
   await inUse.getByRole('button', { name: '负责 Q4 新品上线', exact: true }).click();
   const dialog = page.getByTestId('memory-edit');
-  await expect(dialog.getByLabel('类型')).toHaveValue('fact');
+  await expect(dialog.getByLabel('类型')).toHaveAttribute('data-value', 'fact');
   await dialog.getByLabel(/^标题/).fill('负责 Q4 新品上线和定价');
-  await dialog.getByLabel('类型').selectOption('behavior');
+  await choose(dialog.getByLabel('类型'), 'behavior');
   await screenshot(page, 'memory-edit');
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);

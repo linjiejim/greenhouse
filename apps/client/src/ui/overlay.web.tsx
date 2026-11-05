@@ -74,13 +74,16 @@ export function Overlay({
   trapTab = true,
   initialFocus = 'first',
   size,
+  id,
 }: {
+  /** The panel's id (a combobox's aria-controls points at its listbox). */
+  id?: string;
   children: React.ReactNode;
   onClose: () => void;
   modal?: boolean;
   label?: string;
   point?: { x: number; y: number };
-  role?: 'dialog' | 'menu' | 'status' | 'tooltip';
+  role?: 'dialog' | 'menu' | 'listbox' | 'status' | 'tooltip';
   panelStyle?: React.CSSProperties;
   testID?: string;
   trapTab?: boolean;
@@ -113,7 +116,7 @@ export function Overlay({
         close.current();
       }
       if (trapTab) trapTabIn(root, e);
-      if (role === 'menu' && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
+      if ((role === 'menu' || role === 'listbox') && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
         const nodes = tabbables();
         let i = nodes.indexOf(document.activeElement as HTMLElement);
         i =
@@ -163,6 +166,7 @@ export function Overlay({
     >
       <div
         ref={panel}
+        id={id}
         data-testid={testID}
         role={role}
         aria-modal={modal && interactive ? true : undefined}
@@ -179,7 +183,7 @@ export function Overlay({
           background: c.secondaryGroupedBackground,
           border: `1px solid ${c.separator}`,
           borderRadius: 12,
-          padding: role === 'menu' ? 4 : 20,
+          padding: role === 'menu' || role === 'listbox' ? 4 : 20,
           boxShadow: isDark ? undefined : '0 8px 32px rgba(0,0,0,.14)',
           pointerEvents: interactive ? 'auto' : 'none',
           // the panel only holds focus for the dialog; its controls draw the visible ring

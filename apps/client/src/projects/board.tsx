@@ -28,7 +28,19 @@ export default function ProjectBoard({
 }) {
   const row = (task: ProjectTask) => {
     const bucket = dueBucket(task.due_date, localDay(new Date()));
-    const due = bucket === 'today' ? labels.today : task.due_date?.slice(5, 10).replace('-', '/');
+    // short dates: "7月18日" / "Jul 18" this year, with the year otherwise
+    const day = task.due_date?.slice(0, 10);
+    const due =
+      bucket === 'today'
+        ? labels.today
+        : day && /^\d{4}-\d{2}-\d{2}$/.test(day)
+          ? new Date(`${day}T00:00:00`).toLocaleDateString(
+              labels.locale,
+              day.slice(0, 4) === String(new Date().getFullYear())
+                ? { month: 'short', day: 'numeric' }
+                : { dateStyle: 'medium' },
+            )
+          : undefined;
     return (
       <>
         <button

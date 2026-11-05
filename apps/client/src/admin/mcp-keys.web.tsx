@@ -19,6 +19,7 @@ import * as admin from './api';
 import { AdminDialog, AdminPage, Badge, Callout, Card, Field, SectionState } from './kit.web';
 import { useWrite } from './use-write';
 import { dateTimeLabel, dayLabel } from './format';
+import { Select } from '../ui/select.web';
 
 interface OAuthClient {
   id: string;
@@ -403,13 +404,13 @@ function CreateMachineClient({
         </Field>
         <Field label={t('admin.mcp.boundUserHint')} required>
           {(id) => (
-            <select id={id} value={user} onChange={(e) => setUser(e.target.value)}>
+            <Select id={id} value={user} onChange={(e) => setUser(e.target.value)}>
               {members.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.label}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
         </Field>
         <label className="gh-check">

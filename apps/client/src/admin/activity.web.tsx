@@ -20,6 +20,7 @@ import { alertError } from '../ui/dialogs';
 import * as admin from './api';
 import { AdminPage, Badge, SectionState, type Tone } from './kit.web';
 import { dateTimeLabel } from './format';
+import { Select } from '../ui/select.web';
 
 const SOURCES = ['person', 'agent', 'automation', 'admin'] as const;
 const MODULES = [
@@ -159,45 +160,48 @@ export default function ActivitySection() {
       }
       toolbar={
         <>
-          <select
+          <Select
+            clearable
             className="gh-input"
             aria-label={t('admin.activity.source')}
             value={source}
             onChange={(e) => setSource(e.target.value)}
           >
-            <option value="">{t('admin.activity.allSources')}</option>
+            <option value="">{t('admin.activity.source')}</option>
             {SOURCES.map((s) => (
               <option key={s} value={s}>
                 {t(`admin.activity.sources.${s}`)}
               </option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
+            clearable
             className="gh-input"
             aria-label={t('admin.activity.moduleLabel')}
             value={module}
             onChange={(e) => setModule(e.target.value)}
           >
-            <option value="">{t('admin.activity.allModules')}</option>
+            <option value="">{t('admin.activity.moduleLabel')}</option>
             {MODULES.map((m) => (
               <option key={m} value={m}>
                 {moduleLabel(m)}
               </option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
+            clearable
             className="gh-input"
             aria-label={t('admin.activity.person')}
             value={person}
             onChange={(e) => setPerson(e.target.value)}
           >
-            <option value="">{t('admin.activity.everyone')}</option>
+            <option value="">{t('admin.activity.person')}</option>
             {(people.data?.users ?? []).map((u) => (
               <option key={u.id} value={u.id}>
                 {u.nickname}
               </option>
             ))}
-          </select>
+          </Select>
           <input
             type="date"
             className="gh-input"

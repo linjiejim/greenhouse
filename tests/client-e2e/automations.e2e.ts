@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { installPlaces, officialManifest, AUTO } from './p3-fixture';
+import { choose } from './select';
 
 // The editor's default zone is the browser's; pin it so bodies and previews are exact.
 test.use({ timezoneId: 'Asia/Taipei' });
@@ -309,8 +310,12 @@ test('duplicate a team agent, and pick an agent in the automation editor', async
   await page.getByRole('button', { name: '新定时任务', exact: true }).click();
   const dialog = editor(page);
   const runsAs = dialog.getByLabel('运行身份');
-  await expect(runsAs.locator('optgroup[label="自定义 Agent"] option')).toHaveText(['周报写手', '周报写手（副本）']);
-  await runsAs.selectOption({ label: '周报写手' });
+  // the custom agents sit in their own group of the select's list
+  await runsAs.click();
+  const runsAsList = page.getByRole('listbox');
+  await expect(runsAsList.getByText('自定义 Agent', { exact: true })).toBeVisible();
+  await expect(runsAsList.getByRole('option', { name: /^周报写手/ })).toHaveText(['周报写手', '周报写手（副本）']);
+  await runsAsList.getByRole('option', { name: '周报写手', exact: true }).click();
   await dialog.getByLabel('名称').fill('周五周报');
   await dialog.getByLabel('要做的事').fill('每周五下午写本周周报，发到我的通知。');
   await dialog.getByRole('button', { name: '创建', exact: true }).click();

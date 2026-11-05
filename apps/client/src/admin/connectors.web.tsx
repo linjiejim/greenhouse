@@ -30,6 +30,7 @@ import {
   type ProbeResult,
   type TeamConnector,
 } from './connectors-model';
+import { Select } from '../ui/select.web';
 
 const BASE = '/api/admin/connectors';
 const KIND_TONE: Record<'read' | 'write' | 'destructive', Tone> = {
@@ -464,14 +465,14 @@ function ConnectorForm({
           </Field>
           <Field label={t('admin.connectors.transport')}>
             {(id) => (
-              <select
+              <Select
                 id={id}
                 value={draft.transport}
                 onChange={(e) => set('transport', e.target.value as Draft['transport'])}
               >
                 <option value="streamable_http">Streamable HTTP</option>
                 <option value="sse">{t('admin.connectors.sse')}</option>
-              </select>
+              </Select>
             )}
           </Field>
         </div>
@@ -495,7 +496,7 @@ function ConnectorForm({
         <div className="gh-form-grid">
           <Field label={t('admin.connectors.authModeLabel')}>
             {(id) => (
-              <select
+              <Select
                 id={id}
                 value={draft.auth_mode}
                 onChange={(e) => set('auth_mode', e.target.value as Draft['auth_mode'])}
@@ -505,20 +506,20 @@ function ConnectorForm({
                     {t(`admin.connectors.authMode.${mode}`)}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </Field>
           {credential ? (
             <Field label={t('admin.connectors.authKindLabel')}>
               {(id) => (
-                <select
+                <Select
                   id={id}
                   value={draft.auth_kind}
                   onChange={(e) => set('auth_kind', e.target.value as Draft['auth_kind'])}
                 >
                   <option value="key">{t('admin.connectors.authKind.key')}</option>
                   <option value="oauth">{t('admin.connectors.authKind.oauth')}</option>
-                </select>
+                </Select>
               )}
             </Field>
           ) : null}
@@ -527,14 +528,14 @@ function ConnectorForm({
           <div className="gh-form-grid">
             <Field label={t('admin.connectors.keyPlace')}>
               {(id) => (
-                <select
+                <Select
                   id={id}
                   value={draft.auth_place}
                   onChange={(e) => set('auth_place', e.target.value as Draft['auth_place'])}
                 >
                   <option value="header">{t('admin.connectors.header')}</option>
                   <option value="query">{t('admin.connectors.queryParam')}</option>
-                </select>
+                </Select>
               )}
             </Field>
             {draft.auth_place === 'header' ? (

@@ -8,6 +8,7 @@ import { usePrefs } from '../store/prefs';
 import { DialogBody, Overlay } from '../ui/overlay.web';
 import { writableValues } from './surface-model';
 import { Icon } from '../ui/core';
+import { Select } from '../ui/select.web';
 
 export function EntityCreate({
   entity,
@@ -86,14 +87,14 @@ export function EntityCreate({
                   ) : null}
                   <span>{label}</span>
                   {f.kind === 'boolean' ? null : f.kind === 'enum' ? (
-                    <select value={String(value)} onChange={(e) => set(f.key, e.target.value)} aria-label={label}>
+                    <Select value={String(value)} onChange={(e) => set(f.key, e.target.value)} aria-label={label}>
                       <option value="">—</option>
                       {(f.values ?? []).map((v) => (
                         <option key={v} value={v}>
                           {v}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   ) : f.kind === 'longText' || f.kind === 'json' ? (
                     <textarea rows={4} value={String(value)} onChange={(e) => set(f.key, e.target.value)} aria-label={label} />
                   ) : (

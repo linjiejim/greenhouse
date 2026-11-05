@@ -20,6 +20,7 @@ import {
   errorHeadline,
   type ClientErrorDays,
 } from './client-errors-model';
+import { Select } from '../ui/select.web';
 
 export default function ClientErrorsSection() {
   const t = useT();
@@ -34,7 +35,7 @@ export default function ClientErrorsSection() {
       testID="admin-client-errors"
       actions={
         <>
-          <select
+          <Select
             className="gh-input"
             aria-label={t('admin.usage.range')}
             value={days}
@@ -45,7 +46,7 @@ export default function ClientErrorsSection() {
                 {t('admin.usage.lastDays', { n: d })}
               </option>
             ))}
-          </select>
+          </Select>
           <button
             className="gh-icon-button"
             aria-label={t('common.refresh')}

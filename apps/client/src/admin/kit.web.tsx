@@ -10,6 +10,7 @@ import { Place, PlaceEmpty } from '../ui/place.web';
 import { DialogBody, Overlay, type DialogSize } from '../ui/overlay.web';
 import { Icon, type IconName } from '../ui/core';
 import { useT } from '../lib/i18n';
+import { confirmAction } from '../ui/dialogs';
 import { usedFraction } from './format';
 import type { WorkspaceFlagState } from './types';
 
@@ -135,7 +136,11 @@ export function Field({
     <div className="gh-field">
       <label htmlFor={id}>
         {label}
-        {required ? <span aria-hidden> *</span> : null}
+        {required ? (
+          <span aria-hidden className="gh-required">
+            {' '}*
+          </span>
+        ) : null}
       </label>
       {children(id)}
       {error ? (
@@ -385,5 +390,100 @@ export function SectionState({
     );
   return (
     <PlaceEmpty loading={loading} icon={icon} title={loading ? undefined : title} message={message} action={action} />
+  );
+}
+
+/**
+ * A list object's side panel (jim-uiux list & CRUD): view it, edit it in place (the same rows,
+ * values become controls), act on it. From the right, 560 wide, full width on a phone; a dialog
+ * (permissions, a confirm) may open above it. `dirty` asks before dropping unsaved input.
+ */
+export function AdminDrawer({
+  title,
+  meta,
+  actions,
+  footer,
+  dirty,
+  onClose,
+  testID,
+  children,
+}: {
+  title: string;
+  meta?: React.ReactNode;
+  actions?: React.ReactNode;
+  footer?: React.ReactNode;
+  dirty?: boolean;
+  onClose: () => void;
+  testID?: string;
+  children: React.ReactNode;
+}) {
+  const t = useT();
+  const close = async () => {
+    if (
+      dirty &&
+      !(await confirmAction({
+        title: t('common.discardTitle'),
+        message: t('common.discardHint'),
+        confirmLabel: t('common.discard'),
+        cancelLabel: t('common.keepEditing'),
+        destructive: true,
+      }))
+    )
+      return;
+    onClose();
+  };
+  return (
+    <Overlay
+      label={title}
+      onClose={() => void close()}
+      testID={testID}
+      initialFocus="panel"
+      panelStyle={{
+        position: 'fixed',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 'min(560px, 100vw)',
+        maxWidth: '100vw',
+        height: '100vh',
+        maxHeight: '100vh',
+        borderRadius: 0,
+        borderWidth: '0 0 0 1px',
+        padding: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+    >
+      <div className="gh-dialog-header gh-drawer-header">
+        <span className="gh-drawer-title">
+          <strong>{title}</strong>
+          {meta ? <small>{meta}</small> : null}
+        </span>
+        {actions}
+        <button type="button" className="gh-icon-button" aria-label={t('common.close')} onClick={() => void close()}>
+          <Icon name="x" size={18} />
+        </button>
+      </div>
+      <div className="gh-dialog-body gh-drawer-body">{children}</div>
+      {footer ? <div className="gh-dialog-footer">{footer}</div> : null}
+    </Overlay>
+  );
+}
+
+/** Label / value rows for a drawer; in edit mode a row's value is its control, in the same place. */
+export function DetailRows({ rows }: { rows: { label: string; value: React.ReactNode; required?: boolean }[] }) {
+  return (
+    <dl className="gh-detail-rows">
+      {rows.map((row) => (
+        <React.Fragment key={row.label}>
+          <dt>
+            {row.label}
+            {row.required ? <span className="gh-required"> *</span> : null}
+          </dt>
+          <dd>{row.value}</dd>
+        </React.Fragment>
+      ))}
+    </dl>
   );
 }

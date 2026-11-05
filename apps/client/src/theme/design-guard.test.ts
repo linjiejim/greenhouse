@@ -46,6 +46,11 @@ describe('design guard', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('draws dropdowns with Select, never a native <select>', () => {
+    const offenders = checked.filter((path) => /<select[\s>]/.test(readFileSync(join(APP, path), 'utf8')));
+    expect(offenders).toEqual([]);
+  });
+
   it('uses only --gh-* variables that the shell defines', () => {
     // defined: every generated web color (kebab-cased), the extras the wide shell sets, and any declared in CSS
     const defined = new Set(

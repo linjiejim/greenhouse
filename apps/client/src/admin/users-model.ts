@@ -11,6 +11,33 @@ export interface UserQuery {
 }
 export const EMPTY_QUERY: UserQuery = { search: '', role: '', status: '', sort: 'default' };
 
+const ROLES = ['', 'super', 'team'] as const;
+const STATUSES = ['', 'active', 'invited', 'reset_required', 'disabled'] as const;
+const SORTS = ['default', 'month_tokens', 'total_calls', 'last_login'] as const;
+
+/** The list's view from the address (`?q=&role=&status=&sort=`); unknown values fall back. */
+export function queryFromParams(params: Record<string, string | string[] | undefined>): UserQuery {
+  const one = (key: string) => (typeof params[key] === 'string' ? (params[key] as string) : '');
+  const pick = <T extends string>(value: string, allowed: readonly T[], fallback: T) =>
+    allowed.includes(value as T) ? (value as T) : fallback;
+  return {
+    search: one('q'),
+    role: pick(one('role'), ROLES, ''),
+    status: pick(one('status'), STATUSES, ''),
+    sort: pick(one('sort'), SORTS, 'default'),
+  };
+}
+
+/** The address parameters for a view; defaults are left out. */
+export function paramsFromQuery(q: UserQuery): Record<string, string | undefined> {
+  return {
+    q: q.search || undefined,
+    role: q.role || undefined,
+    status: q.status || undefined,
+    sort: q.sort === 'default' ? undefined : q.sort,
+  };
+}
+
 export function visibleUsers(users: readonly ManagedUser[], q: UserQuery): ManagedUser[] {
   const needle = q.search.trim().toLowerCase();
   const rows = users.filter(

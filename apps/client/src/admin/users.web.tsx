@@ -4,6 +4,7 @@
  * delete) and the permissions dialog. Supers are shown but not edited (the station refuses).
  */
 import React, { useCallback, useMemo, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useResource } from '../data/use-resource';
 import { useT, localeOf } from '../lib/i18n';
 import { usePrefs } from '../store/prefs';
@@ -13,15 +14,16 @@ import { confirmAction } from '../ui/dialogs';
 import { toast } from '../ui/toast';
 import * as admin from './api';
 import { useWrite } from './use-write';
-import { AdminDialog, AdminPage, Badge, Callout, Field, SectionState, type Tone } from './kit.web';
+import { AdminDialog, AdminDrawer, AdminPage, Badge, Callout, DetailRows, Field, SectionState, type Tone } from './kit.web';
 import { dayLabel, dateTimeLabel, formatTokens } from './format';
 import {
-  EMPTY_QUERY,
   createProblem,
   deliveryFailed,
   editable,
   linkState,
   linkUnavailable,
+  paramsFromQuery,
+  queryFromParams,
   statusPatch,
   visibleUsers,
   type UserQuery,
@@ -29,10 +31,10 @@ import {
 } from './users-model';
 import type { ManagedUser, PasswordLinkCapability } from './types';
 import { PermissionsDialog } from './permissions.web';
+import { Select } from '../ui/select.web';
 
 type Dialog =
   | { kind: 'create' }
-  | { kind: 'edit'; user: ManagedUser }
   | { kind: 'reset'; user: ManagedUser }
   | { kind: 'permissions'; user: ManagedUser };
 
@@ -47,9 +49,16 @@ export default function UsersSection() {
   const t = useT();
   const lang = usePrefs((s) => s.lang);
   const list = useResource(useCallback(() => admin.listUsers(), []));
-  const [query, setQuery] = useState<UserQuery>(EMPTY_QUERY);
+  // the filtered view lives in the address: it reloads, shares and comes back with Back
+  const params = useLocalSearchParams<Record<string, string>>();
+  const router = useRouter();
+  const query = useMemo(() => queryFromParams(params), [params]);
+  const setQuery = (update: (q: UserQuery) => UserQuery) => router.setParams(paramsFromQuery(update(query)));
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  // the open member stays in its drawer while a dialog (password, permissions) opens above it
+  const [drawer, setDrawer] = useState<{ id: string; editing?: boolean } | null>(null);
   const users = list.data?.users;
+  const opened = drawer ? users?.find((u) => u.id === drawer.id) : undefined;
   const rows = useMemo(() => visibleUsers(users ?? [], query), [users, query]);
   const capability = list.data?.password_link_capability ?? null;
   const set = <K extends keyof UserQuery>(key: K, value: UserQuery[K]) => setQuery((q) => ({ ...q, [key]: value }));
@@ -99,30 +108,32 @@ export default function UsersSection() {
             onChange={(e) => set('search', e.target.value)}
             style={{ width: 220 }}
           />
-          <select
+          <Select
+            clearable
             className="gh-input"
             aria-label={t('admin.users.role')}
             value={query.role}
             onChange={(e) => set('role', e.target.value as UserQuery['role'])}
           >
-            <option value="">{t('admin.users.allRoles')}</option>
+            <option value="">{t('admin.users.role')}</option>
             <option value="super">{t('admin.users.roleSuper')}</option>
             <option value="team">{t('admin.users.roleTeam')}</option>
-          </select>
-          <select
+          </Select>
+          <Select
+            clearable
             className="gh-input"
             aria-label={t('admin.users.status')}
             value={query.status}
             onChange={(e) => set('status', e.target.value as UserQuery['status'])}
           >
-            <option value="">{t('admin.users.allStatuses')}</option>
+            <option value="">{t('admin.users.status')}</option>
             {(['active', 'invited', 'reset_required', 'disabled'] as const).map((s) => (
               <option key={s} value={s}>
                 {statusLabel(s)}
               </option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
             className="gh-input"
             aria-label={t('admin.users.sort')}
             value={query.sort}
@@ -133,7 +144,7 @@ export default function UsersSection() {
                 {s.label}
               </option>
             ))}
-          </select>
+          </Select>
           {users ? (
             <span className="gh-count">
               {t('admin.users.count', { n: rows.length })}
@@ -152,7 +163,6 @@ export default function UsersSection() {
               <th>{t('admin.users.role')}</th>
               <th>{t('admin.users.status')}</th>
               <th className="gh-number">{t('admin.users.monthTokens')}</th>
-              <th className="gh-number">{t('admin.users.calls')}</th>
               <th className="gh-number">{t('admin.users.lastLogin')}</th>
               <th><span className="gh-sr-only">{t('admin.actions')}</span></th>
             </tr>
@@ -166,7 +176,8 @@ export default function UsersSection() {
                   data-muted={u.status === 'disabled' ? '' : undefined}
                   data-open=""
                   aria-label={u.nickname}
-                  onClick={() => setDialog(editable(u) ? { kind: 'edit', user: u } : { kind: 'permissions', user: u })}
+                  aria-selected={drawer?.id === u.id}
+                  onClick={() => setDrawer({ id: u.id })}
                 >
                   <td>
                     <span className="gh-admin-person">
@@ -198,14 +209,13 @@ export default function UsersSection() {
                     </span>
                   </td>
                   <td className="gh-number">{u.usage_summary ? formatTokens(u.usage_summary.month_tokens) : '—'}</td>
-                  <td className="gh-number">{u.usage_summary ? u.usage_summary.total_calls.toLocaleString() : '—'}</td>
                   <td className="gh-number">{dayLabel(u.last_login_at, localeOf(lang)) ?? t('admin.users.never')}</td>
                   <td className="gh-admin-actions" onClick={(e) => e.stopPropagation()}>
                     {editable(u) ? (
                       <button
                         className="gh-icon-button"
                         aria-label={t('admin.users.editNamed', { name: u.nickname })}
-                        onClick={() => setDialog({ kind: 'edit', user: u })}
+                        onClick={() => setDrawer({ id: u.id, editing: true })}
                       >
                         <Icon name="pen" size={15} />
                       </button>
@@ -237,17 +247,21 @@ export default function UsersSection() {
           />
         )
       ) : null}
+      {drawer && opened ? (
+        <UserDrawer
+          key={drawer.id}
+          user={opened}
+          capability={capability}
+          startEditing={!!drawer.editing}
+          statusLabel={statusLabel}
+          close={() => setDrawer(null)}
+          done={() => void list.refresh()}
+          resetPassword={() => setDialog({ kind: 'reset', user: opened })}
+          permissions={() => setDialog({ kind: 'permissions', user: opened })}
+        />
+      ) : null}
       {dialog?.kind === 'create' ? (
         <CreateUserDialog capability={capability} close={() => setDialog(null)} done={() => void list.refresh()} />
-      ) : dialog?.kind === 'edit' ? (
-        <EditUserDialog
-          user={dialog.user}
-          capability={capability}
-          close={() => setDialog(null)}
-          done={() => void list.refresh()}
-          resetPassword={() => setDialog({ kind: 'reset', user: dialog.user })}
-          permissions={() => setDialog({ kind: 'permissions', user: dialog.user })}
-        />
       ) : dialog?.kind === 'reset' ? (
         <ResetPasswordDialog
           user={dialog.user}
@@ -353,7 +367,7 @@ function CreateUserDialog({
         </div>
         <Field label={t('admin.users.credential')} help={<LinkOffNote capability={capability} />}>
           {(id) => (
-            <select
+            <Select
               id={id}
               value={form.mode}
               onChange={(e) => setForm({ ...form, mode: e.target.value as typeof form.mode })}
@@ -362,7 +376,7 @@ function CreateUserDialog({
                 {t('admin.users.sendSetupLink')}
               </option>
               <option value="direct_password">{t('admin.users.setPassword')}</option>
-            </select>
+            </Select>
           )}
         </Field>
         {form.mode === 'direct_password' ? (
@@ -380,9 +394,9 @@ function CreateUserDialog({
         ) : null}
         <Field label={t('admin.users.role')} help={t('admin.users.roleHint')}>
           {(id) => (
-            <select id={id} value="team" disabled>
+            <Select id={id} value="team" disabled>
               <option value="team">{t('admin.users.roleTeam')}</option>
-            </select>
+            </Select>
           )}
         </Field>
         {problem ? (
@@ -395,9 +409,15 @@ function CreateUserDialog({
   );
 }
 
-function EditUserDialog({
+/**
+ * One member in the side drawer: read their details, edit name and role in place (same rows), and
+ * act on the account. Saving returns to reading; the result shows in the rows, so no notice.
+ */
+function UserDrawer({
   user,
   capability,
+  startEditing,
+  statusLabel,
   close,
   done,
   resetPassword,
@@ -405,17 +425,28 @@ function EditUserDialog({
 }: {
   user: ManagedUser;
   capability: PasswordLinkCapability | null;
+  startEditing: boolean;
+  statusLabel: (status: string) => string;
   close: () => void;
   done: () => void;
   resetPassword: () => void;
   permissions: () => void;
 }) {
   const t = useT();
+  const lang = usePrefs((s) => s.lang);
+  const canEdit = editable(user);
+  const [editing, setEditing] = useState(startEditing && canEdit);
   const [nickname, setNickname] = useState(user.nickname);
   // members are team; a historical account (external) converts to team here
   const [role, setRole] = useState(user.role);
   const { busy, run } = useWrite();
   const pending = user.status === 'invited' || user.status === 'reset_required';
+  const dirty = editing && (nickname !== user.nickname || role !== user.role);
+  const cancel = () => {
+    setNickname(user.nickname);
+    setRole(user.role);
+    setEditing(false);
+  };
   const save = async () => {
     const name = nickname.trim();
     if (!name) return;
@@ -423,11 +454,10 @@ function EditUserDialog({
       ...(name !== user.nickname ? { nickname: name } : {}),
       ...(role !== user.role && role === 'team' ? { role: 'team' as const } : {}),
     };
-    if (!Object.keys(body).length) return close();
+    if (!Object.keys(body).length) return setEditing(false);
     if (!(await run(() => admin.updateUser(user.id, body), t('admin.users.saveFailed')))) return;
-    toast(t('admin.saved'));
+    setEditing(false);
     done();
-    close();
   };
   const account = async (action: 'resend' | 'revoke' | 'status' | 'delete') => {
     const disabling = user.status !== 'disabled';
@@ -482,94 +512,142 @@ function EditUserDialog({
             : t('admin.users.deleted'),
     );
     done();
-    if (action !== 'resend') close();
+    // the drawer stays on the member (its rows show the new status) unless they are gone
+    if (action === 'delete') close();
   };
+  const roleLabel = (r: string) => (r === 'super' ? t('admin.users.roleSuper') : r === 'team' ? t('admin.users.roleTeam') : t('admin.users.roleHistorical'));
   return (
-    <AdminDialog
-      title={t('admin.users.editTitle', { name: user.nickname })}
+    <AdminDrawer
+      title={user.nickname}
+      meta={user.email}
+      dirty={dirty}
       onClose={close}
-      testID="admin-user-edit"
-      footer={
+      testID="admin-user-detail"
+      actions={
         <>
-          <button type="button" className="gh-secondary-button" onClick={close}>
-            {t('common.cancel')}
-          </button>
-          <button type="submit" form="admin-user-edit" className="gh-primary" disabled={busy || !nickname.trim()}>
-            {t('common.save')}
+          {canEdit && !editing ? (
+            <button type="button" className="gh-icon-button" aria-label={t('admin.users.edit')} onClick={() => setEditing(true)}>
+              <Icon name="pen" size={16} />
+            </button>
+          ) : null}
+          <button type="button" className="gh-icon-button" aria-label={t('admin.users.permissions')} onClick={permissions}>
+            <Icon name="shieldCheck" size={16} />
           </button>
         </>
+      }
+      footer={
+        editing ? (
+          <>
+            <button type="button" className="gh-secondary-button" onClick={cancel}>
+              {t('common.cancel')}
+            </button>
+            <button
+              type="submit"
+              form="admin-user-edit"
+              className="gh-primary"
+              disabled={busy || !nickname.trim() || !dirty}
+            >
+              {t('common.saveChanges')}
+            </button>
+          </>
+        ) : undefined
       }
     >
       <form
         id="admin-user-edit"
-        className="gh-form"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
       >
-        <div className="gh-form-grid">
-          <Field label={t('admin.users.name')} required>
-            {(id) => <input id={id} value={nickname} onChange={(e) => setNickname(e.target.value)} />}
-          </Field>
-          <Field label={t('admin.users.email')}>{(id) => <input id={id} value={user.email} readOnly disabled />}</Field>
-        </div>
-        <Field label={t('admin.users.role')} help={t('admin.users.roleHint')}>
-          {(id) => (
-            <select id={id} value={role} disabled={user.role === 'team'} onChange={(e) => setRole(e.target.value)}>
-              {user.role !== 'team' ? <option value={user.role}>{t('admin.users.roleHistorical')}</option> : null}
-              <option value="team">{t('admin.users.roleTeam')}</option>
-            </select>
-          )}
-        </Field>
-        <h4 className="gh-form-heading">{t('admin.users.access')}</h4>
-        <div className="gh-button-row">
-          <button type="button" className="gh-secondary-button" onClick={permissions}>
-            <Icon name="shieldCheck" size={14} />
-            {t('admin.users.permissions')}
-          </button>
-        </div>
-        <h4 className="gh-form-heading">{t('admin.users.account')}</h4>
-        <p className="gh-hint">{t('admin.users.accountHint')}</p>
-        <div className="gh-button-row">
-          <button type="button" className="gh-secondary-button" disabled={busy} onClick={resetPassword}>
-            <Icon name="key" size={14} />
-            {t('admin.users.resetPassword')}
-          </button>
-          {pending ? (
+        <DetailRows
+          rows={[
+            {
+              label: t('admin.users.name'),
+              required: editing,
+              value: editing ? (
+                <input
+                  className="gh-input"
+                  aria-label={t('admin.users.name')}
+                  value={nickname}
+                  autoFocus
+                  onChange={(e) => setNickname(e.target.value)}
+                />
+              ) : (
+                user.nickname
+              ),
+            },
+            { label: t('admin.users.email'), value: user.email },
+            {
+              label: t('admin.users.role'),
+              value:
+                editing && user.role !== 'team' ? (
+                  <Select aria-label={t('admin.users.role')} value={role} onChange={(e) => setRole(e.target.value as typeof role)}>
+                    <option value={user.role}>{t('admin.users.roleHistorical')}</option>
+                    <option value="team">{t('admin.users.roleTeam')}</option>
+                  </Select>
+                ) : (
+                  <Badge tone={user.role === 'super' ? 'accent' : 'neutral'}>{roleLabel(user.role)}</Badge>
+                ),
+            },
+            { label: t('admin.users.status'), value: <Badge tone={STATUS_TONE[user.status] ?? 'neutral'}>{statusLabel(user.status)}</Badge> },
+            {
+              label: t('admin.users.monthTokens'),
+              value: <span className="gh-number">{user.usage_summary ? formatTokens(user.usage_summary.month_tokens) : '—'}</span>,
+            },
+            {
+              label: t('admin.users.calls'),
+              value: <span className="gh-number">{user.usage_summary ? user.usage_summary.total_calls.toLocaleString() : '—'}</span>,
+            },
+            { label: t('admin.users.lastLogin'), value: dayLabel(user.last_login_at, localeOf(lang)) ?? t('admin.users.never') },
+          ]}
+        />
+      </form>
+      {editing ? (
+        <p className="gh-hint">{t('admin.users.roleHint')}</p>
+      ) : canEdit ? (
+        <>
+          <h4 className="gh-form-heading">{t('admin.users.account')}</h4>
+          <div className="gh-button-row">
+            <button type="button" className="gh-secondary-button" disabled={busy} onClick={resetPassword}>
+              <Icon name="key" size={14} />
+              {t('admin.users.resetPassword')}
+            </button>
+            {pending ? (
+              <button
+                type="button"
+                className="gh-secondary-button"
+                disabled={busy || !!linkUnavailable(capability)}
+                title={linkUnavailable(capability) ? t(`admin.users.linkOff.${linkUnavailable(capability)!}`) : undefined}
+                onClick={() => void account('resend')}
+              >
+                <Icon name="refresh" size={14} />
+                {t('admin.users.resendLink')}
+              </button>
+            ) : null}
+            {user.password_link ? (
+              <button type="button" className="gh-secondary-button" disabled={busy} onClick={() => void account('revoke')}>
+                <Icon name="statusCancelled" size={14} />
+                {t('admin.users.revokeLink')}
+              </button>
+            ) : null}
+            <button type="button" className="gh-secondary-button" disabled={busy} onClick={() => void account('status')}>
+              <Icon name={user.status === 'disabled' ? 'checkCircle' : 'statusCancelled'} size={14} />
+              {t(user.status === 'disabled' ? 'admin.users.enable' : 'admin.users.disable')}
+            </button>
             <button
               type="button"
-              className="gh-secondary-button"
-              disabled={busy || !!linkUnavailable(capability)}
-              title={linkUnavailable(capability) ? t(`admin.users.linkOff.${linkUnavailable(capability)!}`) : undefined}
-              onClick={() => void account('resend')}
+              className="gh-secondary-button gh-danger"
+              disabled={busy}
+              onClick={() => void account('delete')}
             >
-              <Icon name="refresh" size={14} />
-              {t('admin.users.resendLink')}
+              <Icon name="trash" size={14} />
+              {t('admin.users.delete')}
             </button>
-          ) : null}
-          {user.password_link ? (
-            <button type="button" className="gh-secondary-button" disabled={busy} onClick={() => void account('revoke')}>
-              <Icon name="statusCancelled" size={14} />
-              {t('admin.users.revokeLink')}
-            </button>
-          ) : null}
-          <button type="button" className="gh-secondary-button" disabled={busy} onClick={() => void account('status')}>
-            <Icon name={user.status === 'disabled' ? 'checkCircle' : 'statusCancelled'} size={14} />
-            {t(user.status === 'disabled' ? 'admin.users.enable' : 'admin.users.disable')}
-          </button>
-          <button
-            type="button"
-            className="gh-secondary-button gh-danger"
-            disabled={busy}
-            onClick={() => void account('delete')}
-          >
-            <Icon name="trash" size={14} />
-            {t('admin.users.delete')}
-          </button>
-        </div>
-      </form>
-    </AdminDialog>
+          </div>
+        </>
+      ) : null}
+    </AdminDrawer>
   );
 }
 
@@ -634,12 +712,12 @@ function ResetPasswordDialog({
       >
         <Field label={t('admin.users.resetMethod')}>
           {(id) => (
-            <select id={id} value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
+            <Select id={id} value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
               <option value="email_link" disabled={!linksOn}>
                 {t('admin.users.sendResetLink')}
               </option>
               <option value="direct_password">{t('admin.users.setPassword')}</option>
-            </select>
+            </Select>
           )}
         </Field>
         {mode === 'email_link' ? (

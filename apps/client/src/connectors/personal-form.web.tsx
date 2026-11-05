@@ -20,6 +20,7 @@ import {
   PERSONAL_SLUG_PATTERN,
   type PersonalDraft,
 } from './personal-draft';
+import { Select } from '../ui/select.web';
 
 export function PersonalConnectorDialog({
   existing,
@@ -116,41 +117,41 @@ export function PersonalConnectorDialog({
           </Field>
           <Field label={t('connectors.field.transport')}>
             {(id) => (
-              <select
+              <Select
                 id={id}
                 value={draft.transport}
                 onChange={(e) => set('transport', e.target.value as PersonalDraft['transport'])}
               >
                 <option value="streamable_http">Streamable HTTP</option>
                 <option value="sse">{t('connectors.field.sse')}</option>
-              </select>
+              </Select>
             )}
           </Field>
         </div>
         <h4 className="gh-form-heading">{t('connectors.field.signIn')}</h4>
         <Field label={t('connectors.field.auth')} help={t(`connectors.field.authHint.${draft.auth}`)}>
           {(id) => (
-            <select id={id} value={draft.auth} onChange={(e) => set('auth', e.target.value as PersonalDraft['auth'])}>
+            <Select id={id} value={draft.auth} onChange={(e) => set('auth', e.target.value as PersonalDraft['auth'])}>
               {(['none', 'key', 'oauth'] as const).map((auth) => (
                 <option key={auth} value={auth}>
                   {t(`connectors.field.authKind.${auth}`)}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
         </Field>
         {draft.auth === 'key' ? (
           <div className="gh-form-grid">
             <Field label={t('connectors.field.keyPlace')}>
               {(id) => (
-                <select
+                <Select
                   id={id}
                   value={draft.key_place}
                   onChange={(e) => set('key_place', e.target.value as PersonalDraft['key_place'])}
                 >
                   <option value="header">{t('connectors.field.header')}</option>
                   <option value="query">{t('connectors.field.queryParam')}</option>
-                </select>
+                </Select>
               )}
             </Field>
             {draft.key_place === 'header' ? (

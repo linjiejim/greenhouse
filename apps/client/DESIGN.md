@@ -49,7 +49,8 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 - Buttons: `.gh-primary` (one per surface), `.gh-secondary-button`, `.gh-icon-button` (32 square, icon only, needs `aria-label`), `.gh-link-button` (quiet inline action); add `.gh-danger` when destructive.
 - Forms: `.gh-form` stacks fields inside `DialogBody`; `.gh-form-grid` for two columns, `.gh-form-section` with a `legend` (or `.gh-form-heading`) for groups, `.gh-button-row` for a row of actions.
 - Fields: `.gh-field` puts the label above the control, then `.gh-hint` or `.gh-error`; `.gh-field-label` when the caption is not a `<label>`.
-- Inputs: `.gh-input` for input, select and textarea (controls in a `.gh-form` or directly in a `.gh-field` get it without the class); `.gh-mono` for code-like values.
+- Inputs: `.gh-input` for input and textarea (controls in a `.gh-form` or directly in a `.gh-field` get it without the class); `.gh-mono` for code-like values.
+- Selects: `Select` (`src/ui/select.web.tsx`) with `<option>` children, never a native `<select>`; `clearable` makes it a list filter.
 - Choices: `.gh-check` (checkbox with an optional `small` line), `.gh-switch` (`button role="switch"` or a checkbox), `.gh-segmented` (buttons marked checked, pressed or selected), `.gh-tabs` under a bar or atop a dialog body.
 - Notes: `.gh-callout` (warning; `data-tone` info, danger or neutral) with `.gh-callout-text`; status is a `.gh-badge` (`data-tone` success, warning, danger, info, accent), several in a `.gh-chip-row`.
 - Blocks: `.gh-card` (header, `.gh-card-body` or `.gh-card-flush` around a grid), `.gh-toolbar` with compact fields and a `.gh-count`, `.gh-setting-row` (label column, control, hint under it) above a sticky `.gh-savebar`, `.gh-dialog-footer-lead` before a dialog's Cancel and primary action.
@@ -59,7 +60,8 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 ## Admin
 
 - Administration is a place (super only, wide only), not a settings page: grouped sections in the secondary column (members, usage and spend, workspace, integrations, then plugin sections from the manifest), the chosen section in the main column with a 52 bar, optional tabs or a filter toolbar, and 32-row data grids.
-- Lists are tables; a row opens its edit dialog; per-row actions sit at the row end. Settings read as label/control rows in cards with a sticky save bar.
+- Lists are tables of at most six data columns, lines between rows only; a row opens its object in a side drawer (`AdminDrawer`, 560) where it is read and edited in place (same rows, values become controls, Save changes returns to reading); a dialog may open above the drawer; creating something new is a dialog. Per-row actions (at most two icons) sit at the row end. Settings read as label/control rows in cards with a sticky save bar.
+- Filters are clearable selects (no "All" choice: the unset label is the field's name, a set filter shows its value and ✕) and live in the address, so a filtered view reloads and shares.
 - Destructive actions confirm first; a secret shows once in a callout with Copy.
 
 ## Tokens
@@ -69,7 +71,7 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 - Type: a role from `typo.*` (largeTitle 28/36, title1 22, title2 18, title3 15, body 14/22, callout 16/26, footnote 13, caption1 12), weight only through `weight.*`; never a raw `fontSize` outside `src/ui` and `src/theme`. In-app text size (0.8–1.35) multiplies every role.
 - Icons from `ICONS` (`src/ui/core.tsx`): 13 inline and in chips, 16 in menus, rows and toolbar buttons, 18 in dialog headers, 21 in the rail, 24–28 in empty states. New icons go into core.tsx, core.web.tsx and icon-map.ts, then `python3 apps/client/scripts/android-icons.py`.
 - Colors: `useTheme()` in TS; `var(--gh-*)` in CSS, only variables the shell defines (generated web colors plus the few set in `wide-shell.web.tsx`). Stored project or tag colors draw through `categoricalFor()`; text on accent is `onAccent`.
-- Desktop density: rows 32, toolbar targets 28–32, headers 52.
+- Desktop density: rows 32 in admin and record grids (40 in the other data grids), toolbar targets 28–32, headers 52; dates in tables are short ("7月2日", the year only when it is not this one).
 - Nunito everywhere it applies (Chinese falls back to PingFang). One-line titles cut at the tail; file names cut in the middle.
 - Content sits on solid surfaces; Liquid Glass is only for the control layer on iOS (composer, floating buttons).
 

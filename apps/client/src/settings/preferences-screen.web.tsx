@@ -6,6 +6,7 @@ import { useT } from '../lib/i18n';
 import { chooseTextSize } from './text-size';
 import { TEXT_STEP_NAMES, TEXT_STEPS, type TextStep } from '../theme/type-scale';
 import { HOME_RECENT_CHOICES, type HomeRecent } from '../data/home';
+import { Select } from '../ui/select.web';
 export default function PreferencesScreen() {
   const t = useT(),
     s = useSettings(),
@@ -36,18 +37,18 @@ export default function PreferencesScreen() {
           </div>
           <label className="gh-settings-row">
             <strong>{t('settings.language')}</strong>
-            <select
+            <Select
               aria-label={t('settings.language')}
               value={s.lang}
               onChange={(e) => void s.setLanguage(e.target.value as LangPref)}
             >
               <option value="zh">{t('settings.langZh')}</option>
               <option value="en">{t('settings.langEn')}</option>
-            </select>
+            </Select>
           </label>
           <label className="gh-settings-row">
             <strong>{t('me.textSize')}</strong>
-            <select
+            <Select
               aria-label={t('me.textSize')}
               value={step}
               onChange={(e) => chooseTextSize(Number(e.target.value) as TextStep)}
@@ -57,14 +58,14 @@ export default function PreferencesScreen() {
                   {t(`me.textStep.${TEXT_STEP_NAMES[i as TextStep]}`)}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         </section>
         <h2>{t('places.conversation')}</h2>
         <section>
           <label className="gh-settings-row">
             <strong>{t('settings.homeRecent')}</strong>
-            <select
+            <Select
               aria-label={t('settings.homeRecent')}
               value={recent}
               onChange={(e) => usePrefs.getState().setHomeRecent(Number(e.target.value) as HomeRecent)}
@@ -74,7 +75,7 @@ export default function PreferencesScreen() {
                   {n === 0 ? t('settings.homeRecentNone') : n}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         </section>
       </div>

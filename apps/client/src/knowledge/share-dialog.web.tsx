@@ -12,6 +12,7 @@ import { Icon } from '../ui/core';
 import { DialogBody, Overlay } from '../ui/overlay.web';
 import { SHARE_ROLES, type ShareRole } from './share-model';
 import { useDocShares } from './use-doc-shares';
+import { Select } from '../ui/select.web';
 
 export function DocShareDialog({ docId, close }: { docId: string; close: () => void }) {
   const t = useT();
@@ -91,7 +92,7 @@ export function DocShareDialog({ docId, close }: { docId: string; close: () => v
                       }
                     }}
                   >
-                    <select
+                    <Select
                       className="gh-input"
                       style={{ flex: 1, minWidth: 160 }}
                       aria-label={t('knowledge.share.person')}
@@ -104,8 +105,8 @@ export function DocShareDialog({ docId, close }: { docId: string; close: () => v
                           {user.nickname}
                         </option>
                       ))}
-                    </select>
-                    <select
+                    </Select>
+                    <Select
                       className="gh-input"
                       style={{ width: 'auto' }}
                       aria-label={t('knowledge.share.role')}
@@ -117,7 +118,7 @@ export function DocShareDialog({ docId, close }: { docId: string; close: () => v
                           {t(`knowledge.share.roles.${value}`)}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                     <button type="button" className="gh-primary" disabled={!pick || s.busy} onClick={() => void add()}>
                       {t('knowledge.share.add')}
                     </button>
@@ -142,7 +143,7 @@ export function DocShareDialog({ docId, close }: { docId: string; close: () => v
                         <tr key={share.target}>
                           <td style={{ width: '100%' }}>{share.name}</td>
                           <td>
-                            <select
+                            <Select
                               className="gh-input"
                               aria-label={`${t('knowledge.share.role')} · ${share.name}`}
                               value={share.role}
@@ -154,7 +155,7 @@ export function DocShareDialog({ docId, close }: { docId: string; close: () => v
                                   {t(`knowledge.share.roles.${value}`)}
                                 </option>
                               ))}
-                            </select>
+                            </Select>
                           </td>
                           <td>
                             <button

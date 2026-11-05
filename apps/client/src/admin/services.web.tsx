@@ -45,6 +45,7 @@ import type {
   SpendRow,
   TokenPrice,
 } from './types';
+import { Select } from '../ui/select.web';
 
 type Tab = 'spend' | 'prices' | 'budgets' | 'gateway';
 
@@ -76,7 +77,7 @@ export default function ServicesSection() {
       actions={
         <>
           {tab !== 'gateway' ? (
-            <select
+            <Select
               className="gh-input"
               aria-label={t('admin.metering.month')}
               value={month}
@@ -87,7 +88,7 @@ export default function ServicesSection() {
                   {m}
                 </option>
               ))}
-            </select>
+            </Select>
           ) : null}
           <button
             className="gh-icon-button"
@@ -655,7 +656,7 @@ export function MemberSelect({ id, value, onChange }: { id: string; value: strin
   const t = useT();
   const users = useResource(useCallback(() => admin.listUsers(), []));
   return (
-    <select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+    <Select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">{users.loading && !users.data ? t('common.loading') : '—'}</option>
       {(users.data?.users ?? [])
         .filter((u) => u.role === 'team' || u.role === 'super')
@@ -664,7 +665,7 @@ export function MemberSelect({ id, value, onChange }: { id: string; value: strin
             {u.nickname || u.email}
           </option>
         ))}
-    </select>
+    </Select>
   );
 }
 
