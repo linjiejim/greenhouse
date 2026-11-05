@@ -571,6 +571,7 @@ export const zh: Catalog = {
     notFound: '这个表不可用',
     tablesEmpty: '这个数据表里还没有表',
     recordsEmpty: '还没有记录',
+    basesEmpty: '还没有数据表',
     recordCount: '{n} 条记录',
     untitled: '未命名',
     record: '记录',
@@ -1514,8 +1515,6 @@ export const zh: Catalog = {
       saved: '记忆已保存',
       archivedDone: '记忆已归档',
       restored: '记忆已重新启用',
-      pinnedDone: '记忆已置顶',
-      unpinnedDone: '已取消置顶',
       saveFailed: '记忆没能保存',
       deleteFailed: '记忆没能删除',
       problem: {

@@ -260,11 +260,15 @@ test('Email adds a mailbox through a failed test, edits it without the password,
   // test connection from the row's menu: a broken mailbox says so, details behind Details
   await list.getByRole('button', { name: 'Jim 的操作', exact: true }).click();
   await page.getByRole('menuitem', { name: '测试连接', exact: true }).click();
-  const alert = page.getByRole('dialog').filter({ hasText: 'jim@example.com 连接不上' });
+  // a failed action is a notice that stays until dismissed (not a dialog); the raw reason sits behind Details
+  const alert = page.getByRole('alert').filter({ hasText: 'jim@example.com 连接不上' });
   await expect(alert).toBeVisible();
   await alert.getByRole('button', { name: '详情' }).click();
-  await expect(alert).toContainText('IMAP: Invalid credentials (Failure)');
-  await alert.getByRole('button', { name: '好', exact: true }).click();
+  const details = page.getByRole('dialog').filter({ hasText: 'IMAP: Invalid credentials (Failure)' });
+  await expect(details).toBeVisible();
+  await details.getByRole('button', { name: '关闭', exact: true }).click();
+  await alert.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(alert).toHaveCount(0);
   await expect(list).toContainText('连接不上');
 
   // remove after a confirm
@@ -367,7 +371,7 @@ test('Computer reads its state, price and limits in words, starts and stops, and
   // a refused start says why in the app's words
   f.state.startRefusal = { status: 429, code: 'full' };
   await status.getByRole('button', { name: '启动电脑', exact: true }).click();
-  await expect(page.getByRole('dialog').filter({ hasText: '电脑没能启动' })).toContainText('团队的云电脑都在使用中');
+  await expect(page.getByRole('alert').filter({ hasText: '电脑没能启动' })).toContainText('团队的云电脑都在使用中');
 
   // a station with the switch off explains who can turn it on, and offers no start
   f.state.computer.enabled = false;

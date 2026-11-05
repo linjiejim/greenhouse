@@ -585,6 +585,7 @@ export const en = {
     notFound: 'This table isn’t available',
     tablesEmpty: 'No tables in this base',
     recordsEmpty: 'No records',
+    basesEmpty: 'No bases yet',
     recordCount: '{n} records',
     untitled: 'Untitled',
     record: 'Record',
@@ -1536,8 +1537,6 @@ export const en = {
       saved: 'Memory saved',
       archivedDone: 'Memory archived',
       restored: 'Memory back in use',
-      pinnedDone: 'Memory pinned',
-      unpinnedDone: 'Memory unpinned',
       saveFailed: 'Couldn’t save the memory',
       deleteFailed: 'Couldn’t delete the memory',
       problem: {

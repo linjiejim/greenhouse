@@ -180,8 +180,23 @@ export default function TablesPlace() {
                   </div>
                 </div>
               ))}
-            {!bases.data?.bases.length ? (
-              <PlaceEmpty loading={bases.loading} error={bases.error?.message} retry={() => void bases.refresh()} />
+            {!bases.data?.bases.some((b) => !b.archived_at) ? (
+              // nothing yet is not "no match": say what is missing and offer the first one
+              <PlaceEmpty
+                loading={bases.loading}
+                error={bases.error?.message}
+                retry={() => void bases.refresh()}
+                icon="table"
+                title={t('tables.basesEmpty')}
+                action={
+                  <button className="gh-secondary-button" onClick={() => void addBase()}>
+                    {t('tables.newBase')}
+                  </button>
+                }
+              />
+            ) : query &&
+              !bases.data.bases.some((b) => !b.archived_at && b.name.toLowerCase().includes(query.toLowerCase())) ? (
+              <PlaceEmpty />
             ) : null}
           </div>
         </PlaceSidebar>
@@ -199,49 +214,56 @@ export default function TablesPlace() {
           ) : null
         }
       >
-        <div className="gh-place-tabs" role="tablist">
-          <button role="tab" aria-selected={view === 'default'} onClick={() => setView('default')}>
-            {t('places.all')}
-          </button>
-          {views.data?.views.map((v) => (
-            <button key={v.id} role="tab" aria-selected={view === v.id} onClick={() => setView(v.id)}>
-              {v.name}
-            </button>
-          ))}
-        </div>
-        <div
-          className="gh-place-scroll"
-          data-testid="tables-grid"
-          onScroll={(e) => {
-            if (e.currentTarget.scrollHeight - e.currentTarget.scrollTop - e.currentTarget.clientHeight < 150)
-              void more();
-          }}
-        >
-          <TableGrid
-            onContext={(id, x, y) => setContext({ id, x, y })}
-            columns={fields.map((f) => ({ id: f.id, name: f.name, kind: f.type }))}
-            rows={records.map((r) => ({
-              id: r.id,
-              title: recordTitle(allFields, r, words),
-              cells: fields.map((f) => displayValue(f, cellValue(f, r), words)),
-            }))}
-            selected={selected}
-            onOpen={inspect}
-          />
-          {cursor ? (
-            <button onClick={() => void more()} disabled={loading}>
-              {t('places.loadMore')}
-            </button>
-          ) : null}
-          {!records.length ? (
-            <PlaceEmpty
-              loading={loading || schema.loading}
-              error={error || schema.error?.message}
-              retry={() => void schema.refresh()}
-              {...(viewQuery === '{}' ? { icon: 'table' as const, title: t('tables.recordsEmpty') } : {})}
-            />
-          ) : null}
-        </div>
+        {!baseId ? (
+          // no base yet: one empty state, no tabs or empty grid
+          <PlaceEmpty loading={bases.loading} icon="table" title={t('tables.basesEmpty')} />
+        ) : (
+          <>
+            <div className="gh-place-tabs" role="tablist">
+              <button role="tab" aria-selected={view === 'default'} onClick={() => setView('default')}>
+                {t('places.all')}
+              </button>
+              {views.data?.views.map((v) => (
+                <button key={v.id} role="tab" aria-selected={view === v.id} onClick={() => setView(v.id)}>
+                  {v.name}
+                </button>
+              ))}
+            </div>
+            <div
+              className="gh-place-scroll"
+              data-testid="tables-grid"
+              onScroll={(e) => {
+                if (e.currentTarget.scrollHeight - e.currentTarget.scrollTop - e.currentTarget.clientHeight < 150)
+                  void more();
+              }}
+            >
+              <TableGrid
+                onContext={(id, x, y) => setContext({ id, x, y })}
+                columns={fields.map((f) => ({ id: f.id, name: f.name, kind: f.type }))}
+                rows={records.map((r) => ({
+                  id: r.id,
+                  title: recordTitle(allFields, r, words),
+                  cells: fields.map((f) => displayValue(f, cellValue(f, r), words)),
+                }))}
+                selected={selected}
+                onOpen={inspect}
+              />
+              {cursor ? (
+                <button onClick={() => void more()} disabled={loading}>
+                  {t('places.loadMore')}
+                </button>
+              ) : null}
+              {!records.length ? (
+                <PlaceEmpty
+                  loading={loading || schema.loading}
+                  error={error || schema.error?.message}
+                  retry={() => void schema.refresh()}
+                  {...(viewQuery === '{}' ? { icon: 'table' as const, title: t('tables.recordsEmpty') } : {})}
+                />
+              ) : null}
+            </div>
+          </>
+        )}
       </Place>
       <PlaceContext
         point={context}
