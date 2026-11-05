@@ -184,7 +184,7 @@ export function Overlay({
           border: `1px solid ${c.separator}`,
           borderRadius: 12,
           padding: role === 'menu' || role === 'listbox' ? 4 : 20,
-          boxShadow: isDark ? undefined : '0 8px 32px rgba(0,0,0,.14)',
+          boxShadow: 'var(--gh-shadow-floating)',
           pointerEvents: interactive ? 'auto' : 'none',
           // the panel only holds focus for the dialog; its controls draw the visible ring
           outline: 'none',

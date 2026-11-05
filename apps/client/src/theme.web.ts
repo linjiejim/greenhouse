@@ -87,7 +87,7 @@ export function makeStyles<T extends StyleSheet.NamedStyles<T>>(fn: (c: ThemeCol
  * weight with `weight.*` only for emphasis — never invent sizes.
  */
 const iosTypo = {
-  largeTitle: { fontSize: 28, lineHeight: 36, fontWeight: '700' },
+  largeTitle: { fontSize: 28, lineHeight: 36, fontWeight: '600' },
   title1: { fontSize: 22, lineHeight: 30, fontWeight: '600' },
   title2: { fontSize: 18, lineHeight: 26, fontWeight: '600' },
   title3: { fontSize: 15, lineHeight: 22, fontWeight: '600' },
@@ -106,9 +106,9 @@ const iosTypo = {
  * platform-specific scale rather than reusing iOS point sizes. Weights stay as the roles expect.
  */
 const androidTypo: { [K in keyof typeof iosTypo]: TextStyle } = {
-  largeTitle: { fontSize: 32, lineHeight: 40, fontWeight: '700' },
-  title1: { fontSize: 26, lineHeight: 34, fontWeight: '700' },
-  title2: { fontSize: 22, lineHeight: 28, fontWeight: '700' },
+  largeTitle: { fontSize: 32, lineHeight: 40, fontWeight: '600' },
+  title1: { fontSize: 26, lineHeight: 34, fontWeight: '600' },
+  title2: { fontSize: 22, lineHeight: 28, fontWeight: '600' },
   title3: { fontSize: 19, lineHeight: 26, fontWeight: '600' },
   headline: { fontSize: 16, lineHeight: 24, fontWeight: '600' },
   body: { fontSize: 16, lineHeight: 24, fontWeight: '400' },

@@ -295,7 +295,7 @@
   border-color: var(--gh-accent-edge);
   background: var(--gh-accent-fill);
   color: var(--gh-accent-text);
-  font-weight: 700;
+  font-weight: 600;
 }
 .gh-admin-swatch {
   width: 14px;
@@ -415,7 +415,7 @@
   border-radius: calc(8px * var(--pv-radius));
   background: var(--pv-brand);
   color: var(--pv-on-brand);
-  font-weight: 700;
+  font-weight: 600;
 }
 .gh-pv-ghost {
   background: transparent;

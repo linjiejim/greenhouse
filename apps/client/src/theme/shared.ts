@@ -6,7 +6,8 @@ export const weight = {
   regular: '400',
   medium: '500',
   semibold: '600',
-  bold: '700',
+  // native titles keep the platform's bold (HIG); browser text stops at 600 (DESIGN.md)
+  bold: Platform.OS === 'web' ? '600' : '700',
 } as const;
 
 /* ------------------------------ layout ------------------------------ */

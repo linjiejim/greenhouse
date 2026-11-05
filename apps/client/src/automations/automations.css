@@ -50,7 +50,7 @@
   border-color: var(--gh-accent-edge);
   background: var(--gh-accent-fill);
   color: var(--gh-accent-text-strong);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* the schedule in words and its next runs */
@@ -121,7 +121,7 @@
   border-bottom: 1px solid var(--gh-line);
   background: var(--gh-card);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--gh-secondary);
 }
 .gh-auto-tool {
@@ -260,7 +260,7 @@
   height: 32px;
   margin: 0;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
 }
 .gh-agent-uses {
   border: 1px solid var(--gh-line);
@@ -294,7 +294,7 @@
 .gh-auto-heading h3 {
   margin: 0 !important;
   font-size: 13px !important;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--gh-text) !important;
 }
 .gh-auto-heading button {

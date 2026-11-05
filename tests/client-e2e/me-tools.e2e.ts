@@ -260,7 +260,7 @@ test('My Agents creates a gateway key, shows its secret once, and revokes a key'
   await page.getByRole('button', { name: '创建', exact: true }).click();
   const secret = page.getByTestId('gateway-secret');
   await expect(secret).toContainText('ghgw_k2_secret-shown-once');
-  await expect(secret).toContainText('现在复制“终端里的 Codex”');
+  await expect(secret).toContainText('现在复制「终端里的 Codex」');
   expect(f.writes.find((w) => w.method === 'POST')).toEqual({
     method: 'POST',
     path: '/api/agent-access/gateway/keys',

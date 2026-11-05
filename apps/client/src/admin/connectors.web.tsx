@@ -131,7 +131,7 @@ export default function ConnectorsSection() {
   };
   const connectors = list.data?.connectors;
   return (
-    <AdminPage
+    <AdminPage info={t('admin.connectors.intro')}
       title={t('admin.sections.connectors')}
       testID="admin-connectors"
       actions={
@@ -149,7 +149,6 @@ export default function ConnectorsSection() {
         </>
       }
     >
-      <p className="gh-hint">{t('admin.connectors.intro')}</p>
       {connectors?.length ? (
         <table className="gh-data-grid gh-admin-grid">
           <thead>

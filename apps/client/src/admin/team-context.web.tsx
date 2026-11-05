@@ -90,9 +90,8 @@ export default function TeamContextSection() {
     );
   const glossaryRef = view.glossary && view.glossary.doc_id === glossary ? view.glossary : null;
   return (
-    <AdminPage title={t('admin.sections.team-context')} testID="admin-team-context">
+    <AdminPage info={t('admin.teamContext.intro')} title={t('admin.sections.team-context')} testID="admin-team-context">
       <div className="gh-admin-settings">
-        <p className="gh-hint">{t('admin.teamContext.intro')}</p>
         <Card title={t('admin.teamContext.text')} icon="file">
           <div className="gh-form" style={{ padding: 0 }}>
             {TEXTS.map((key) => (

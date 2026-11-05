@@ -108,7 +108,7 @@ export default function BrandingSection() {
       </AdminPage>
     );
   return (
-    <AdminPage
+    <AdminPage info={t('admin.branding.intro')}
       title={t('admin.sections.branding')}
       testID="admin-branding"
       actions={
@@ -126,7 +126,6 @@ export default function BrandingSection() {
         </>
       }
     >
-      <p className="gh-hint">{t('admin.branding.intro')}</p>
       <div className="gh-admin-branding">
         <div>
           <Card title={t('admin.branding.identity')} icon="building">

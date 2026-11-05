@@ -14,6 +14,7 @@ import Camera from 'lucide-react/dist/esm/icons/camera.mjs';
 import ChartColumn from 'lucide-react/dist/esm/icons/chart-column.mjs';
 import Check from 'lucide-react/dist/esm/icons/check.mjs';
 import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down.mjs';
+import Info from 'lucide-react/dist/esm/icons/info.mjs';
 import ChevronLeft from 'lucide-react/dist/esm/icons/chevron-left.mjs';
 import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right.mjs';
 import ChevronUp from 'lucide-react/dist/esm/icons/chevron-up.mjs';
@@ -184,6 +185,7 @@ export const webIcons = {
   sleep: Moon,
   at: AtSign,
   alertCircle: CircleAlert,
+  info: Info,
   thumbUp: ThumbsUp,
   thumbUpFill: ThumbsUp,
   thumbDown: ThumbsDown,

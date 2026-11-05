@@ -24,7 +24,7 @@
   border-radius: 16px;
   background: var(--gh-raised);
   color: var(--gh-text);
-  box-shadow: 0 16px 48px -24px var(--gh-scrim);
+  box-shadow: var(--gh-shadow-floating);
 }
 .gh-entry-card[data-size='wide'] {
   max-width: 560px;
@@ -40,7 +40,7 @@
   margin: 0;
   font-size: 22px;
   line-height: 28px;
-  font-weight: 700;
+  font-weight: 600;
 }
 .gh-entry-head p {
   margin: 0;
@@ -142,7 +142,7 @@
   margin: 0;
   font-size: 18px;
   line-height: 24px;
-  font-weight: 700;
+  font-weight: 600;
 }
 .gh-consent-client p {
   margin: 4px 0 0;
@@ -251,7 +251,7 @@
   display: block;
   margin-top: 2px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--gh-tertiary);
   overflow-wrap: anywhere;
 }
