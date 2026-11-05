@@ -15,7 +15,7 @@ vi.hoisted(() => {
 });
 
 import { Hono } from 'hono';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
 import { TEST_DATABASE_URL } from '@greenhouse/db/test-config';
@@ -30,10 +30,14 @@ import {
 import extObjectRoutes from '../../../../apps/api/src/routes/ext-objects.js';
 import { UPLOADS_DIR } from '../../../../apps/api/src/paths.js';
 
+const namespace = resolve(UPLOADS_DIR, 'drive/plugins/example');
+const listed = () => (existsSync(namespace) ? readdirSync(namespace, { recursive: true }).map(String) : []);
+const before = new Set(listed());
 afterAll(() => {
   delete process.env.GREENHOUSE_EXTENSIONS;
-  const namespace = resolve(UPLOADS_DIR, 'drive/plugins/example');
-  if (existsSync(namespace)) rmSync(namespace, { recursive: true, force: true });
+  // Only what these tests wrote: a dev instance on this checkout keeps its objects.
+  for (const rel of listed().sort().reverse())
+    if (!before.has(rel)) rmSync(resolve(namespace, rel), { recursive: true, force: true });
 });
 
 const PNG = Buffer.from(

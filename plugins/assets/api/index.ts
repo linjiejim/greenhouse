@@ -14,6 +14,7 @@ import {
   extensionPath,
   getPlatformRuntime,
   requireFeature,
+  userHasFeature,
 } from '@greenhouse/api/extension-kit';
 import { ASSETS_FEATURE, MANAGE_FEATURE } from './access.js';
 import { assetsRegistration } from './platform.js';
@@ -83,7 +84,9 @@ export default defineExtension({
   searchSources: [
     {
       kind: ASSET_KIND,
-      search: async ({ db, userId, query, limit }) => {
+      search: async ({ db, userId, userRole, query, limit }) => {
+        // The library's own gate (the `assets` feature, off by default) and the role's capability.
+        if (!(await userHasFeature(userId, userRole, ASSETS_FEATURE, db))) return [];
         if (!(await getPlatformRuntime().authorize(delegatedAgentActor({ userId }), 'assets.library.read')).allowed)
           return [];
         const { items } = await assetStore(db).list({ q: query, limit, sort: 'relevance' });

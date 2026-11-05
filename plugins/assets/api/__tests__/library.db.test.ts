@@ -23,7 +23,7 @@ vi.mock('@greenhouse/api/extension-kit', async (original) => ({
 
 import { Hono } from 'hono';
 import { createHash } from 'node:crypto';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { sql } from 'drizzle-orm';
 import { _resetProvider, initDatabase, type DatabaseProvider, type UserRow } from '@greenhouse/db';
@@ -44,9 +44,13 @@ import { runAiQueue, runCleanup, runVerification } from '../worker.js';
 import { createAssetsQueryTool } from '../tool.js';
 import { objects } from '../ai.js';
 
+const namespace = resolve(UPLOADS_DIR, 'drive/plugins/assets');
+const listed = () => (existsSync(namespace) ? readdirSync(namespace, { recursive: true }).map(String) : []);
+const before = new Set(listed());
 afterAll(() => {
-  const namespace = resolve(UPLOADS_DIR, 'drive/plugins/assets');
-  if (existsSync(namespace)) rmSync(namespace, { recursive: true, force: true });
+  // Only what these tests wrote: a dev instance on this checkout keeps its objects.
+  for (const rel of listed().sort().reverse())
+    if (!before.has(rel)) rmSync(resolve(namespace, rel), { recursive: true, force: true });
 });
 
 const extension = EXTENSIONS.find((ext) => ext.id === 'assets')!;
@@ -421,9 +425,14 @@ describe('who may change what', () => {
     expect((await app(alice).request(`/api/ext/assets/assets/${id}`)).status).toBe(200);
   });
 
-  it('turns members away without the feature', async () => {
+  it('turns members away without the feature, global search included', async () => {
+    const title = `搜索门禁-${crypto.randomUUID().slice(0, 6)}`;
+    await upload(alice, jpeg(`gate-${crypto.randomUUID()}`), { title });
     await db.userFeatures.upsert({ user_id: bob.id, feature: 'assets', enabled: false });
     expect((await app(bob).request('/api/ext/assets/assets')).status).toBe(403);
+    const lane = extension.searchSources!.find((source) => source.kind === 'ext:assets:asset')!;
+    expect(await lane.search({ db, userId: bob.id, userRole: 'team', query: title, limit: 5 })).toEqual([]);
+    expect((await lane.search({ db, userId: alice.id, userRole: 'team', query: title, limit: 5 })).length).toBe(1);
   });
 });
 
