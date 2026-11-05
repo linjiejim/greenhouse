@@ -130,5 +130,9 @@ describe('AI cataloguing', () => {
       model: 'vision-model',
     });
     expect(parseAiReply('not an object', defs, 'm')).toMatchObject({ title: null, tags: [], facets: {} });
+    // The way a model echoes the vocabulary back still maps to the stored value.
+    expect(parseAiReply({ facets: { plant: ['basil (罗勒)', '罗勒', 'MINT', 'rose'] } }, defs, 'm').facets).toEqual({
+      plant: ['basil', 'mint'],
+    });
   });
 });

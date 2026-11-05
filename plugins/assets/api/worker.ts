@@ -120,7 +120,7 @@ export async function runCleanup(now = Date.now()): Promise<{ stale: number; pur
   let purged = 0;
   // Claim, delete objects, then drop the row: a failure leaves a `purging` row the next run retries.
   for (const asset of await store.staleUploads(staleBefore)) {
-    if (!(await store.claimPurge(asset.id, ['uploading'], { untouchedSince: staleBefore }))) continue;
+    if (!(await store.claimPurge(asset.id, ['uploading', 'publishing'], { untouchedSince: staleBefore }))) continue;
     try {
       await deleteAssetObjects(asset);
       if (await store.removeRow(asset.id, 'purging')) stale += 1;

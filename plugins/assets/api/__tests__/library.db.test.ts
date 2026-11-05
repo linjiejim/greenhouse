@@ -248,6 +248,39 @@ describe('uploading', () => {
     expect(huge.status).toBe(413);
   });
 
+  it('publishes under an exclusive claim and checks the published bytes', async () => {
+    const file = jpeg(`claim-${crypto.randomUUID()}`);
+    const api = app(alice);
+    const begin = async () =>
+      (await (
+        await api.request(
+          '/api/ext/assets/uploads',
+          json('POST', {
+            sha256: sha(file),
+            size: file.length,
+            filename: 'c.jpg',
+            content_type: 'image/jpeg',
+            has_preview: false,
+            frame_count: 0,
+          }),
+        )
+      ).json()) as { asset: { id: string }; targets: { original: Target } };
+    // A short original: complete copies it, sees the wrong size, removes the copy and lets the owner retry.
+    const first = await begin();
+    await put(api, first.targets.original, file.subarray(0, file.length - 2));
+    expect((await api.request(`/api/ext/assets/assets/${first.asset.id}/complete`, json('POST'))).status).toBe(400);
+    expect(await objects.head(objectKeys.original(sha(file), 'jpg'))).toBeNull();
+    expect((await assetStore(db).get(first.asset.id))!.status).toBe('uploading');
+    // While one complete holds the claim, another is refused.
+    const second = await begin();
+    await put(api, second.targets.original, file);
+    const row = (await assetStore(db).get(second.asset.id))!;
+    expect(await assetStore(db).claimPublish(row.id, row.upload_generation!)).toBeTruthy();
+    expect((await api.request(`/api/ext/assets/assets/${row.id}/complete`, json('POST'))).status).toBe(404);
+    await assetStore(db).releasePublish(row.id);
+    expect((await api.request(`/api/ext/assets/assets/${row.id}/complete`, json('POST'))).status).toBe(200);
+  });
+
   it('treats undelivered previews as no preview and skips AI for it', async () => {
     const file = jpeg(`nopreview-${crypto.randomUUID()}`);
     const api = app(alice);

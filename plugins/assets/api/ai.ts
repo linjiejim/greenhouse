@@ -43,7 +43,7 @@ export function buildPrompt(asset: AssetRow, defs: readonly FacetRow[], language
 What the team already knows (treat it as true; never contradict it):
 ${JSON.stringify(known)}
 
-Facet vocabulary (choose values only from these lists, by their exact "value"; leave a facet out when unsure):
+Facet vocabulary (choose values only from these lists and answer with the value before any parentheses, e.g. "basil"; leave a facet out when unsure):
 ${JSON.stringify(vocabulary)}
 
 Reply with one JSON object:
@@ -66,11 +66,22 @@ export function parseAiReply(reply: unknown, defs: readonly FacetRow[], model: s
   const facets: FacetValues = {};
   if (r.facets && typeof r.facets === 'object' && !Array.isArray(r.facets))
     for (const def of defs) {
-      const raw = (r.facets as Record<string, unknown>)[def.key];
-      const values = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw]).filter(
-        (v): v is string => typeof v === 'string',
-      );
-      if (values.length) facets[def.key] = values;
+      // Models echo a value as shown ("basil (罗勒)"), by its Chinese name, or under the facet's label.
+      const byName = new Map<string, string>();
+      for (const v of def.values) {
+        byName.set(v.value.toLowerCase(), v.value);
+        if (v.zh) byName.set(v.zh.toLowerCase(), v.value);
+      }
+      const given = r.facets as Record<string, unknown>;
+      const raw = given[def.key] ?? given[def.label_zh] ?? given[def.label_en];
+      const values = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw])
+        .filter((v): v is string => typeof v === 'string')
+        .map((v) => {
+          const plain = v.trim().toLowerCase();
+          return byName.get(plain) ?? byName.get(plain.replace(/\s*[(（].*[)）]\s*$/, ''));
+        })
+        .filter((v): v is string => Boolean(v));
+      if (values.length) facets[def.key] = [...new Set(values)];
     }
   return {
     title: str(r.title, 200),

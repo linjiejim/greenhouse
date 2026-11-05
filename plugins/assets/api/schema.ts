@@ -17,8 +17,11 @@ import { bigint, boolean, check, index, integer, pgTable, primaryKey, text, uniq
 import { at, createdAt, id, json, oneOf, searchColumns, updatedAt } from '@greenhouse/api/extension-kit';
 
 export const ASSET_KINDS = ['image', 'video'] as const;
-/** `purging`: claimed by cleanup while its objects are deleted; nothing may complete, restore or reuse it. */
-export const ASSET_STATUSES = ['uploading', 'active', 'invalid', 'deleted', 'purging'] as const;
+/**
+ * `publishing`: complete is copying an upload to its published keys (nothing else may touch it);
+ * `purging`: cleanup is deleting its objects (nothing may complete, restore or reuse it).
+ */
+export const ASSET_STATUSES = ['uploading', 'publishing', 'active', 'invalid', 'deleted', 'purging'] as const;
 export const AI_STATUSES = ['pending', 'running', 'done', 'failed', 'skipped'] as const;
 export const SIMILAR_STATUSES = ['open', 'dismissed', 'merged'] as const;
 

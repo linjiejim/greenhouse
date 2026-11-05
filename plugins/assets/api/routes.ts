@@ -380,6 +380,8 @@ export const assetRoutes = new Hono<AppEnv>()
         return fail('NOT_FOUND', 'collection not found');
       const join = async (existing: AssetRow) => {
         if (existing.status === 'purging') return fail('CONFLICT', 'this file is being removed; try again in a minute');
+        if (existing.status === 'publishing')
+          return fail('CONFLICT', 'this file is being finished; try again in a moment');
         if (existing.status === 'uploading' && existing.uploaded_by === me.id) {
           // The same person retrying an unfinished upload: a fresh attempt.
           const targets = await uploadTargets(existing);
@@ -439,23 +441,53 @@ export const assetRoutes = new Hono<AppEnv>()
         if (!asset || asset.status !== 'uploading') return fail('NOT_FOUND', 'no unfinished upload with this id');
         if (asset.uploaded_by !== me.id && !(await canManage(me))) return fail('FORBIDDEN', 'not your upload');
         if (!asset.upload_generation) return fail('CONFLICT', 'no upload attempt to complete');
+        // Exclusive from here: no second complete, renewal or purge until this one is done.
+        if (!(await store.claimPublish(asset.id, asset.upload_generation)))
+          return fail('CONFLICT', 'this upload is already being finished');
         const [original, ...derived] = uploadParts(asset, asset.upload_generation, asset.has_preview);
-        // Trust the store, not the client: a direct upload is not size-capped by the bucket.
-        const stored = await objects.head(original!.staging);
-        if (!stored || stored.size !== asset.size)
-          return fail('INVALID_INPUT', stored ? 'the stored file has the wrong size' : 'the file was not uploaded');
-        const sizes = await Promise.all(derived.map((part) => objects.head(part.staging)));
-        const preview = asset.has_preview && sizes.every((s, i) => s !== null && s.size <= derived[i]!.max);
-        // Publish: copy to the content-addressed keys no browser URL points at.
-        for (const part of [original!, ...(preview ? derived : [])])
-          if (!(await objects.copy(part.staging, part.final)))
-            return fail('INVALID_INPUT', 'an uploaded part disappeared');
-        if (!preview && asset.has_preview) await store.markPreviewMissing(asset.id);
-        const active = await store.markActive(asset.id, preview && (await aiEnabled()) ? 'pending' : 'skipped');
-        if (!active) return fail('CONFLICT', 'upload already completed');
-        await dropStaging(asset.id);
-        const similarHits = await store.recordSimilar(active);
-        return ok({ asset: await card(active), similar: similarHits.length });
+        const published: string[] = [];
+        const abandon = async (message: string) => {
+          for (const key of published) await objects.delete(key).catch(() => {});
+          await store.releasePublish(asset.id);
+          return fail('INVALID_INPUT', message);
+        };
+        try {
+          // Publish: copy to the content-addressed keys no browser URL points at, then check the
+          // copies (a staging object may have changed after any earlier look at it).
+          if (!(await objects.copy(original!.staging, original!.final))) return abandon('the file was not uploaded');
+          published.push(original!.final);
+          const stored = await objects.head(original!.final);
+          // Trust the store, not the client: a direct upload is not size-capped by the bucket.
+          if (stored?.size !== asset.size) return abandon('the stored file has the wrong size');
+          let preview = asset.has_preview;
+          for (const part of preview ? derived : []) {
+            if (!(await objects.copy(part.staging, part.final))) {
+              preview = false;
+              break;
+            }
+            published.push(part.final);
+            const size = (await objects.head(part.final))?.size;
+            if (size === undefined || size > part.max) {
+              preview = false;
+              break;
+            }
+          }
+          if (!preview && asset.has_preview)
+            // Previews are optional: drop what was copied of them, keep the original.
+            for (const key of published.slice(1)) await objects.delete(key).catch(() => {});
+          const active = await store.markActive(
+            asset.id,
+            preview && (await aiEnabled()) ? 'pending' : 'skipped',
+            preview,
+          );
+          if (!active) return abandon('the upload was removed while it was being finished');
+          await dropStaging(asset.id);
+          const similarHits = await store.recordSimilar(active);
+          return ok({ asset: await card(active), similar: similarHits.length });
+        } catch (err) {
+          await abandon('publishing failed');
+          throw err;
+        }
       },
       id,
     );

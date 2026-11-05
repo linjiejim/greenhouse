@@ -285,16 +285,41 @@ export function createAssetStore(db: Db) {
       );
     },
 
-    /** The browser promised derivatives it did not deliver: show no preview, skip AI. */
-    async markPreviewMissing(id: string): Promise<void> {
-      await db.update(assets).set({ has_preview: false, frame_count: 0 }).where(eq(assets.id, id));
-    },
-
-    async markActive(id: string, aiStatus: Extract<AiStatus, 'pending' | 'skipped'>): Promise<AssetRow | undefined> {
+    /**
+     * Take an upload attempt for publication: only from `uploading` and only for the attempt the
+     * caller saw, so concurrent completes, renewals and purges cannot interleave with the copies.
+     */
+    async claimPublish(id: string, generation: string): Promise<AssetRow | undefined> {
       const [row] = await db
         .update(assets)
-        .set({ status: 'active', ai_status: aiStatus, updated_at: nowIso() })
-        .where(and(eq(assets.id, id), eq(assets.status, 'uploading')))
+        .set({ status: 'publishing', updated_at: nowIso() })
+        .where(and(eq(assets.id, id), eq(assets.status, 'uploading'), eq(assets.upload_generation, generation)))
+        .returning();
+      return row;
+    },
+
+    /** Publication failed: back to `uploading` so the owner can try again. */
+    async releasePublish(id: string): Promise<void> {
+      await db
+        .update(assets)
+        .set({ status: 'uploading', updated_at: nowIso() })
+        .where(and(eq(assets.id, id), eq(assets.status, 'publishing')));
+    },
+
+    async markActive(
+      id: string,
+      aiStatus: Extract<AiStatus, 'pending' | 'skipped'>,
+      hasPreview: boolean,
+    ): Promise<AssetRow | undefined> {
+      const [row] = await db
+        .update(assets)
+        .set({
+          status: 'active',
+          ai_status: aiStatus,
+          ...(hasPreview ? {} : { has_preview: false, frame_count: 0 }),
+          updated_at: nowIso(),
+        })
+        .where(and(eq(assets.id, id), eq(assets.status, 'publishing')))
         .returning();
       return row;
     },
@@ -693,7 +718,7 @@ export function createAssetStore(db: Db) {
       return db
         .select()
         .from(assets)
-        .where(and(eq(assets.status, 'uploading'), lt(assets.updated_at, before)))
+        .where(and(inArray(assets.status, ['uploading', 'publishing']), lt(assets.updated_at, before)))
         .limit(100);
     },
 
@@ -715,7 +740,7 @@ export function createAssetStore(db: Db) {
       const rows = await db
         .select({ id: assets.id })
         .from(assets)
-        .where(and(inArray(assets.id, ids), eq(assets.status, 'uploading')));
+        .where(and(inArray(assets.id, ids), inArray(assets.status, ['uploading', 'publishing'])));
       return new Set(rows.map((r) => r.id));
     },
 
