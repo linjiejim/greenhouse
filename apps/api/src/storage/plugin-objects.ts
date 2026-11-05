@@ -16,10 +16,12 @@ import { basename } from 'node:path';
 import { contentDisposition } from '../http/content-disposition.js';
 import { createObjectTicket } from '../auth/token.js';
 import {
+  copyObjectAtKey,
   deleteObjectAtKey,
   directObjectUrls,
   getObjectAtKey,
   headObjectSize,
+  listObjectKeys,
   openObjectAtKey,
   pluginObjectPrefix,
   presignObjectUrl,
@@ -92,6 +94,13 @@ export interface PluginObjectStore {
   head(key: string): Promise<{ size: number } | null>;
   open(key: string, range?: { start: number; end?: number }): Promise<ObjectStream | 'unsatisfiable' | null>;
   delete(key: string): Promise<void>;
+  /**
+   * Server-side copy inside the namespace (up to 5 GB); false when the source is missing. Use it
+   * to publish uploaded bytes to a key no browser URL was ever issued for.
+   */
+  copy(fromKey: string, toKey: string): Promise<boolean>;
+  /** Keys under a namespace-relative prefix (`staging/42/`), relative to the namespace. */
+  list(prefix: string): Promise<string[]>;
   uploadUrl(opts: PluginUploadOptions): Promise<PluginUploadTarget>;
   readUrl(key: string, opts?: PluginReadOptions): Promise<string>;
 }
@@ -154,6 +163,13 @@ export function pluginObjects(pluginId: string): PluginObjectStore {
     },
     open: (key, range) => openObjectAtKey(full(key), range),
     delete: (key) => deleteObjectAtKey(full(key)),
+    copy: (fromKey, toKey) => copyObjectAtKey(full(fromKey), full(toKey)),
+    async list(prefix) {
+      // A prefix is a key with a trailing slash; validate it the same way.
+      const root = full(`${prefix.replace(/\/+$/, '')}/x`).slice(0, -1);
+      const namespace = `${pluginObjectPrefix()}${pluginId}/`;
+      return (await listObjectKeys(root)).map((key) => key.slice(namespace.length));
+    },
 
     async uploadUrl(opts) {
       const storageKey = full(opts.key);

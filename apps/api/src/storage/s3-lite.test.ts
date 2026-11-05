@@ -304,3 +304,23 @@ describe('streaming', () => {
     expect((seen as { duplex?: string }).duplex).toBe('half');
   });
 });
+
+describe('copyObject', () => {
+  it('signs the copy source and reads a late <Error> as a failure', async () => {
+    const seen: Array<Record<string, string>> = [];
+    const replies = [
+      new Response('<CopyObjectResult/>', { status: 200 }),
+      new Response('<Error><Code>InternalError</Code></Error>', { status: 200 }),
+      new Response(null, { status: 404 }),
+    ];
+    const client = createS3Client({ ...CFG }, (async (_url: string, init: RequestInit) => {
+      seen.push(init.headers as Record<string, string>);
+      return replies.shift()!;
+    }) as unknown as typeof fetch);
+    expect(await client.copyObject('a b/src.bin', 'dst.bin')).toBe(true);
+    expect(seen[0]!['x-amz-copy-source']).toBe('/example-bucket/a%20b/src.bin');
+    expect(seen[0]!.authorization).toContain('x-amz-copy-source');
+    await expect(client.copyObject('src', 'dst')).rejects.toThrow(/COPY/);
+    expect(await client.copyObject('missing', 'dst')).toBe(false);
+  });
+});

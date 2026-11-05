@@ -142,6 +142,8 @@ export interface S3LiteClient {
   headObjectSize(key: string): Promise<number | null>;
   /** All matching keys, following opaque ListObjectsV2 continuation tokens. */
   listObjectKeys(prefix: string): Promise<string[]>;
+  /** Server-side copy inside the bucket (single request, up to 5 GB); false when the source is missing. */
+  copyObject(fromKey: string, toKey: string): Promise<boolean>;
   /** Idempotent — a missing object is not an error. */
   deleteObject(key: string): Promise<void>;
 }
@@ -208,6 +210,7 @@ export function createS3Client(cfg: S3LiteConfig, fetchImpl: typeof fetch = fetc
     params: Record<string, string> = {},
     stream?: { body: ReadableStream<Uint8Array>; length: number },
     unsignedHeaders: Record<string, string> = {},
+    extraSignedHeaders: Record<string, string> = {},
   ): Promise<Response> {
     const path = objectPath(key);
     const amzDate = amzNow();
@@ -221,6 +224,7 @@ export function createS3Client(cfg: S3LiteConfig, fetchImpl: typeof fetch = fetc
     };
     if (contentType) headers['content-type'] = contentType;
     if (stream) headers['content-length'] = String(stream.length);
+    Object.assign(headers, extraSignedHeaders);
 
     const { authorization } = signV4({
       method,
@@ -399,6 +403,30 @@ export function createS3Client(cfg: S3LiteConfig, fetchImpl: typeof fetch = fetc
           throw new Error('S3 LIST returned a missing or repeated continuation token');
         seenTokens.add(token);
       }
+    },
+
+    async copyObject(fromKey, toKey) {
+      const res = await request(
+        'PUT',
+        toKey,
+        undefined,
+        undefined,
+        {},
+        undefined,
+        {},
+        {
+          'x-amz-copy-source': `/${encodeRfc3986(cfg.bucket)}/${encodeS3Key(fromKey)}`,
+        },
+      );
+      if (res.status === 404) {
+        await res.body?.cancel();
+        return false;
+      }
+      // A copy can fail after a 200 status line; the body then holds an <Error>.
+      const text = await res.text();
+      if (!res.ok || /<Error>/.test(text))
+        throw new Error(`S3 COPY "${fromKey}" failed: HTTP ${res.status} ${text.slice(0, 300)}`);
+      return true;
     },
 
     async deleteObject(key) {

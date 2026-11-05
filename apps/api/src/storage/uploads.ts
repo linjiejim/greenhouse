@@ -35,6 +35,7 @@ import {
   renameSync,
   createReadStream,
   createWriteStream,
+  copyFileSync,
 } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -692,4 +693,45 @@ export async function putObjectStreamAtKey(
   } finally {
     if (existsSync(tmp)) unlinkSync(tmp);
   }
+}
+
+/** Copy an object to another key inside the store (server-side on COS/S3); false when the source is missing. */
+export async function copyObjectAtKey(fromKey: string, toKey: string): Promise<boolean> {
+  const s3 = getS3Client();
+  if (s3) return s3.copyObject(fromKey, toKey);
+  const cfg = getCosConfig();
+  if (cfg) {
+    const cos = getClient(cfg);
+    try {
+      await new Promise<void>((res, rej) =>
+        cos.putObjectCopy(
+          {
+            Bucket: cfg.bucket,
+            Region: cfg.region,
+            Key: toKey,
+            CopySource: `${cfg.bucket}.cos.${cfg.region}.myqcloud.com/${encodeURI(fromKey)}`,
+          },
+          (err) => (err ? rej(err) : res()),
+        ),
+      );
+      return true;
+    } catch (err) {
+      if ((err as { statusCode?: number })?.statusCode === 404) return false;
+      throw err;
+    }
+  }
+  const from = driveLocalPath(fromKey);
+  if (!existsSync(from)) return false;
+  const to = driveLocalPath(toKey);
+  const tmpDir = resolve(UPLOADS_DIR, '.tmp');
+  mkdirSync(tmpDir, { recursive: true });
+  const tmp = resolve(tmpDir, randomUUID());
+  try {
+    copyFileSync(from, tmp);
+    mkdirSync(dirname(to), { recursive: true });
+    renameSync(tmp, to);
+  } finally {
+    if (existsSync(tmp)) unlinkSync(tmp);
+  }
+  return true;
 }

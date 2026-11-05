@@ -86,6 +86,18 @@ describe('local backend', () => {
     expect(await store.head('test/round.bin')).toBeNull();
   });
 
+  it('copies inside the namespace and lists by prefix', async () => {
+    const { objects } = await load();
+    const store = objects.pluginObjects('fixture');
+    await store.put('test/staging/a/one.bin', Buffer.from('abc'), 'application/octet-stream');
+    await store.put('test/staging/a/two.bin', Buffer.from('de'), 'application/octet-stream');
+    expect((await store.list('test/staging/a/')).sort()).toEqual(['test/staging/a/one.bin', 'test/staging/a/two.bin']);
+    expect(await store.copy('test/staging/a/one.bin', 'test/final/one.bin')).toBe(true);
+    expect((await store.get('test/final/one.bin'))?.buffer.toString()).toBe('abc');
+    expect(await store.copy('test/staging/a/missing.bin', 'test/final/x.bin')).toBe(false);
+    await expect(store.list('../other/')).rejects.toThrow(/Invalid plugin object key/);
+  });
+
   it('serves only media inline; everything else is an attachment', async () => {
     const { objects, token } = await load();
     const store = objects.pluginObjects('fixture');

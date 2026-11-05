@@ -384,7 +384,11 @@ const src = await objects.readUrl('a/thumb.webp', { disposition: 'inline' });
 - A ticket is a capability like a presigned URL (signed, one object, one operation, expiring);
   it carries no member credential and reaches nothing once the plugin is disabled. Authorize the
   member in your own route before handing one out.
-- `put`/`get` keep bytes in memory; `open(key, range)` streams (hashing a large file).
+- `put`/`get` keep bytes in memory; `open(key, range)` streams (hashing a large file);
+  `list(prefix)` lists keys; `copy(from, to)` copies inside the namespace server-side (≤ 5 GB).
+- An upload URL can be used until it expires. When bytes must not change after you accept them,
+  hand out targets under a staging key and `copy` to the final key on completion, so no browser
+  URL ever points at what you publish (the asset library does this).
 - `pnpm cli plugins drop` removes tables, not objects.
 
 `analyzeImages({ userId, images: [{ bytes }], prompt, json?, caller })` is the metered vision
