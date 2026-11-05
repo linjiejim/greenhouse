@@ -166,6 +166,18 @@ describe('uploading', () => {
     expect(thumb.headers.get('content-type')).toBe('image/jpeg');
   });
 
+  it('lets browsers write only staging keys and publishes them on complete', async () => {
+    const file = jpeg(`staging-${crypto.randomUUID()}`);
+    const { started, done } = await upload(alice, file);
+    const ticket = JSON.parse(
+      Buffer.from(started.targets!.original.url.split('/').pop()!.split('.')[0]!, 'base64url').toString(),
+    ) as { k: string };
+    expect(ticket.k).toMatch(new RegExp(`^staging/${started.asset.id}/[0-9a-z]+/original\\.jpg$`));
+    expect(done!.status).toBe(200);
+    expect(await objects.head(objectKeys.original(sha(file), 'jpg'))).toEqual({ size: file.length });
+    expect(await objects.list(objectKeys.stagingRoot(started.asset.id))).toEqual([]);
+  });
+
   it('recognises the same bytes from anyone: no second copy, the uploader and empty fields are added', async () => {
     const file = jpeg(`dup-${crypto.randomUUID()}`);
     const first = await upload(alice, file, { tags: ['a'] });
@@ -309,9 +321,11 @@ describe('the bin and removals stay consistent', () => {
     await put(api, started.targets.original, file);
     const store = assetStore(db);
     await db.executeRaw(
-      sql`UPDATE ext_assets_assets SET upload_expires_at = now() - interval '1 minute' WHERE id = ${started.asset.id}`,
+      sql`UPDATE ext_assets_assets SET updated_at = now() - interval '2 days' WHERE id = ${started.asset.id}`,
     );
-    expect(await store.claimPurge(started.asset.id, ['uploading'], { uploadsExpired: true })).toBeTruthy();
+    expect(
+      await store.claimPurge(started.asset.id, ['uploading'], { untouchedSince: new Date().toISOString() }),
+    ).toBeTruthy();
     expect((await api.request(`/api/ext/assets/assets/${started.asset.id}/complete`, json('POST'))).status).toBe(404);
     const retry = await api.request(
       '/api/ext/assets/uploads',
@@ -341,8 +355,9 @@ describe('the bin and removals stay consistent', () => {
       frame_count: 0,
       uploaded_by: alice.id,
     });
-    await store.setUploadExpiry(row!.id, new Date(Date.now() + 600_000).toISOString());
-    await db.executeRaw(sql`UPDATE ext_assets_assets SET created_at = now() - interval '2 days' WHERE id = ${row!.id}`);
+    await db.executeRaw(sql`UPDATE ext_assets_assets SET updated_at = now() - interval '2 days' WHERE id = ${row!.id}`);
+    // The owner starts a new attempt just before the sweep: the row is in use again.
+    expect(await store.renewUpload(row!.id)).toBeTruthy();
     await runCleanup();
     expect((await store.get(row!.id))!.status).toBe('uploading');
   });
@@ -512,10 +527,6 @@ describe('background work', () => {
     const forged = await upload(alice, jpeg(`v-real-${crypto.randomUUID()}`), { sha256: sha(liar) });
     // The forged row claims liar's hash while its original holds other bytes.
     expect(forged.started.status).toBe('upload');
-    // Nothing is verified while an upload target could still rewrite the bytes.
-    await runVerification(50);
-    expect((await assetStore(db).get(good.started.asset.id))!.verified_at).toBeNull();
-    await db.executeRaw(sql`UPDATE ext_assets_assets SET upload_expires_at = now() - interval '1 minute'`);
     for (let i = 0; i < 30; i++) {
       const store = assetStore(db);
       const [g, f] = [await store.get(good.started.asset.id), await store.get(forged.started.asset.id)];
@@ -545,7 +556,7 @@ describe('background work', () => {
     const { started } = await upload(alice, jpeg(`bin-${crypto.randomUUID()}`));
     await store.softDelete(started.asset.id, admin.id);
     await db.executeRaw(
-      sql`UPDATE ext_assets_assets SET created_at = now() - interval '2 days', deleted_at = now() - interval '31 days' WHERE id IN (${stale!.id}, ${started.asset.id})`,
+      sql`UPDATE ext_assets_assets SET updated_at = now() - interval '2 days', deleted_at = now() - interval '31 days' WHERE id IN (${stale!.id}, ${started.asset.id})`,
     );
     await runCleanup();
     expect(await store.get(stale!.id)).toBeUndefined();

@@ -27,9 +27,27 @@ export function assetObjectKeys(asset: Pick<AssetRow, 'sha256' | 'ext'>): string
   ];
 }
 
-/** Deleting a missing object succeeds on every backend; any other failure propagates so the row is kept for a retry. */
-export async function deleteAssetObjects(asset: Pick<AssetRow, 'sha256' | 'ext'>): Promise<void> {
+/**
+ * Every published and staged object of an asset. Deleting a missing object succeeds on every
+ * backend; any other failure propagates so the row is kept for a retry.
+ */
+export async function deleteAssetObjects(asset: Pick<AssetRow, 'id' | 'sha256' | 'ext'>): Promise<void> {
   for (const key of assetObjectKeys(asset)) await objects.delete(key);
+  for (const key of await objects.list(objectKeys.stagingRoot(asset.id))) await objects.delete(key);
+}
+
+/** Staging objects whose upload is no longer running (finished, purged, or a crashed complete). */
+export async function sweepStaging(limit = 2000): Promise<number> {
+  const keys = (await objects.list('staging/')).slice(0, limit);
+  const ids = [...new Set(keys.map((key) => key.split('/')[1]!).filter(Boolean))];
+  const live = await assetStore().uploadingIds(ids);
+  let swept = 0;
+  for (const key of keys)
+    if (!live.has(key.split('/')[1]!)) {
+      await objects.delete(key);
+      swept += 1;
+    }
+  return swept;
 }
 
 /** Stream the stored original and compare its sha256 with the one the browser claimed. */
@@ -102,7 +120,7 @@ export async function runCleanup(now = Date.now()): Promise<{ stale: number; pur
   let purged = 0;
   // Claim, delete objects, then drop the row: a failure leaves a `purging` row the next run retries.
   for (const asset of await store.staleUploads(staleBefore)) {
-    if (!(await store.claimPurge(asset.id, ['uploading'], { uploadsExpired: true }))) continue;
+    if (!(await store.claimPurge(asset.id, ['uploading'], { untouchedSince: staleBefore }))) continue;
     try {
       await deleteAssetObjects(asset);
       if (await store.removeRow(asset.id, 'purging')) stale += 1;
@@ -119,5 +137,6 @@ export async function runCleanup(now = Date.now()): Promise<{ stale: number; pur
       logger.warn('[assets] emptying the bin failed', { asset: asset.id, error: toErrorMessage(err) });
     }
   }
+  await sweepStaging().catch((err) => logger.warn('[assets] staging sweep failed', { error: toErrorMessage(err) }));
   return { stale, purged };
 }

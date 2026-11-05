@@ -228,28 +228,84 @@ function listQuery(c: Context<AppEnv>, me: Member): AssetListQuery | null {
 
 const UPLOAD_TTL_SEC = 3600;
 
+/** The staging and published key of every object an upload brings, in one list. */
+function uploadParts(asset: AssetRow, generation: string, withPreview: boolean) {
+  const at = (name: string) => objectKeys.staging(asset.id, generation, name);
+  return [
+    {
+      name: 'original',
+      staging: at(`original.${asset.ext}`),
+      final: objectKeys.original(asset.sha256, asset.ext),
+      type: asset.content_type,
+      max: asset.size,
+    },
+    ...(withPreview
+      ? [
+          {
+            name: 'thumb',
+            staging: at('thumb.jpg'),
+            final: objectKeys.thumb(asset.sha256),
+            type: DERIVED_TYPE,
+            max: MAX_THUMB_BYTES,
+          },
+          {
+            name: 'preview',
+            staging: at('preview.jpg'),
+            final: objectKeys.preview(asset.sha256),
+            type: DERIVED_TYPE,
+            max: MAX_PREVIEW_BYTES,
+          },
+          ...Array.from({ length: asset.frame_count }, (_, i) => ({
+            name: `frame-${i}`,
+            staging: at(`frame-${i}.jpg`),
+            final: objectKeys.frame(asset.sha256, i),
+            type: DERIVED_TYPE,
+            max: MAX_FRAME_BYTES,
+          })),
+        ]
+      : []),
+  ];
+}
+
 /**
- * Targets for every object of an unfinished upload. The row remembers when they expire:
- * byte verification waits until then, so nobody can still overwrite what it checked.
+ * Targets for a new upload attempt. Browsers only ever write under `staging/<id>/<generation>/`;
+ * complete copies what arrived to the content-addressed keys, so published bytes are written
+ * by the server alone and the background re-hash checks bytes nobody can change any more.
  */
 async function uploadTargets(asset: AssetRow) {
-  await assetStore().setUploadExpiry(asset.id, new Date(Date.now() + (UPLOAD_TTL_SEC + 60) * 1000).toISOString());
-  const target = (key: string, contentType: string, maxBytes: number) =>
-    objects.uploadUrl({ key, contentType, maxBytes, expiresInSec: UPLOAD_TTL_SEC });
+  const generation = await assetStore().renewUpload(asset.id);
+  if (!generation) return null;
+  const parts = uploadParts(asset, generation, asset.has_preview);
+  const targets = await Promise.all(
+    parts.map((part) =>
+      objects.uploadUrl({
+        key: part.staging,
+        contentType: part.type,
+        maxBytes: part.max,
+        expiresInSec: UPLOAD_TTL_SEC,
+      }),
+    ),
+  );
+  const byName = new Map(parts.map((part, i) => [part.name, targets[i]!]));
   return {
-    original: await target(objectKeys.original(asset.sha256, asset.ext), asset.content_type, asset.size),
+    original: byName.get('original')!,
     ...(asset.has_preview
       ? {
-          thumb: await target(objectKeys.thumb(asset.sha256), DERIVED_TYPE, MAX_THUMB_BYTES),
-          preview: await target(objectKeys.preview(asset.sha256), DERIVED_TYPE, MAX_PREVIEW_BYTES),
-          frames: await Promise.all(
-            Array.from({ length: asset.frame_count }, (_, i) =>
-              target(objectKeys.frame(asset.sha256, i), DERIVED_TYPE, MAX_FRAME_BYTES),
-            ),
-          ),
+          thumb: byName.get('thumb')!,
+          preview: byName.get('preview')!,
+          frames: Array.from({ length: asset.frame_count }, (_, i) => byName.get(`frame-${i}`)!),
         }
       : {}),
   };
+}
+
+/** Remove one asset's staging objects (every attempt); failures are left to the nightly sweep. */
+async function dropStaging(assetId: string): Promise<void> {
+  try {
+    for (const key of await objects.list(objectKeys.stagingRoot(assetId))) await objects.delete(key);
+  } catch {
+    // The cleanup job sweeps staging prefixes whose upload is no longer running.
+  }
 }
 
 export const assetRoutes = new Hono<AppEnv>()
@@ -324,9 +380,13 @@ export const assetRoutes = new Hono<AppEnv>()
         return fail('NOT_FOUND', 'collection not found');
       const join = async (existing: AssetRow) => {
         if (existing.status === 'purging') return fail('CONFLICT', 'this file is being removed; try again in a minute');
-        if (existing.status === 'uploading' && existing.uploaded_by === me.id)
-          // The same person retrying an unfinished upload: hand the targets out again.
-          return ok({ status: 'upload' as const, asset: await card(existing), targets: await uploadTargets(existing) });
+        if (existing.status === 'uploading' && existing.uploaded_by === me.id) {
+          // The same person retrying an unfinished upload: a fresh attempt.
+          const targets = await uploadTargets(existing);
+          return targets
+            ? ok({ status: 'upload' as const, asset: await card(existing), targets })
+            : fail('CONFLICT', 'this upload just finished or was removed; try again');
+        }
         await store.recordUploader(existing.id, me.id, name);
         if (existing.status === 'deleted')
           // In the bin: only a manager sees what it is (and can restore it).
@@ -361,7 +421,9 @@ export const assetRoutes = new Hono<AppEnv>()
       }
       await store.recordUploader(created.id, me.id, name);
       if (input.collection_id) await store.addToCollection(input.collection_id, [created.id], me.id);
-      return ok({ status: 'upload' as const, asset: await card(created), targets: await uploadTargets(created) });
+      const targets = await uploadTargets(created);
+      if (!targets) return fail('CONFLICT', 'upload raced; try again');
+      return ok({ status: 'upload' as const, asset: await card(created), targets });
     });
   })
 
@@ -376,23 +438,22 @@ export const assetRoutes = new Hono<AppEnv>()
         const asset = await store.get(id);
         if (!asset || asset.status !== 'uploading') return fail('NOT_FOUND', 'no unfinished upload with this id');
         if (asset.uploaded_by !== me.id && !(await canManage(me))) return fail('FORBIDDEN', 'not your upload');
+        if (!asset.upload_generation) return fail('CONFLICT', 'no upload attempt to complete');
+        const [original, ...derived] = uploadParts(asset, asset.upload_generation, asset.has_preview);
         // Trust the store, not the client: a direct upload is not size-capped by the bucket.
-        const original = await objects.head(objectKeys.original(asset.sha256, asset.ext));
-        if (!original || original.size !== asset.size)
-          return fail('INVALID_INPUT', original ? 'the stored file has the wrong size' : 'the file was not uploaded');
-        let preview = asset.has_preview;
-        if (preview) {
-          const sizes = await Promise.all([
-            objects.head(objectKeys.thumb(asset.sha256)),
-            objects.head(objectKeys.preview(asset.sha256)),
-            ...Array.from({ length: asset.frame_count }, (_, i) => objects.head(objectKeys.frame(asset.sha256, i))),
-          ]);
-          const caps = [MAX_THUMB_BYTES, MAX_PREVIEW_BYTES, ...sizes.slice(2).map(() => MAX_FRAME_BYTES)];
-          preview = sizes.every((s, i) => s !== null && s.size <= caps[i]);
-        }
+        const stored = await objects.head(original!.staging);
+        if (!stored || stored.size !== asset.size)
+          return fail('INVALID_INPUT', stored ? 'the stored file has the wrong size' : 'the file was not uploaded');
+        const sizes = await Promise.all(derived.map((part) => objects.head(part.staging)));
+        const preview = asset.has_preview && sizes.every((s, i) => s !== null && s.size <= derived[i]!.max);
+        // Publish: copy to the content-addressed keys no browser URL points at.
+        for (const part of [original!, ...(preview ? derived : [])])
+          if (!(await objects.copy(part.staging, part.final)))
+            return fail('INVALID_INPUT', 'an uploaded part disappeared');
         if (!preview && asset.has_preview) await store.markPreviewMissing(asset.id);
         const active = await store.markActive(asset.id, preview && (await aiEnabled()) ? 'pending' : 'skipped');
         if (!active) return fail('CONFLICT', 'upload already completed');
+        await dropStaging(asset.id);
         const similarHits = await store.recordSimilar(active);
         return ok({ asset: await card(active), similar: similarHits.length });
       },
@@ -422,8 +483,9 @@ export const assetRoutes = new Hono<AppEnv>()
       'readAsset',
       async () => {
         const asset = await assetStore().get(id);
-        if (!asset || asset.status === 'invalid' || asset.status === 'uploading') return fail('NOT_FOUND', 'not found');
-        if (asset.status === 'deleted' && !(await canManage(me))) return fail('NOT_FOUND', 'not found');
+        // The library shows active assets; managers also open what is in the bin.
+        const visible = asset?.status === 'active' || (asset?.status === 'deleted' && (await canManage(me)));
+        if (!asset || !visible) return fail('NOT_FOUND', 'not found');
         return ok({ asset: await detail(asset, me) });
       },
       id,
@@ -445,7 +507,8 @@ export const assetRoutes = new Hono<AppEnv>()
         if (!(await canEdit(me, asset)))
           return fail('FORBIDDEN', 'only its uploaders or a library manager can edit it');
         const updated = await store.update(id, input);
-        return ok({ asset: await detail(updated!, me) });
+        if (!updated) return fail('NOT_FOUND', 'not found');
+        return ok({ asset: await detail(updated, me) });
       },
       id,
     );

@@ -59,6 +59,9 @@ export function maxBytesFor(kind: AssetKind): number {
 export const DERIVED_TYPE = 'image/jpeg';
 
 export const objectKeys = {
+  /** Where one upload attempt's browser writes land, before complete publishes them. */
+  staging: (assetId: string, generation: string, name: string) => `staging/${assetId}/${generation}/${name}`,
+  stagingRoot: (assetId: string) => `staging/${assetId}/`,
   original: (sha256: string, ext: string) => `assets/${sha256}/original.${ext}`,
   thumb: (sha256: string) => `assets/${sha256}/thumb.jpg`,
   preview: (sha256: string) => `assets/${sha256}/preview.jpg`,

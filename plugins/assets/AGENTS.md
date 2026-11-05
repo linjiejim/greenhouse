@@ -2,7 +2,9 @@
 
 - Shared plugin rules: [root AGENTS.md](../../AGENTS.md) (Plugins) and [EXTENDING.md](../../EXTENDING.md); this file lists only asset-library rules.
 - One row per sha256 (unique index); objects are content-addressed under `assets/<sha256>/`. Never key an object by row id or file name.
-- The browser's sha256, dimensions, dHash and previews are claims: `complete` checks sizes with `head()`, the worker re-hashes originals and invalidates mismatches.
+- Browsers write only under `staging/<id>/<generation>/`; `complete` checks sizes with `head()` and copies to the content-addressed keys, which no URL is ever issued for.
+- The browser's sha256, dimensions, dHash and previews are claims: the worker re-hashes published originals and invalidates mismatches.
+- Removal claims the row (`purging`) before deleting objects; complete, restore, merge and re-upload refuse a purging row.
 - Member fields (`title`, `description`, `tags`, `facets`, `source`) and `ai_*` fields stay separate; AI never writes member fields, only `acceptAi` copies them on a member's request.
 - Every write that changes a member or AI field goes through the store's `writeFields`/`insertUploading`, which recompute `display_title` and `search_a/b/c`.
 - Facet values are stored only when the configured facet offers them (`normalizeFacets`); facet keys are stable, renaming one orphans stored values.

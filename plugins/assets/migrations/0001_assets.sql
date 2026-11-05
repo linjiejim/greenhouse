@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS "ext_assets_assets" (
 	"ai_attempts" integer DEFAULT 0 NOT NULL,
 	"ai_started_at" timestamp with time zone,
 	"ai_at" timestamp with time zone,
-	"upload_expires_at" timestamp with time zone,
+	"upload_generation" text,
 	"verified_at" timestamp with time zone,
 	"uploaded_by" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,

@@ -443,23 +443,24 @@ export function createAssetStore(db: Db) {
 
     // ── Verification ──
 
-    /** Record when the upload targets just handed out stop working; the bytes are final after it. */
-    async setUploadExpiry(id: string, at: string): Promise<void> {
-      await db.update(assets).set({ upload_expires_at: at }).where(eq(assets.id, id));
+    /**
+     * Start a fresh upload attempt for an unfinished row: a new staging generation, and a touched
+     * `updated_at` so the stale sweep leaves it alone. Null when the row is no longer uploading.
+     */
+    async renewUpload(id: string): Promise<string | null> {
+      const [row] = await db
+        .update(assets)
+        .set({ upload_generation: newAssetId('ast').slice(4).toLowerCase(), updated_at: nowIso() })
+        .where(and(eq(assets.id, id), eq(assets.status, 'uploading')))
+        .returning({ generation: assets.upload_generation });
+      return row?.generation ?? null;
     },
 
-    /** Active, not yet verified, and no upload target can still write its objects. */
     async unverified(limit: number): Promise<AssetRow[]> {
       return db
         .select()
         .from(assets)
-        .where(
-          and(
-            eq(assets.status, 'active'),
-            sql`${assets.verified_at} IS NULL`,
-            sql`(${assets.upload_expires_at} IS NULL OR ${assets.upload_expires_at} < now())`,
-          ),
-        )
+        .where(and(eq(assets.status, 'active'), sql`${assets.verified_at} IS NULL`))
         .orderBy(asc(assets.created_at))
         .limit(limit);
     },
@@ -479,7 +480,7 @@ export function createAssetStore(db: Db) {
     async claimPurge(
       id: string,
       from: readonly AssetStatus[],
-      opts: { uploadsExpired?: boolean } = {},
+      opts: { untouchedSince?: string } = {},
     ): Promise<AssetRow | undefined> {
       const [row] = await db
         .update(assets)
@@ -488,10 +489,8 @@ export function createAssetStore(db: Db) {
           and(
             eq(assets.id, id),
             inArray(assets.status, [...from]),
-            // An unfinished upload whose owner just got fresh targets is not abandoned.
-            opts.uploadsExpired
-              ? sql`(${assets.upload_expires_at} IS NULL OR ${assets.upload_expires_at} < now())`
-              : undefined,
+            // An unfinished upload whose owner just started a new attempt is not abandoned.
+            opts.untouchedSince ? lt(assets.updated_at, opts.untouchedSince) : undefined,
           ),
         )
         .returning();
@@ -694,7 +693,7 @@ export function createAssetStore(db: Db) {
       return db
         .select()
         .from(assets)
-        .where(and(eq(assets.status, 'uploading'), lt(assets.created_at, before)))
+        .where(and(eq(assets.status, 'uploading'), lt(assets.updated_at, before)))
         .limit(100);
     },
 
@@ -708,6 +707,16 @@ export function createAssetStore(db: Db) {
             OR (${assets.status} = 'purging' AND ${assets.updated_at} < now() - interval '1 hour')`,
         )
         .limit(100);
+    },
+
+    /** Which of these ids still have a row that is uploading (their staging objects are live). */
+    async uploadingIds(ids: string[]): Promise<Set<string>> {
+      if (!ids.length) return new Set();
+      const rows = await db
+        .select({ id: assets.id })
+        .from(assets)
+        .where(and(inArray(assets.id, ids), eq(assets.status, 'uploading')));
+      return new Set(rows.map((r) => r.id));
     },
 
     async counts(): Promise<{ active: number; images: number; videos: number; bytes: number }> {

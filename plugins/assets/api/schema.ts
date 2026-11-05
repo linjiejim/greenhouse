@@ -69,9 +69,12 @@ export const assets = pgTable(
     ai_started_at: at('ai_started_at'),
     ai_at: at('ai_at'),
 
-    /** When the last upload targets handed out for this row stop working; bytes are final after it. */
-    upload_expires_at: at('upload_expires_at'),
-    /** When the server re-hashed the stored original (after `upload_expires_at`) and it matched `sha256`. */
+    /**
+     * The current upload attempt: browsers write only under `staging/<id>/<generation>/`; complete
+     * copies what arrived to the content-addressed keys, which no browser URL ever points at.
+     */
+    upload_generation: text('upload_generation'),
+    /** When the server re-hashed the published original and it matched `sha256`. */
     verified_at: at('verified_at'),
     uploaded_by: text('uploaded_by').notNull(),
     created_at: createdAt(),
