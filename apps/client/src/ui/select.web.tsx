@@ -7,7 +7,7 @@
  * `clearable` makes it a list filter (jim-uiux filters): no "All" choice; the empty option's text
  * is the unset label (dashed), a set filter shows "Label: value" with ✕ to clear.
  */
-import React, { Children, isValidElement, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Children, isValidElement, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Icon } from './core.web';
 import { Overlay } from './overlay.web';
 import { useT } from '../lib/i18n';
@@ -42,6 +42,9 @@ export function Select({
   className,
   style,
   'aria-label': ariaLabel,
+  'aria-describedby': describedBy,
+  'aria-invalid': invalid,
+  'aria-required': required,
   testID,
 }: {
   value?: string | number;
@@ -54,8 +57,13 @@ export function Select({
   className?: string;
   style?: React.CSSProperties;
   'aria-label'?: string;
+  /** Field hints and errors, as on a native control (forwarded to the trigger). */
+  'aria-describedby'?: string;
+  'aria-invalid'?: boolean | 'true' | 'false';
+  'aria-required'?: boolean;
   testID?: string;
 }) {
+  const listId = useId();
   const t = useT();
   const choices = useMemo(() => choicesOf(children), [children]);
   const current = String(value ?? '');
@@ -93,7 +101,11 @@ export function Select({
         role="combobox"
         aria-haspopup="listbox"
         aria-expanded={!!open}
+        aria-controls={open ? listId : undefined}
         aria-label={ariaLabel}
+        aria-describedby={describedBy}
+        aria-invalid={invalid}
+        aria-required={required}
         disabled={disabled}
         data-value={current}
         data-unset={clearable && !isSet ? '' : undefined}
@@ -122,6 +134,7 @@ export function Select({
       ) : null}
       {open ? (
         <Listbox
+          id={listId}
           choices={listed}
           current={current}
           point={open}
@@ -138,6 +151,7 @@ export function Select({
 }
 
 function Listbox({
+  id,
   choices,
   current,
   point,
@@ -145,6 +159,7 @@ function Listbox({
   pick,
   close,
 }: {
+  id: string;
   choices: Choice[];
   current: string;
   point: { x: number; y: number; width: number };
@@ -160,6 +175,7 @@ function Listbox({
   let lastGroup: string | undefined;
   return (
     <Overlay
+      id={id}
       role="listbox"
       modal={false}
       label={label}

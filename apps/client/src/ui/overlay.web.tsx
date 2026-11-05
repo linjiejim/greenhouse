@@ -74,7 +74,10 @@ export function Overlay({
   trapTab = true,
   initialFocus = 'first',
   size,
+  id,
 }: {
+  /** The panel's id (a combobox's aria-controls points at its listbox). */
+  id?: string;
   children: React.ReactNode;
   onClose: () => void;
   modal?: boolean;
@@ -163,6 +166,7 @@ export function Overlay({
     >
       <div
         ref={panel}
+        id={id}
         data-testid={testID}
         role={role}
         aria-modal={modal && interactive ? true : undefined}

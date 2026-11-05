@@ -25,8 +25,10 @@ test('project members: a manager adds, re-roles and removes members in the dialo
   await expect(dialog.getByRole('button', { name: '移除林杰' })).toHaveCount(0);
   // only people who are not members yet are offered
   const person = dialog.getByRole('combobox', { name: '成员', exact: true });
-  await expect(person.locator('option')).toHaveText(['选择一位成员', '赵敏']);
-  await choose(person, 'usr_zhao');
+  await expect(person).toContainText('选择一位成员');
+  await person.click();
+  await expect(page.getByRole('listbox').getByRole('option')).toHaveText(['选择一位成员', '赵敏']);
+  await page.getByRole('listbox').locator('[data-value="usr_zhao"]').click();
   await choose(dialog.getByRole('combobox', { name: '角色', exact: true }), 'owner');
   await dialog.getByRole('button', { name: '添加', exact: true }).click();
   await expect(list).toContainText('赵敏');
@@ -101,10 +103,12 @@ test('document sharing: the owner shares a private document, changes access and 
   await expect(list).toContainText('王宁');
   const person = dialog.getByRole('combobox', { name: '成员', exact: true });
   // everyone without a grant, by name (the order follows the browser's collation)
-  await expect(person.locator('option')).toHaveCount(3);
-  await expect(person).toContainText('钱多');
-  await expect(person).toContainText('赵敏');
-  await choose(person, 'usr_zhao');
+  await person.click();
+  const people = page.getByRole('listbox').getByRole('option');
+  await expect(people).toHaveCount(3);
+  await expect(page.getByRole('listbox')).toContainText('钱多');
+  await expect(page.getByRole('listbox')).toContainText('赵敏');
+  await page.getByRole('listbox').locator('[data-value="usr_zhao"]').click();
   await choose(dialog.getByRole('combobox', { name: '权限', exact: true }), 'editor');
   await dialog.getByRole('button', { name: '共享', exact: true }).click();
   await expect(list).toContainText('赵敏');
