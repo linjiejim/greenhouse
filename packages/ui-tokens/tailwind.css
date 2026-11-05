@@ -1,14 +1,126 @@
 /*
- * Tailwind v4 theme for plugin embeds: the semantic colour names the 3.x web app used
- * (bg-surface, text-fg-muted, border-edge, bg-accent, text-cat-blue …) mapped onto the --gh-*
- * tokens the host sends to an embed. Import it after Tailwind:
+ * Tailwind v4 preset for plugin embeds. Import it after Tailwind:
  *
  *   @import "tailwindcss";
  *   @import "@greenhouse/ui-tokens/tailwind.css";
  *
- * Every colour follows the host's theme, brand and light/dark switch at run time.
+ * It gives an embed the host's look: colours that follow the host's theme, brand and light/dark
+ * switch at run time, the type scale (text-caption … text-display), radii, elevation, motion,
+ * Nunito and a `dark:` variant on the host's theme. The React kit (`@greenhouse/ui-tokens/react`)
+ * is drawn from these names, and this file makes Tailwind scan it.
+ *
+ * Two vocabularies: the jim-uiux / shadcn names (bg-background, text-foreground,
+ * text-muted-foreground, border-border, bg-primary, bg-hover, bg-selected …) for new code, and the
+ * 3.x names below them (bg-surface, text-fg-muted, border-edge …) kept for existing pages.
+ * `accent` stays the brand colour here (3.x meaning); the hover fill is `hover`.
  */
+@source "./src/react";
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@font-face {
+  font-family: Nunito;
+  font-style: normal;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url('./fonts/nunito-variable.woff2') format('woff2');
+}
+
+@theme {
+  --font-sans:
+    Nunito, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC',
+    system-ui, sans-serif;
+
+  /* The type scale (apps/client/DESIGN.md Tokens): nothing renders below 12px. */
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-label: 13px;
+  --text-label--line-height: 18px;
+  --text-body-sm: 13px;
+  --text-body-sm--line-height: 20px;
+  --text-body: 14px;
+  --text-body--line-height: 22px;
+  --text-body-lg: 16px;
+  --text-body-lg--line-height: 26px;
+  --text-title-sm: 15px;
+  --text-title-sm--line-height: 22px;
+  --text-title: 18px;
+  --text-title--line-height: 26px;
+  --text-title-lg: 22px;
+  --text-title-lg--line-height: 30px;
+  --text-display: 28px;
+  --text-display--line-height: 36px;
+
+  /* Radii by role: controls 8, menus and dialogs 12, cards 16, phone sheets 24. */
+  --radius-control: 8px;
+  --radius-menu: 12px;
+  --radius-dialog: 12px;
+  --radius-card: 16px;
+  --radius-sheet: 24px;
+
+  --animate-fade-in: gh-fade-in 200ms cubic-bezier(0.05, 0.7, 0.1, 1);
+  --animate-pop-in: gh-pop-in 200ms cubic-bezier(0.05, 0.7, 0.1, 1);
+  --animate-slide-in-right: gh-slide-in-right 240ms cubic-bezier(0.05, 0.7, 0.1, 1);
+  --animate-slide-in-up: gh-slide-in-up 240ms cubic-bezier(0.05, 0.7, 0.1, 1);
+
+  @keyframes gh-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes gh-pop-in {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+  }
+  @keyframes gh-slide-in-right {
+    from {
+      transform: translateX(24px);
+      opacity: 0;
+    }
+  }
+  @keyframes gh-slide-in-up {
+    from {
+      transform: translateY(24px);
+      opacity: 0;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [class*='animate-'] {
+    animation-name: gh-fade-in !important;
+  }
+}
+
 @theme inline {
+  /* jim-uiux / shadcn names. */
+  --color-background: var(--gh-background);
+  --color-foreground: var(--gh-label);
+  --color-muted-foreground: var(--gh-secondary-label);
+  --color-faint-foreground: var(--gh-tertiary-label);
+  --color-card: var(--gh-secondary-grouped-background);
+  --color-popover: var(--gh-secondary-grouped-background);
+  --color-sunken: var(--gh-secondary-background);
+  --color-muted: var(--gh-tertiary-fill);
+  --color-hover: var(--gh-quaternary-fill);
+  --color-pressed: var(--gh-tertiary-fill);
+  --color-selected: var(--gh-accent-fill);
+  --color-border: color-mix(in srgb, var(--gh-opaque-separator) 70%, var(--gh-background));
+  --color-input: var(--gh-separator);
+  --color-ring: var(--gh-accent);
+  --color-primary: var(--gh-accent);
+  --color-primary-foreground: var(--gh-on-accent);
+  --color-primary-hover: color-mix(in srgb, var(--gh-accent) 88%, var(--gh-label));
+  --color-destructive-foreground: var(--gh-on-tint);
+  --color-destructive-subtle: var(--gh-red-fill);
+  --color-scrim: var(--gh-scrim);
+
+  --shadow-control: var(--gh-shadow-control);
+  --shadow-popover: var(--gh-shadow-floating);
+  --shadow-overlay: var(--gh-shadow-floating);
+
+  /* 3.x names. */
   --color-surface-canvas: var(--gh-background);
   --color-surface-chrome: var(--gh-sidebar-background);
   --color-surface: var(--gh-tertiary-background);
@@ -24,7 +136,7 @@
 
   --color-edge: var(--gh-separator);
   --color-edge-strong: var(--gh-opaque-separator);
-  --color-logo-safe: #ffffff;
+  --color-logo-safe: var(--gh-on-tint);
 
   --color-primary-50: color-mix(in srgb, var(--gh-accent) 6%, var(--gh-background));
   --color-primary-100: color-mix(in srgb, var(--gh-accent) 12%, var(--gh-background));

@@ -111,6 +111,7 @@ export const en = {
     moreActions: 'More actions',
   },
   common: {
+    undo: 'Undo',
     loading: 'Loading…',
     cancel: 'Cancel',
     ok: 'OK',

@@ -12,6 +12,7 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
     alias: [
       { find: '@greenhouse/ui-tokens/tailwind.css', replacement: resolve(repo, 'packages/ui-tokens/tailwind.css') },
+      { find: '@greenhouse/ui-tokens/react', replacement: resolve(repo, 'packages/ui-tokens/src/react/index.ts') },
       { find: '@greenhouse/ui-tokens', replacement: resolve(repo, 'packages/ui-tokens/src/index.ts') },
       { find: /^@greenhouse\/types\/(.*)$/, replacement: resolve(repo, 'packages/types/src/$1') },
     ],

@@ -8,6 +8,8 @@ interface LibraryState {
   config: LibraryConfig | null;
   people: Map<string, string>;
   collections: Collection[];
+  /** Collections have answered once (an empty list before that is not "no collections"). */
+  collectionsState: 'loading' | 'ready' | 'failed';
   loadConfig(): Promise<void>;
   loadPeople(): Promise<void>;
   loadCollections(): Promise<void>;
@@ -17,6 +19,7 @@ export const useLibrary = create<LibraryState>((set) => ({
   config: null,
   people: new Map(),
   collections: [],
+  collectionsState: 'loading',
   async loadConfig() {
     set({ config: await api.config() });
   },
@@ -24,7 +27,12 @@ export const useLibrary = create<LibraryState>((set) => ({
     set({ people: new Map((await api.people()).map((p) => [p.id, p.name])) });
   },
   async loadCollections() {
-    set({ collections: (await api.collections()).collections });
+    try {
+      set({ collections: (await api.collections()).collections, collectionsState: 'ready' });
+    } catch (error) {
+      set((s) => ({ collectionsState: s.collectionsState === 'ready' ? 'ready' : 'failed' }));
+      throw error;
+    }
   },
 }));
 

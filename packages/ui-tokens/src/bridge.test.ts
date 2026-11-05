@@ -89,3 +89,65 @@ it('paints in the theme the frame URL names before init arrives', () => {
   expect(onTheme).toHaveBeenCalledWith('dark');
   window.history.replaceState(null, '', '/');
 });
+
+it('asks the host to draw confirms and notices and resolves with its replies', async () => {
+  const post = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
+  const bridge = connectGreenhouse();
+  bridges.push(bridge);
+  message(init);
+  const answer = bridge.confirm({ title: 'Delete it?', confirmLabel: 'Delete', tone: 'danger' });
+  const sent = post.mock.calls.at(-1)?.[0] as { type: string; id: string };
+  expect(sent).toMatchObject({ type: EMBED_PROTOCOL.confirm, title: 'Delete it?', confirmLabel: 'Delete' });
+  message({ type: EMBED_PROTOCOL.confirmResult, id: 'someone-else', ok: true });
+  message({ type: EMBED_PROTOCOL.confirmResult, id: sent.id, ok: true });
+  expect(await answer).toBe(true);
+  const notice = bridge.notify({ kind: 'error', text: 'Failed', actionLabel: 'Retry' });
+  const shown = post.mock.calls.at(-1)?.[0] as { id: string };
+  message({ type: EMBED_PROTOCOL.notifyAction, id: shown.id });
+  expect(await notice).toBe('action');
+  expect(await bridge.notify({ kind: 'success', text: 'Saved' })).toBe('dismissed');
+});
+
+it('relays header actions, routes and an init timeout', async () => {
+  vi.useFakeTimers();
+  const post = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
+  const onTimeout = vi.fn();
+  const bridge = connectGreenhouse({ onTimeout, initTimeoutMs: 1000 });
+  bridges.push(bridge);
+  const pressed = vi.fn();
+  bridge.header([{ id: 'up', label: 'Upload', icon: 'Upload', onPress: pressed }]);
+  expect(post).toHaveBeenCalledWith(
+    { type: EMBED_PROTOCOL.header, actions: [{ id: 'up', label: 'Upload', icon: 'Upload' }] },
+    window.location.origin,
+  );
+  message({ type: EMBED_PROTOCOL.headerAction, id: 'up' });
+  expect(pressed).toHaveBeenCalledOnce();
+  bridge.route('#/?q=cat');
+  expect(post).toHaveBeenCalledWith({ type: EMBED_PROTOCOL.route, route: '#/?q=cat' }, window.location.origin);
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(onTimeout).toHaveBeenCalledOnce();
+});
+
+it('does not time out once the host answered, and a disconnect declines pending confirms', async () => {
+  vi.useFakeTimers();
+  vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
+  const onTimeout = vi.fn();
+  const bridge = connectGreenhouse({ onTimeout, initTimeoutMs: 1000 });
+  message(init);
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(onTimeout).not.toHaveBeenCalled();
+  const pending = bridge.confirm({ title: 'Leave?', confirmLabel: 'Leave' });
+  bridge.disconnect();
+  expect(await pending).toBe(false);
+});
+
+it('settles a notice with an action when the host reports it gone', async () => {
+  const post = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {});
+  const bridge = connectGreenhouse();
+  bridges.push(bridge);
+  message(init);
+  const undo = bridge.notify({ kind: 'undo', text: 'Moved', actionLabel: 'undo' });
+  const shown = post.mock.calls.at(-1)?.[0] as { id: string };
+  message({ type: EMBED_PROTOCOL.notifyDismissed, id: shown.id });
+  expect(await undo).toBe('dismissed');
+});

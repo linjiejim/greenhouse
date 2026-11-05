@@ -203,6 +203,16 @@ export interface PluginEntitySchema {
  *               `greenhouse:title` { title }
  *               `greenhouse:sendPrompt` { text }           (fill the composer, never send)
  *               `greenhouse:token-refresh`
+ *               `greenhouse:confirm` { id, title, body?, confirmLabel, tone? }  (host asks; replies
+ *                                                          `greenhouse:confirm-result` { id, ok })
+ *               `greenhouse:notify` { id, kind, text, actionLabel? } (host shows it; a press on the
+ *                                                          action replies `greenhouse:notify-action` { id },
+ *                                                          its end without one `greenhouse:notify-dismissed` { id })
+ *               `greenhouse:header` { actions }            (icon actions in the host's title bar; a
+ *                                                          press replies `greenhouse:header-action` { id })
+ *               `greenhouse:route` { route }               (the page's own view, `#/…`: kept in the
+ *                                                          host address so it reloads and shares)
+ * Confirms and notices are drawn by the host so they cover the whole app and behave like its own.
  */
 export const EMBED_PROTOCOL = {
   init: 'greenhouse:init',
@@ -213,7 +223,45 @@ export const EMBED_PROTOCOL = {
   title: 'greenhouse:title',
   sendPrompt: 'greenhouse:sendPrompt',
   tokenRefresh: 'greenhouse:token-refresh',
+  confirm: 'greenhouse:confirm',
+  confirmResult: 'greenhouse:confirm-result',
+  notify: 'greenhouse:notify',
+  notifyAction: 'greenhouse:notify-action',
+  notifyDismissed: 'greenhouse:notify-dismissed',
+  header: 'greenhouse:header',
+  headerAction: 'greenhouse:header-action',
+  route: 'greenhouse:route',
 } as const;
+
+/** A confirm the page asks the host to draw. The title is a question; the button repeats its verb. */
+export interface EmbedConfirmRequest {
+  id: string;
+  title: string;
+  body?: string;
+  confirmLabel: string;
+  /** Defaults to Cancel; a discard prompt says Keep editing. */
+  cancelLabel?: string;
+  tone?: 'default' | 'danger';
+}
+
+/**
+ * A notice the page asks the host to show. `success`/`info`/`warning` fade; `undo` stays 8 s with
+ * its action; `error` stays until dismissed and may offer a retry action.
+ */
+export interface EmbedNotifyRequest {
+  id: string;
+  kind: 'success' | 'info' | 'warning' | 'undo' | 'error';
+  text: string;
+  actionLabel?: string;
+}
+
+/** An icon action the page places in the host's title bar; `icon` is a lucide name. */
+export interface EmbedHeaderAction {
+  id: string;
+  label: string;
+  icon: string;
+  disabled?: boolean;
+}
 
 export interface EmbedInitMessage {
   type: typeof EMBED_PROTOCOL.init;

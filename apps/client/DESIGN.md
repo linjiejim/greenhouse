@@ -30,13 +30,21 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 - Every overlay restores focus when dismissed; Escape closes the top one.
 - Entry pages (activation, OAuth consent, a connector's sign-in return, a binding result) are one card on the brand canvas like sign-in, without the rail; the primary action is the accent button, the way back secondary.
 
+## Embeds
+
+- Plugin pages take their look from `@greenhouse/ui-tokens/tailwind.css` and their controls from `@greenhouse/ui-tokens/react` (or the same specs by hand, as Example does); `scripts/check-plugin-ui.mjs` keeps them on the preset.
+- The host draws what must cover the whole app: confirms (`greenhouse:confirm`) and notices (`greenhouse:notify`); the page draws its own dialogs and drawers inside the frame, one layer stack, one Escape per layer.
+- One header: the host bar carries the page title, the open object's title (restored on close) and up to four icon actions (`greenhouse:header`); the page adds tabs or a toolbar below it, never a second title.
+- A page's own view (list filters, the open object) lives in the host address through `greenhouse:route`, so it reloads and shares.
+- A page that gets no init within 10 s shows the failed state with Retry, never an endless spinner.
+
 ## Components (use these, do not re-create them)
 
 - Pages: `Screen` / `SheetScreen` (`src/ui/screen.tsx`). Places on wide screens: `Place`, `PlaceSidebar`, `PlaceRow`, `PlaceEmpty`, `PlaceContext` (`src/ui/place.web.tsx`).
 - Lists: `Section`, `Row`, `Card`, `SectionHeader`, `SectionFooter` (`src/ui/list.tsx`); virtualized rows pass `rowPosition(index, count)`. Desktop data grids use `.gh-data-grid`.
 - Empty, loading, failed: `EmptyState` (native and phone), `PlaceEmpty` with `icon` + `title` (+ `action`) in wide places, `Skeleton` for a list's first load, `LoadingState` for small waits.
 - Capsules: `Chip` for links, files and objects; `Badge` for status. Avatars: `Avatar` for people (initial), `AssistantAvatar` / `AgentAvatar` for agents (plants); never a plant for a person. File kinds: `FileIcon`.
-- Dialog helpers: `confirmAction`, `promptText`, `alertError` (`src/ui/dialogs`); success goes through `toast`.
+- Dialog helpers: `confirmAction`, `promptText`, `alertError` (`src/ui/dialogs`); notices go through `notify` (`src/ui/notify`; `toast` is its success).
 - Web controls are defined once, in the Controls section of `src/shell/client.css`; feature CSS (admin, automations, entry) holds layout only, never another button, field or switch.
 - Buttons: `.gh-primary` (one per surface), `.gh-secondary-button`, `.gh-icon-button` (32 square, icon only, needs `aria-label`), `.gh-link-button` (quiet inline action); add `.gh-danger` when destructive.
 - Forms: `.gh-form` stacks fields inside `DialogBody`; `.gh-form-grid` for two columns, `.gh-form-section` with a `legend` (or `.gh-form-heading`) for groups, `.gh-button-row` for a row of actions.

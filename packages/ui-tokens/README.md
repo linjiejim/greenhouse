@@ -29,6 +29,13 @@ frames always validate the exact parent window and origin.
 The default parent origin is the page's own origin. An installed desktop plugin
 must explicitly allowlist the `host_origin=tauri://localhost` hint before passing
 that exact value as `hostOrigin`. Never trust arbitrary query-string origins.
+Confirms and notices are drawn by the host: `host.confirm({ title, confirmLabel, tone })`
+resolves the member's answer; `host.notify({ kind, text, actionLabel })` resolves `action` when
+its action is pressed. `host.header(actions)` puts icon actions in the host bar, `host.route('#/…')`
+keeps the page's view in the host address, and `onTimeout` fires when no init arrives in 10 s.
+
 See plugins/example/ui and plugins/example/scripts/build-ui.mjs for a dependency-free
-ES module build using this package. A bundled embed can `@import "@greenhouse/ui-tokens/tailwind.css"`
-after Tailwind for the 3.x semantic colour names on the --gh-* tokens.
+ES module build using this package. A bundled embed imports the preset after Tailwind
+(`@import "@greenhouse/ui-tokens/tailwind.css"`: colours, type scale, radii, elevation, motion,
+Nunito, a `dark:` variant on the host theme) and, with React, the kit from
+`@greenhouse/ui-tokens/react` (see EXTENDING.md and plugins/assets/ui-src).

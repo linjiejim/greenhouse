@@ -1,5 +1,12 @@
 /** React-free declarative surface protocol. Never trust framed page messages or URLs. */
-import type { EntityFieldSchema, EntityViewSchema, PluginEntitySchema } from '../shared/plugins';
+import type {
+  EmbedConfirmRequest,
+  EmbedHeaderAction,
+  EmbedNotifyRequest,
+  EntityFieldSchema,
+  EntityViewSchema,
+  PluginEntitySchema,
+} from '../shared/plugins';
 import { categorical } from '../theme/palette';
 export type EntityRow = Record<string, unknown> & { id: string };
 export function entityQuery(
@@ -141,7 +148,50 @@ export type EmbedMessage =
   | { type: 'greenhouse:ready' | 'greenhouse:token-refresh' }
   | { type: 'greenhouse:navigate'; href: string }
   | { type: 'greenhouse:title'; title: string }
-  | { type: 'greenhouse:sendPrompt'; text: string };
+  | { type: 'greenhouse:sendPrompt'; text: string }
+  | ({ type: 'greenhouse:confirm' } & EmbedConfirmRequest)
+  | ({ type: 'greenhouse:notify' } & EmbedNotifyRequest)
+  | { type: 'greenhouse:header'; actions: EmbedHeaderAction[] }
+  | { type: 'greenhouse:route'; route: string };
+
+const shortText = (value: unknown, max = 300): value is string =>
+  typeof value === 'string' && value.trim().length > 0 && value.length <= max;
+const requestId = (value: unknown): value is string => typeof value === 'string' && /^[\w-]{1,64}$/.test(value);
+
+/** The host draws what a page asks for; anything malformed or oversized is dropped. */
+function hostRequest(m: Record<string, unknown>): EmbedMessage | null {
+  if (m.type === 'greenhouse:confirm') {
+    if (!requestId(m.id) || !shortText(m.title) || !shortText(m.confirmLabel, 40)) return null;
+    if (m.body !== undefined && !shortText(m.body, 1000)) return null;
+    if (m.cancelLabel !== undefined && !shortText(m.cancelLabel, 40)) return null;
+    return {
+      type: m.type,
+      id: m.id,
+      title: m.title,
+      body: m.body as string | undefined,
+      confirmLabel: m.confirmLabel,
+      cancelLabel: m.cancelLabel as string | undefined,
+      tone: m.tone === 'danger' ? 'danger' : 'default',
+    };
+  }
+  if (m.type === 'greenhouse:notify') {
+    const kinds = ['success', 'info', 'warning', 'undo', 'error'] as const;
+    const kind = kinds.find((k) => k === m.kind);
+    if (!requestId(m.id) || !kind || !shortText(m.text, 500)) return null;
+    if (m.actionLabel !== undefined && !shortText(m.actionLabel, 40)) return null;
+    return { type: m.type, id: m.id, kind, text: m.text, actionLabel: m.actionLabel as string | undefined };
+  }
+  if (m.type === 'greenhouse:header') {
+    if (!Array.isArray(m.actions) || m.actions.length > 4) return null;
+    const actions: EmbedHeaderAction[] = [];
+    for (const a of m.actions as Record<string, unknown>[]) {
+      if (!a || !requestId(a.id) || !shortText(a.label, 40) || !shortText(a.icon, 40)) return null;
+      actions.push({ id: a.id, label: a.label, icon: a.icon, disabled: a.disabled === true });
+    }
+    return { type: m.type, actions };
+  }
+  return null;
+}
 export function embedMessage(
   raw: unknown,
   origin: string,
@@ -158,6 +208,10 @@ export function embedMessage(
   if (!value || typeof value !== 'object') return null;
   const m = value as Record<string, unknown>;
   if (m.type === 'greenhouse:ready' || m.type === 'greenhouse:token-refresh') return { type: m.type };
+  if (m.type === 'greenhouse:confirm' || m.type === 'greenhouse:notify' || m.type === 'greenhouse:header')
+    return hostRequest(m);
+  if (m.type === 'greenhouse:route')
+    return typeof m.route === 'string' && /^#\/[^\s]{0,1000}$/.test(m.route) ? { type: m.type, route: m.route } : null;
   const key =
     m.type === 'greenhouse:navigate'
       ? 'href'

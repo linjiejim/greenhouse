@@ -4,7 +4,7 @@ import { useT, type StringKey } from '../i18n';
 import { useLibrary } from '../state';
 import { ACTIVE, useQueue, type BatchInfo, type QueueItem } from '../upload/queue';
 import { FacetPicker } from '../components/facets';
-import { Button, Dialog, Field, IconButton, Select, TagInput, TextArea, TextInput } from '../components/ui';
+import { Button, cx, Dialog, Field, IconButton, Select, TagInput, TextArea, TextInput } from '../components/ui';
 
 /** Ask for this batch's shared information, then queue every file. */
 export function BatchDialog({ files, onClose }: { files: File[]; onClose: () => void }) {
@@ -32,7 +32,7 @@ export function BatchDialog({ files, onClose }: { files: File[]; onClose: () => 
       }
     >
       <div className="flex flex-col gap-3">
-        {!one ? <p className="text-[13px] text-fg-muted">{t('batchInfoHint')}</p> : null}
+        {!one ? <p className="text-body-sm text-muted-foreground">{t('batchInfoHint')}</p> : null}
         {one ? (
           <Field label={t('title')}>
             <TextInput maxLength={200} value={info.title ?? ''} onChange={(e) => setInfo({ ...info, title: e.target.value })} />
@@ -52,14 +52,13 @@ export function BatchDialog({ files, onClose }: { files: File[]; onClose: () => 
           <TextInput maxLength={500} value={info.source ?? ''} onChange={(e) => setInfo({ ...info, source: e.target.value })} />
         </Field>
         <Field label={t('addToCollection')}>
-          <Select value={info.collection_id ?? ''} onChange={(e) => setInfo({ ...info, collection_id: e.target.value || undefined })}>
-            <option value="">—</option>
-            {collections.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
+          <Select
+            clearable
+            value={info.collection_id}
+            placeholder={t('noCollection')}
+            onChange={(collection_id) => setInfo({ ...info, collection_id })}
+            options={collections.map((c) => ({ value: c.id, label: c.name }))}
+          />
         </Field>
         {config?.facets.length ? (
           <FacetPicker facets={config.facets} value={info.facets} onChange={(facets) => setInfo({ ...info, facets })} />
@@ -88,6 +87,16 @@ export function UploadPanel() {
   const config = useLibrary((s) => s.config);
   const [collapsed, setCollapsed] = useState(false);
   const active = items.filter((i) => ACTIVE.has(i.status)).length;
+  const failures = items.filter((i) => i.status === 'failed').length;
+  // Everything went in: the panel leaves on its own after 4 s; it stays while anything failed.
+  useEffect(() => {
+    if (!open || !items.length || active || failures) return;
+    const timer = setTimeout(() => {
+      clearFinished();
+      setOpen(false);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [open, items.length, active, failures, clearFinished, setOpen]);
   useEffect(() => {
     // Leaving the page mid-upload would lose the remaining files.
     if (!active) return;
@@ -97,21 +106,29 @@ export function UploadPanel() {
   }, [active]);
   if (!open || !items.length) return null;
   const count = (s: QueueItem['status']) => items.filter((i) => i.status === s).length;
+  const summary = [
+    count('added') ? t('queueAdded', { n: count('added') }) : '',
+    count('duplicate') + count('binned') ? t('queueDupes', { n: count('duplicate') + count('binned') }) : '',
+    failures ? t('queueFailed', { n: failures }) : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <div
       data-testid="assets-upload-queue"
-      className="fixed right-4 bottom-4 z-30 flex max-h-[60vh] w-[360px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl border border-edge bg-surface-canvas shadow-xl">
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-edge px-3">
-        <span className="min-w-0 flex-1 truncate text-[13px] font-bold">
-          {active
-            ? `${t('queue')} · ${items.length - active}/${items.length}`
-            : t('queueDone', { added: count('added'), dupes: count('duplicate') + count('binned'), failed: count('failed') })}
+      role="region"
+      aria-label={t('queue')}
+      className="fixed right-4 bottom-[max(16px,env(safe-area-inset-bottom))] z-30 flex max-h-[60vh] w-[360px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-menu border border-border bg-popover shadow-popover">
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+        <span className="min-w-0 flex-1 truncate text-label font-semibold tabular-nums" aria-live="polite">
+          {active ? `${t('queue')} · ${items.length - active}/${items.length}` : summary || t('queueAllDone')}
         </span>
-        <IconButton label={collapsed ? 'expand' : 'collapse'} onClick={() => setCollapsed(!collapsed)}>
+        <IconButton compact label={collapsed ? t('expand') : t('collapse')} onClick={() => setCollapsed(!collapsed)}>
           {collapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </IconButton>
         {!active ? (
           <IconButton
+            compact
             label={t('close')}
             onClick={() => {
               clearFinished();
@@ -125,29 +142,33 @@ export function UploadPanel() {
       {collapsed ? null : (
         <ul className="min-h-0 flex-1 overflow-y-auto">
           {items.map((item) => (
-            <li key={item.id} className="flex items-center gap-2 border-b border-edge px-3 py-2 last:border-b-0">
+            <li key={item.id} className="flex items-center gap-2 border-b border-border px-3 py-2 last:border-b-0">
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px]" title={item.file.name}>
+                <div className="truncate text-body-sm" title={item.file.name}>
                   {item.file.name}
                 </div>
                 <div className="mt-1 flex items-center gap-2">
                   {ACTIVE.has(item.status) ? (
-                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-surface-muted">
-                      <div className="h-full bg-accent transition-[width]" style={{ width: `${Math.round(item.progress * 100)}%` }} />
+                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={Math.round(item.progress * 100)} aria-valuemin={0} aria-valuemax={100}>
+                      <div className="h-full bg-primary transition-[width]" style={{ width: `${Math.round(item.progress * 100)}%` }} />
                     </div>
                   ) : null}
                   <span
-                    className={`shrink-0 text-[12px] ${item.status === 'failed' ? 'text-danger' : 'text-fg-muted'}`}
+                    className={cx('shrink-0 text-caption tabular-nums', item.status === 'failed' ? 'text-destructive' : 'text-muted-foreground')}
                     title={item.error}
                   >
-                    {item.error === 'tooLarge' || item.error === 'unsupported' ? t(item.error) : t(LABEL[item.status])}
+                    {item.error === 'tooLarge' || item.error === 'unsupported'
+                      ? t(item.error)
+                      : item.status === 'uploading'
+                        ? `${t('uploading')} ${Math.round(item.progress * 100)}%`
+                        : t(LABEL[item.status])}
                   </span>
                 </div>
               </div>
               {item.status === 'added' ? <CheckCircle2 size={16} className="text-success" /> : null}
               {item.status === 'duplicate' || item.status === 'binned' ? (
                 <a href={item.assetId ? `#/asset/${encodeURIComponent(item.assetId)}` : undefined} title={t('duplicate')}>
-                  <CopyIcon size={16} className="text-fg-muted" />
+                  <CopyIcon size={16} className="text-muted-foreground" />
                 </a>
               ) : null}
               {item.status === 'failed' && item.error !== 'tooLarge' && item.error !== 'unsupported' && config ? (
@@ -155,7 +176,7 @@ export function UploadPanel() {
                   {t('retry')}
                 </Button>
               ) : item.status === 'failed' ? (
-                <CircleAlert size={16} className="text-danger" />
+                <CircleAlert size={16} className="text-destructive" />
               ) : null}
             </li>
           ))}

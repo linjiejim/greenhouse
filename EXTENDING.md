@@ -312,29 +312,68 @@ refused. Static assets are public and must contain no secrets or member data.
 `@greenhouse/ui-tokens` exports token names, generated light/dark values, brand resolution and
 `connectGreenhouse`. Its source of truth is `packages/ui/src/tokens`; run `pnpm tokens:build`.
 An embed receives every palette colour as `--gh-*` plus the category pairs (`--gh-cat-<name>`,
-`--gh-cat-<name>-fill`). `@greenhouse/ui-tokens/tailwind.css` is a Tailwind v4 theme mapping the
-3.x semantic names (`bg-surface`, `text-fg-muted`, `border-edge`, `bg-accent`, `text-cat-blue` …)
-onto them, so a ported React UI keeps its class names and follows the host's theme.
-The client constructs its own payload without importing the workspace package.
+`--gh-cat-<name>-fill`), the shadows and the scrim.
+
+`@greenhouse/ui-tokens/tailwind.css` is the Tailwind v4 preset that gives an embed the host's look:
+colours that follow the host's theme and brand (the jim-uiux names `bg-background`,
+`text-muted-foreground`, `border-border`, `bg-primary`, `bg-hover`, `bg-selected` …, and the 3.x
+names `bg-surface`, `text-fg-muted`, `border-edge` … for ported pages), the type scale
+(`text-caption` … `text-display`), role radii (`rounded-control/menu/dialog/card/sheet`),
+`shadow-popover/overlay`, entrance animations that fade only under reduced motion, bundled Nunito
+and a `dark:` variant on the host's theme. Arbitrary sizes and raw colours fail
+`scripts/check-plugin-ui.mjs` (see AGENTS.md).
+
+`@greenhouse/ui-tokens/react` is the React kit drawn from that preset; a page that uses React
+should use it rather than its own controls:
+
+```ts
+import { createEmbed, confirm, notify, useHostTitle, useHeaderActions } from '@greenhouse/ui-tokens/react';
+const embed = createEmbed({ title: (locale) => (locale === 'zh' ? '我的笔记' : 'My notes') });
+// embed.useEmbed() → { status: 'connecting' | 'ready' | 'failed', locale, user }; failed after 10 s without init
+// embed.embedFetch(url) → fetch with the plugin token, one renewal on 401
+if (await confirm({ title: 'Delete “Q3”?', confirmLabel: 'Delete', tone: 'danger' })) remove();
+notify.undo('Moved “Q3” to the bin', restore); // reversible: act now, offer Undo
+notify.error('Couldn’t save', { label: 'Retry', onRetry: save }); // stays until dismissed
+useHostTitle(open?.title); // the host bar shows the open object; the page title returns on close
+useHeaderActions([{ id: 'new', label: 'New note', icon: 'Plus', onPress: create }]);
+```
+
+The kit has `Button`, `IconButton`, `Field` (label, hint, error, required), `Input`, `TextArea`,
+`SearchInput`, `Select` (no "All" option; `clearable` for filters), `Badge`, `Spinner`, `Skeleton`
+with `useDelayedFlag` (after 300 ms, held 600 ms), `StateView` (empty, no-match, no-permission,
+error with Retry), `Dialog` (the host's fixed sizes; a sheet below 640) and `Drawer` with
+`DetailList` for viewing and editing a list object in place. Dialogs and drawers share one layer
+stack: one Escape closes one layer, only the lowest dims, Tab stays inside, focus returns, and
+`dirty` asks before dropping input. Confirms and notices are drawn by the host over the whole app.
+
+A page without a bundler uses the bridge directly (`plugins/example/ui`):
 
 ```ts
 import { connectGreenhouse } from '@greenhouse/ui-tokens';
-const host = connectGreenhouse({ onInit: ({ user }) => showMember(user) });
+const host = connectGreenhouse({ onInit: ({ user }) => showMember(user), onTimeout: showRetry });
 // Use host.token as the Bearer only after init, and only for this plugin's API.
 await host.refresh();
 host.title('My notes');
 host.navigate('/p/example/example-embed');
 host.sendPrompt('Help me organize these notes'); // opens an editable draft, never submits
+const ok = await host.confirm({ title: 'Delete this note?', confirmLabel: 'Delete', tone: 'danger' });
+host.notify({ kind: 'error', text: 'Couldn’t upload', actionLabel: 'Retry' }); // resolves 'action'
+host.header([{ id: 'new', label: 'New note', icon: 'Plus', onPress: create }]);
+host.route('#/notes?tag=work'); // the page's own view, kept in the host address
 // host.disconnect() on unmount
 ```
 
 The bridge uses `greenhouse:init` (theme, tokens/brand, locale, basic member, route, token),
 `greenhouse:ready`, `greenhouse:theme`, `greenhouse:token-refresh` (request),
 `greenhouse:token` (renewal response), `greenhouse:title`, `greenhouse:navigate` (a client route
-such as `/p/<plugin>/<page>`, or an object link such as `#/projects/<id>`) and
-`greenhouse:sendPrompt`. Both sides validate source window and exact origin. Themes update
-without replacing the frame. The helper keeps credentials in memory; refreshes deduplicate and
-time out after 15 seconds.
+such as `/p/<plugin>/<page>`, or an object link such as `#/projects/<id>`),
+`greenhouse:sendPrompt`, `greenhouse:confirm` / `greenhouse:confirm-result`,
+`greenhouse:notify` / `greenhouse:notify-action`, `greenhouse:header` /
+`greenhouse:header-action` and `greenhouse:route`. The host draws confirms (its own dialog, or the
+system alert on a phone) and notices (its stack: success and info 4 s, warning 6 s, undo 8 s, an
+error until dismissed); malformed or oversized requests are dropped. Both sides validate source
+window and exact origin. Themes update without replacing the frame. The helper keeps credentials
+in memory; refreshes deduplicate and time out after 15 seconds.
 
 `POST /api/ext-ui/token {plugin}` requires the full host session and issues a ten-minute
 credential bound to member, auth generation and plugin. It admits only that plugin's

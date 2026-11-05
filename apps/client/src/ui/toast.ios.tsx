@@ -17,7 +17,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { AccessibilityInfo, Platform, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, ReduceMotion, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FullWindowOverlay } from 'react-native-screens';
@@ -27,16 +27,22 @@ import { Icon, type IconName } from './core';
 import { Glass } from './glass';
 import { selectionTick } from './haptics';
 
+interface ToastAction {
+  label: string;
+  onPress: () => void;
+  /** The HUD left without its action being pressed. */
+  onDismiss?: () => void;
+}
 interface ToastState {
-  current: { id: number; message: string; icon?: IconName } | null;
-  show: (message: string, icon?: IconName) => void;
+  current: { id: number; message: string; icon?: IconName; action?: ToastAction; ms?: number } | null;
+  show: (message: string, icon?: IconName, action?: ToastAction, ms?: number) => void;
   clear: (id: number) => void;
 }
 
 let seq = 0;
 const useToastStore = create<ToastState>((set) => ({
   current: null,
-  show: (message, icon) => set({ current: { id: ++seq, message, icon } }),
+  show: (message, icon, action, ms) => set({ current: { id: ++seq, message, icon, action, ms } }),
   clear: (id) => set((s) => (s.current?.id === id ? { current: null } : s)),
 }));
 
@@ -44,6 +50,12 @@ const useToastStore = create<ToastState>((set) => ({
 export function toast(message: string, icon?: IconName): void {
   selectionTick();
   useToastStore.getState().show(message, icon);
+}
+
+/** A HUD with one action (Undo), shown longer so the action can be reached. */
+export function toastWithAction(message: string, action: ToastAction, ms = 8000, icon?: IconName): void {
+  selectionTick();
+  useToastStore.getState().show(message, icon, action, ms);
 }
 
 type Toast = NonNullable<ToastState['current']>;
@@ -63,7 +75,10 @@ export function ToastHost() {
     if (!current) return;
     const id = current.id;
     AccessibilityInfo.announceForAccessibility(current.message);
-    const timer = setTimeout(() => clear(id), 1800);
+    const timer = setTimeout(() => {
+      clear(id);
+      current.action?.onDismiss?.();
+    }, current.ms ?? 1800);
     return () => clearTimeout(timer);
   }, [current, clear]);
 
@@ -80,9 +95,9 @@ export function ToastHost() {
 
   const hud = (
     <View
-      pointerEvents="none"
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      pointerEvents={current?.action ? 'box-none' : 'none'}
+      accessibilityElementsHidden={!current?.action}
+      importantForAccessibility={current?.action ? 'auto' : 'no-hide-descendants'}
       style={[StyleSheet.absoluteFill, { paddingTop: insets.top + space.xs, alignItems: 'center' }]}
     >
       {current ? (
@@ -96,6 +111,18 @@ export function ToastHost() {
             <Text style={styles.text} numberOfLines={2}>
               {current.message}
             </Text>
+            {current.action ? (
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={12}
+                onPress={() => {
+                  clear(current.id);
+                  current.action?.onPress();
+                }}
+              >
+                <Text style={styles.action}>{current.action.label}</Text>
+              </Pressable>
+            ) : null}
           </Glass>
         </Animated.View>
       ) : null}
@@ -123,4 +150,5 @@ const useStyles = makeStyles((c) => ({
     maxWidth: 320,
   },
   text: { ...typo.subheadline, fontWeight: weight.semibold, color: c.label },
+  action: { ...typo.subheadline, fontWeight: weight.semibold, color: c.accent },
 }));

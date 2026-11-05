@@ -35,7 +35,7 @@ function encode(source: Source, width: number, height: number, edge: number, qua
   const ctx = canvas.getContext('2d');
   if (!ctx) return Promise.resolve(null);
   // JPEG has no alpha: transparent pixels become white, not black.
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = '#ffffff'; // design-allow: a JPEG preview of a transparent image gets a white ground
   ctx.fillRect(0, 0, w, h);
   ctx.drawImage(source, 0, 0, w, h);
   return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality));

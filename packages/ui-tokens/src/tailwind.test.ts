@@ -44,6 +44,30 @@ const LEGACY = [
   ]),
 ];
 
+// The jim-uiux / shadcn names new plugin code (and the React kit) uses.
+const SEMANTIC = [
+  'background',
+  'foreground',
+  'muted-foreground',
+  'faint-foreground',
+  'card',
+  'popover',
+  'sunken',
+  'muted',
+  'hover',
+  'pressed',
+  'selected',
+  'border',
+  'input',
+  'ring',
+  'primary',
+  'primary-foreground',
+  'primary-hover',
+  'destructive-foreground',
+  'destructive-subtle',
+  'scrim',
+];
+
 describe('tailwind.css embed theme', () => {
   it('maps only tokens the host sends, in both appearances', () => {
     for (const mode of ['light', 'dark'] as const) {
@@ -52,7 +76,17 @@ describe('tailwind.css embed theme', () => {
     }
   });
 
-  it('keeps every 3.x semantic colour name', () => {
-    expect(names.map((n) => n.slice('--color-'.length)).sort()).toEqual([...LEGACY].sort());
+  it('keeps every 3.x colour name beside the semantic ones', () => {
+    expect(names.map((n) => n.slice('--color-'.length)).sort()).toEqual([...LEGACY, ...SEMANTIC].sort());
+  });
+
+  it('gives embeds the type scale, role radii, elevation, Nunito and a host-driven dark variant', () => {
+    for (const name of ['caption', 'label', 'body', 'body-lg', 'title-sm', 'title', 'title-lg', 'display'])
+      expect(css).toContain(`--text-${name}:`);
+    for (const name of ['control', 'menu', 'dialog', 'card', 'sheet']) expect(css).toContain(`--radius-${name}:`);
+    expect(css).toContain('--shadow-overlay: var(--gh-shadow-floating)');
+    expect(css).toContain("url('./fonts/nunito-variable.woff2')");
+    expect(css).toMatch(/@custom-variant dark .*data-theme='dark'/);
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
   });
 });
