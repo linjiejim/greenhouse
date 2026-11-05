@@ -12,20 +12,26 @@ export default {
   core: '>=3.0 <5',
   surfaces: {
     nav: [
-      { id: 'example-embed', label: 'Example UI', icon: 'StickyNote', page: 'example-embed', placement: 'more' },
+      {
+        id: 'example-embed',
+        label: { en: 'Example UI', zh: '示例页面' },
+        icon: 'StickyNote',
+        page: 'example-embed',
+        placement: 'more',
+      },
     ] satisfies PluginNavItem[],
     pages: [
       {
         id: 'example-settings',
         kind: 'settings-form',
-        title: 'Example settings',
+        title: { en: 'Example settings', zh: '示例设置' },
         settings: ['example.greeting'],
         parent: 'administration',
       },
       {
         id: 'example-embed',
         kind: 'embed',
-        title: 'Example UI',
+        title: { en: 'Example UI', zh: '示例页面' },
         url: '/ext/example/ui/',
       },
     ] satisfies PluginPage[],

@@ -110,6 +110,7 @@ const ICONS = {
   sleep: ['moon.zzz', 'bedtime'],
   at: ['at', 'alternate_email'],
   alertCircle: ['exclamationmark.circle', 'error'],
+  info: ['info.circle', 'info'],
   // rating a reply (the filled one marks the rating given)
   thumbUp: ['hand.thumbsup', 'thumb_up'],
   thumbUpFill: ['hand.thumbsup.fill', 'thumb_up'],

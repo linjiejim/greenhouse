@@ -7,6 +7,7 @@
 import './admin.css';
 import React, { useId } from 'react';
 import { Place, PlaceEmpty } from '../ui/place.web';
+import { Tooltip } from '../ui/popover.web';
 import { DialogBody, Overlay, type DialogSize } from '../ui/overlay.web';
 import { Icon, type IconName } from '../ui/core';
 import { useT } from '../lib/i18n';
@@ -16,6 +17,7 @@ import type { WorkspaceFlagState } from './types';
 
 export function AdminPage({
   title,
+  info,
   actions,
   toolbar,
   tabs,
@@ -23,14 +25,31 @@ export function AdminPage({
   children,
 }: {
   title: string;
+  /** What the page is for: behind ⓘ in the bar, never a sentence under the title. */
+  info?: string;
   actions?: React.ReactNode;
   toolbar?: React.ReactNode;
   tabs?: React.ReactNode;
   testID?: string;
   children: React.ReactNode;
 }) {
+  const t = useT();
   return (
-    <Place title={title} actions={actions}>
+    <Place
+      title={title}
+      actions={
+        <>
+          {info ? (
+            <Tooltip label={info}>
+              <button type="button" className="gh-icon-button" aria-label={`${t('common.about')}: ${info}`}>
+                <Icon name="info" size={16} />
+              </button>
+            </Tooltip>
+          ) : null}
+          {actions}
+        </>
+      }
+    >
       {tabs}
       {toolbar ? <div className="gh-toolbar">{toolbar}</div> : null}
       <div className="gh-place-scroll" data-testid={testID}>

@@ -20,7 +20,7 @@
 .gh-app-section h2 {
   margin: 0;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--gh-secondary);
 }
 /* a row whose main part opens it; the trailing actions stay separate targets */
@@ -116,7 +116,7 @@
 .gh-form details > summary {
   cursor: pointer;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--gh-secondary);
 }
 .gh-form details[open] > summary {

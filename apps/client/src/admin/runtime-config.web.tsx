@@ -11,8 +11,8 @@ import { SettingsForm } from './settings-form.web';
 export default function RuntimeConfigSection() {
   const t = useT();
   return (
-    <AdminPage title={t('admin.sections.runtime-config')} testID="admin-runtime-config">
-      <SettingsForm intro={t('admin.runtime.intro')} />
+    <AdminPage title={t('admin.sections.runtime-config')} info={t('admin.runtime.intro')} testID="admin-runtime-config">
+      <SettingsForm />
     </AdminPage>
   );
 }

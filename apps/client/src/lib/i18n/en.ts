@@ -111,6 +111,8 @@ export const en = {
     moreActions: 'More actions',
   },
   common: {
+    labelSep: ': ',
+    about: 'About',
     saveChanges: 'Save changes',
     clear: 'Clear',
     undo: 'Undo',

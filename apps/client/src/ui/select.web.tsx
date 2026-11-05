@@ -84,7 +84,7 @@ export function Select({
   };
   const text = clearable
     ? isSet
-      ? `${unset?.label ?? ariaLabel ?? ''}${unset?.label || ariaLabel ? '：' : ''}${chosen?.label ?? current}`
+      ? `${unset?.label ?? ariaLabel ?? ''}${unset?.label || ariaLabel ? t('common.labelSep') : ''}${chosen?.label ?? current}`
       : (unset?.label ?? ariaLabel ?? '')
     : (chosen?.label ?? '');
   return (

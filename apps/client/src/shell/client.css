@@ -50,19 +50,33 @@ button:disabled {
   cursor: default;
   opacity: 0.5;
 }
-button:active {
-  opacity: 0.7;
+/* Pressing shrinks a little on touch only; a mouse press shows the pressed fill of each control. */
+@media (pointer: coarse) {
+  button:not(:disabled):active {
+    scale: 0.97;
+  }
 }
 textarea {
   resize: vertical;
 }
+/* Reduced motion keeps fades only: no movement, no scaling; spinners keep turning. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+    transition-property: opacity, color, background-color, border-color !important;
+  }
+  .gh-notice {
+    animation-name: gh-fade-only !important;
+  }
+  button:not(:disabled):active {
+    scale: none;
+  }
+}
+@keyframes gh-fade-only {
+  from {
+    opacity: 0;
   }
 }
 
@@ -92,11 +106,21 @@ textarea {
   border: 1px solid transparent;
   background: var(--gh-focus);
   color: var(--gh-on-accent);
-  font-weight: 700;
+  font-weight: 600;
 }
 .gh-primary:hover:not(:disabled) {
   background: var(--gh-accent-hover);
   filter: none;
+}
+.gh-primary:active:not(:disabled) {
+  background: var(--gh-accent-pressed);
+}
+/* A disabled primary turns neutral, not a faded accent. */
+.gh-primary:disabled {
+  border-color: transparent;
+  background: var(--gh-fill);
+  color: var(--gh-tertiary);
+  opacity: 1;
 }
 .gh-primary.gh-danger {
   background: var(--gh-danger-solid);
@@ -104,6 +128,10 @@ textarea {
 }
 .gh-primary.gh-danger:hover:not(:disabled) {
   background: var(--gh-danger-solid-hover);
+}
+.gh-primary.gh-danger:disabled {
+  background: var(--gh-fill);
+  color: var(--gh-tertiary);
 }
 .gh-secondary-button {
   border: 1px solid var(--gh-line);
@@ -114,6 +142,15 @@ textarea {
 .gh-secondary-button:hover:not(:disabled) {
   background: var(--gh-hover);
   filter: none;
+}
+.gh-secondary-button:active:not(:disabled),
+.gh-icon-button:active:not(:disabled),
+.gh-link-button:active:not(:disabled) {
+  background: var(--gh-fill);
+}
+.gh-secondary-button:disabled {
+  color: var(--gh-tertiary);
+  opacity: 1;
 }
 .gh-link-button {
   display: inline-flex;
@@ -212,7 +249,7 @@ textarea {
   margin: 0;
   padding: 0;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--gh-secondary);
 }
 .gh-field {
@@ -239,7 +276,7 @@ textarea {
 }
 .gh-field > label small[data-over] {
   color: var(--gh-danger);
-  font-weight: 700;
+  font-weight: 600;
 }
 .gh-hint {
   margin: 0;
@@ -404,7 +441,7 @@ textarea.gh-input,
   border-color: var(--gh-line);
   background: var(--gh-raised);
   color: var(--gh-text);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* Tabs under a place bar or at the top of a dialog body. */
@@ -428,7 +465,7 @@ textarea.gh-input,
 .gh-tabs [role='tab'][aria-selected='true'] {
   border-bottom-color: var(--gh-accent);
   color: var(--gh-text);
-  font-weight: 700;
+  font-weight: 600;
 }
 .gh-tabs [role='tab']:hover {
   background: transparent !important;
@@ -1009,7 +1046,7 @@ textarea.gh-input,
 }
 .gh-place-tabs button[aria-selected='true'] {
   background: var(--gh-hover);
-  font-weight: 700;
+  font-weight: 600;
 }
 .gh-data-grid {
   border-collapse: collapse;
@@ -1055,7 +1092,7 @@ textarea.gh-input,
   margin: 12px 0;
 }
 .gh-doc h2 {
-  font-size: 20px;
+  font-size: 22px;
 }
 .gh-doc-meta {
   font-size: 12px;
@@ -1199,7 +1236,7 @@ textarea.gh-input,
   display: grid;
   place-items: center;
   color: var(--gh-focus);
-  font-size: 20px;
+  font-size: 18px;
 }
 .gh-settings-person small {
   display: block;
@@ -1229,7 +1266,7 @@ textarea.gh-input,
 .gh-settings nav button[aria-current='page'] {
   background: var(--gh-sidebar-selection, var(--gh-hover));
   color: var(--gh-accent-text);
-  font-weight: 700;
+  font-weight: 600;
 }
 .gh-settings-main {
   flex: 1;
@@ -1247,7 +1284,7 @@ textarea.gh-input,
   border: 0;
   background: transparent;
   color: inherit;
-  font-size: 24px;
+  font-size: 22px;
 }
 .gh-settings-content {
   overflow: auto;
@@ -1305,7 +1342,7 @@ textarea.gh-input,
   border: 1px solid var(--gh-line);
   border-radius: 8px;
   padding: 4px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--gh-shadow-floating);
 }
 .gh-editor-suggestion {
   display: block;
@@ -1330,7 +1367,7 @@ textarea.gh-input,
 }
 .gh-doc-reader [role='heading'],
 .gh-editor .tiptap h2 {
-  font-size: 20px !important;
+  font-size: 22px !important;
   line-height: 1.4 !important;
   font-weight: 600 !important;
   margin: 20px 0 10px !important;
@@ -1339,7 +1376,7 @@ textarea.gh-input,
 .gh-editor .tiptap h1 {
   font-size: 28px !important;
   line-height: 1.3 !important;
-  font-weight: 700 !important;
+  font-weight: 600 !important;
 }
 .gh-doc-reader [role='heading'][aria-level='3'],
 .gh-editor .tiptap h3 {
@@ -1490,7 +1527,7 @@ textarea.gh-input,
 }
 
 [data-testid='object-detail'] > div > [role='heading'] {
-  font-size: 24px !important;
+  font-size: 22px !important;
   line-height: 1.4 !important;
   margin: 20px 24px !important;
 }
@@ -1708,7 +1745,7 @@ html[data-desktop-window='settings'] .gh-settings {
 .gh-rail-more-title {
   padding: 6px 10px 4px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--gh-secondary);
 }
 .gh-rail-more-item {
@@ -1742,7 +1779,7 @@ html[data-desktop-window='settings'] .gh-settings {
 .gh-rail-more-item[aria-current='page'] {
   background: var(--gh-sidebar-selection, var(--gh-hover));
   color: var(--gh-accent-text);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* Fixed-size dialogs (src/ui/overlay.web.tsx DialogBody). */
@@ -1795,7 +1832,7 @@ html[data-desktop-window='settings'] .gh-settings {
 /* Confirm / prompt / alert (src/ui/dialogs.web.tsx): the sm dialog. */
 .gh-alert h2 {
   margin: 0 0 8px;
-  font-size: 17px;
+  font-size: 18px;
 }
 .gh-alert p {
   margin: 0 0 12px;
@@ -1864,7 +1901,7 @@ html[data-desktop-window='settings'] .gh-settings {
 .gh-menu-title {
   padding: 6px 8px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--gh-secondary);
 }
 .gh-menu-section {

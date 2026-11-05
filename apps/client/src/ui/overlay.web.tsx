@@ -93,6 +93,8 @@ export function Overlay({
   size?: DialogSize;
 }) {
   const { hex: c, isDark } = useTheme();
+  // only the lowest open layer dims the page; one opened above it (a confirm over a drawer) does not
+  const [stacked] = React.useState(() => layers.length > 0);
   const pointX = point?.x,
     pointY = point?.y;
   const panel = useRef<HTMLDivElement>(null);
@@ -130,11 +132,6 @@ export function Overlay({
       }
     };
     document.addEventListener('keydown', key, true);
-    const box = root?.getBoundingClientRect();
-    if (root && pointX !== undefined && pointY !== undefined && box) {
-      root.style.left = `${Math.max(8, Math.min(pointX, innerWidth - box.width - 8))}px`;
-      root.style.top = `${Math.max(8, Math.min(pointY, innerHeight - box.height - 8))}px`;
-    }
     return () => {
       unlabel();
       layers.splice(layers.indexOf(layer), 1);
@@ -142,6 +139,14 @@ export function Overlay({
       if (previous?.isConnected) previous.focus();
     };
   }, [interactive, role, pointX, pointY, trapTab, initialFocus]);
+  // An anchored panel (menu, listbox, tooltip) stays inside the window, measured as rendered.
+  React.useLayoutEffect(() => {
+    const root = panel.current;
+    if (!root || pointX === undefined || pointY === undefined) return;
+    const box = root.getBoundingClientRect();
+    root.style.left = `${Math.max(8, Math.min(pointX, innerWidth - box.width - 8))}px`;
+    root.style.top = `${Math.max(8, Math.min(pointY, innerHeight - box.height - 8))}px`;
+  }, [pointX, pointY]);
   if (typeof document === 'undefined') return null;
   return createPortal(
     <div
@@ -153,7 +158,7 @@ export function Overlay({
         alignItems: point ? 'flex-start' : role === 'status' ? 'flex-start' : 'center',
         justifyContent: 'center',
         padding: role === 'status' ? 24 : 16,
-        background: modal ? c.scrim : 'transparent',
+        background: modal && !stacked ? c.scrim : 'transparent',
         pointerEvents: interactive ? 'auto' : 'none',
         color: c.label,
         fontFamily: 'Nunito, sans-serif',
@@ -184,7 +189,7 @@ export function Overlay({
           border: `1px solid ${c.separator}`,
           borderRadius: 12,
           padding: role === 'menu' || role === 'listbox' ? 4 : 20,
-          boxShadow: isDark ? undefined : '0 8px 32px rgba(0,0,0,.14)',
+          boxShadow: 'var(--gh-shadow-floating)',
           pointerEvents: interactive ? 'auto' : 'none',
           // the panel only holds focus for the dialog; its controls draw the visible ring
           outline: 'none',

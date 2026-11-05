@@ -84,6 +84,7 @@ const SOURCES: Record<IconName, ImageSourcePropType> = {
   sleep: require('../../assets/icons/android/bedtime.xml'),
   at: require('../../assets/icons/android/alternate_email.xml'),
   alertCircle: require('../../assets/icons/android/error.xml'),
+  info: require('../../assets/icons/android/info.xml'),
   thumbUp: require('../../assets/icons/android/thumb_up.xml'),
   thumbUpFill: require('../../assets/icons/android/thumb_up.xml'),
   thumbDown: require('../../assets/icons/android/thumb_down.xml'),

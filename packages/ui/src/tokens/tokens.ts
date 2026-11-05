@@ -134,7 +134,7 @@ export const font = {
 export interface TypeStyle {
   size: number;
   line: number;
-  weight: 400 | 500 | 600 | 700;
+  weight: 400 | 500 | 600;
 }
 
 /** The type scale. Nothing renders below 12px; 16/26 is the reading size (messages, documents). */
@@ -147,7 +147,7 @@ export const type = {
   titleSm: { size: 15, line: 22, weight: 600 }, // section and card titles
   title: { size: 18, line: 26, weight: 600 }, // dialog and module titles
   titleLg: { size: 22, line: 30, weight: 600 }, // page titles
-  display: { size: 28, line: 36, weight: 700 }, // document titles, the greeting
+  display: { size: 28, line: 36, weight: 600 }, // document titles, the greeting (browser text stops at 600)
   code: { size: 13, line: 20, weight: 400 },
 } as const satisfies Record<string, TypeStyle>;
 

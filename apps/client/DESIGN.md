@@ -7,7 +7,7 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 - Interaction, feedback, copy and data states follow jim-uiux (https://design.linjiejim.com); this file records only Greenhouse's own values and exceptions.
 - Greenhouse keeps its brand (Haven greens, Nunito) and its numbers: dialog sizes (`DIALOG_SIZES`), desktop density (rows 32, toolbar controls 28, headers 52) and the wide shell below.
 - Native screens follow the platform (HIG, Material 3): system sheets, menus and alerts; native titles may use weight 700. Browser CSS stays at 600 or below.
-- Guards: `src/theme/design-guard.test.ts` (screens and browser CSS) and `scripts/check-plugin-ui.mjs` (plugin front ends, run by `pnpm lint`); known debt only shrinks.
+- Guards: `src/theme/design-guard.test.ts` (screens and browser CSS: type scale, weight ≤ 600, token colours and shadows, no native `<select>`) and `scripts/check-plugin-ui.mjs` (plugin front ends, run by `pnpm lint`; a plugin's known debt only shrinks).
 
 ## Layout
 
@@ -64,11 +64,17 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 - Filters are clearable selects (no "All" choice: the unset label is the field's name, a set filter shows its value and ✕) and live in the address, so a filtered view reloads and shares.
 - Destructive actions confirm first; a secret shows once in a callout with Copy.
 
+## Copy
+
+- What a page is for sits behind ⓘ in its bar (`AdminPage` `info`), never as a sentence under the title.
+- Names in Chinese copy are quoted with 「」; a confirm's title is a question naming the object ("删除「{name}」？") and its button repeats the verb.
+
 ## Tokens
 
+- Elevation: `--gh-shadow-control` inside a surface, `--gh-shadow-floating` for layers (menus, dialogs, drawers, notices); never a literal shadow. A disabled primary turns neutral; a press shows the pressed fill (and shrinks to .97 on touch only); reduced motion keeps fades only.
 - Spacing: 4-pt scale (`space.*`: 2 4 8 12 16 20 24 32), 8-pt rhythm between blocks; page margin 16, desktop place padding 20.
 - Radius: controls 8, dialogs, menus and the rail flyout 12, cards 16, native inset cards `radius.group` (26) with squircle; menu rows 6.
-- Type: a role from `typo.*` (largeTitle 28/36, title1 22, title2 18, title3 15, body 14/22, callout 16/26, footnote 13, caption1 12), weight only through `weight.*`; never a raw `fontSize` outside `src/ui` and `src/theme`. In-app text size (0.8–1.35) multiplies every role.
+- Type: a role from `typo.*` (largeTitle 28/36, title1 22, title2 18, title3 15, body 14/22, callout 16/26, footnote 13, caption1 12), weight only through `weight.*` (browser text stops at 600: `weight.bold` is 600 on the web); never a raw `fontSize` outside `src/ui` and `src/theme`. In-app text size (0.8–1.35) multiplies every role.
 - Icons from `ICONS` (`src/ui/core.tsx`): 13 inline and in chips, 16 in menus, rows and toolbar buttons, 18 in dialog headers, 21 in the rail, 24–28 in empty states. New icons go into core.tsx, core.web.tsx and icon-map.ts, then `python3 apps/client/scripts/android-icons.py`.
 - Colors: `useTheme()` in TS; `var(--gh-*)` in CSS, only variables the shell defines (generated web colors plus the few set in `wide-shell.web.tsx`). Stored project or tag colors draw through `categoricalFor()`; text on accent is `onAccent`.
 - Desktop density: rows 32 in admin and record grids (40 in the other data grids), toolbar targets 28–32, headers 52; dates in tables are short ("7月2日", the year only when it is not this one).
