@@ -9,7 +9,7 @@ test('P3 knowledge tree, Tiptap Markdown save, keyboard and dark document', asyn
   const f = await installPlaces(page);
   await ready(page, '/knowledge');
   await expect(page.getByTestId('knowledge-document')).toContainText('远程办公政策');
-  await expect(page.getByRole('heading', { name: '在哪里工作', exact: true })).toHaveCSS('font-size', '20px');
+  await expect(page.getByRole('heading', { name: '在哪里工作', exact: true })).toHaveCSS('font-size', '22px');
   await expect(page.locator('.gh-doc-meta')).toContainText('林杰');
   const sidebar = page.getByTestId('client-secondary');
   await expect(sidebar.getByRole('button', { name: '人事制度' })).toBeVisible();
@@ -19,7 +19,7 @@ test('P3 knowledge tree, Tiptap Markdown save, keyboard and dark document', asyn
   await page.getByRole('button', { name: '编辑', exact: true }).click();
   const editor = page.getByRole('textbox', { name: '正文', exact: true });
   await expect(editor).toBeVisible();
-  await expect(editor.locator('h2').first()).toHaveCSS('font-size', '20px');
+  await expect(editor.locator('h2').first()).toHaveCSS('font-size', '22px');
   await expect(editor).toHaveCSS('line-height', '28px');
   await editor.fill('这是新政策内容');
   await page.getByRole('button', { name: '保存', exact: true }).click();
