@@ -26,6 +26,8 @@ export type AppTarget =
   | { kind: 'files'; shelf: FilesShelf; folderId: ObjectId | null; fileId: ObjectId | null }
   /** The knowledge place. */
   | { kind: 'knowledge' }
+  /** A knowledge folder (its sheet). */
+  | { kind: 'kb-folder'; shelf: FilesShelf; id: ObjectId }
   /** The project list (`id` null) or one project; a task when `taskId` is set. */
   | { kind: 'project'; id: ObjectId | null; taskId: ObjectId | null }
   /** Tables: the bases, a base, a table, or one record of it. */
@@ -144,8 +146,9 @@ function sheetTarget(kind: string, params: URLSearchParams): AppTarget | null {
     }
     case 'folder': {
       const folderId = idParam(params, 'id');
-      if (params.get('scope') === 'kb') return { kind: 'knowledge' };
-      return folderId ? { kind: 'files', shelf: shelfOf(params.get('shelf')), folderId, fileId: null } : null;
+      if (!folderId) return null;
+      const shelf = shelfOf(params.get('shelf'));
+      return params.get('scope') === 'kb' ? { kind: 'kb-folder', shelf, id: folderId } : { kind: 'files', shelf, folderId, fileId: null };
     }
     case 'project': {
       const id = idParam(params, 'id');
@@ -198,8 +201,12 @@ export function parseAppPath(path: string): AppTarget | null {
   if (segments[0] === 'sheet' && segments.length === 2) return sheetTarget(segments[1]!, params);
   switch (route) {
     case '/':
-    case '/chat':
-      return { kind: 'chat', sessionId: sessionParam(params) };
+    case '/chat': {
+      const sessionId = sessionParam(params);
+      // a composer address (`?draft=`, `?agent=`) is the chat page's own, kept whole
+      if (!sessionId && route === '/chat' && [...params.keys()].length) return { kind: 'page', href: `${route}?${query}` };
+      return { kind: 'chat', sessionId };
+    }
     case '/knowledge': {
       const id = idParam(params, 'doc');
       return id ? { kind: 'doc', id } : { kind: 'knowledge' };
@@ -213,7 +220,7 @@ export function parseAppPath(path: string): AppTarget | null {
       return { kind: 'files', shelf: shelfOf(params.get('shelf')), folderId: idParam(params, 'folder'), fileId: idParam(params, 'file') };
     case '/drive/base': {
       const baseId = idParam(params, 'id');
-      return baseId ? { kind: 'tables', baseId, tableId: null, recordId: null } : null;
+      return baseId ? { kind: 'tables', baseId, tableId: idParam(params, 'table'), recordId: null } : null;
     }
     case '/drive/table': {
       const tableId = idParam(params, 'id');
@@ -224,11 +231,14 @@ export function parseAppPath(path: string): AppTarget | null {
       return { kind: 'project', id, taskId: id ? idParam(params, 'task') : null };
     }
     case '/automations':
+      // another view of the place (`?view=agents&id=` is a custom agent) stays that address
+      if (params.has('view')) return { kind: 'page', href: `${route}?${query}` };
       return { kind: 'automations', id: idParam(params, 'id') };
     case '/me/agents':
       return { kind: 'agent' };
     default:
-      return CLIENT_PAGE.test(route) ? { kind: 'page', href: route } : null;
+      // filters and selections ride in the query (`/admin/users?role=`), so it stays
+      return CLIENT_PAGE.test(route) ? { kind: 'page', href: query ? `${route}?${query}` : route } : null;
   }
 }
 

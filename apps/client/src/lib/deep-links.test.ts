@@ -201,6 +201,18 @@ describe('the browser client’s own addresses', () => {
     expect(parseAppPath('/sheet/plugin?plugin=x')).toBeNull();
   });
 
+  it('keeps what the address says beyond an object id', () => {
+    expect(parseAppPath('/sheet/folder?id=3&scope=kb&shelf=personal')).toEqual({ kind: 'kb-folder', shelf: 'personal', id: '3' });
+    expect(parseAppPath('/sheet/folder?id=3&scope=drive&shelf=team')).toEqual({ kind: 'files', shelf: 'team', folderId: '3', fileId: null });
+    expect(parseAppPath('/chat?draft=hello&agent=foo')).toEqual({ kind: 'page', href: '/chat?draft=hello&agent=foo' });
+    expect(parseAppPath('/automations?view=agents&id=7')).toEqual({ kind: 'page', href: '/automations?view=agents&id=7' });
+    expect(parseAppPath(`/drive/base?id=${B}&table=${T}`)).toEqual({ kind: 'tables', baseId: B, tableId: T, recordId: null });
+    expect(parseAppPath('/admin/users?role=team&status=disabled')).toEqual({
+      kind: 'page',
+      href: '/admin/users?role=team&status=disabled',
+    });
+  });
+
   it('names nothing for paths it has no screen for, or that climb out', () => {
     expect(parseAppPath('/activate')).toBeNull();
     expect(parseAppPath('/api/upload/3')).toBeNull();

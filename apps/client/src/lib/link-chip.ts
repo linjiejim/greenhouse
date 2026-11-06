@@ -48,6 +48,8 @@ function objectType(target: AppTarget): ObjectType {
       return 'doc';
     case 'files':
       return target.fileId ? 'file' : 'folder';
+    case 'kb-folder':
+      return 'folder';
     case 'project':
       return target.taskId ? 'task' : 'project';
     case 'tables':

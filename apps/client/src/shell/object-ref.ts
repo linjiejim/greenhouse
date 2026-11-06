@@ -158,6 +158,8 @@ export function refOfTarget(target: AppTarget): { ref: ObjectRef } | { place: Pl
       return { place: { kind: 'drive', shelf: target.shelf, folderId: target.folderId } };
     case 'knowledge':
       return { place: { kind: 'tab', href: '/knowledge' } };
+    case 'kb-folder':
+      return { ref: { kind: 'folder', scope: 'kb', shelf: target.shelf, id: target.id } };
     case 'project':
       if (target.id && target.taskId) return { ref: { kind: 'task', projectId: target.id, id: target.taskId } };
       if (target.id) return { ref: { kind: 'project', id: target.id } };
