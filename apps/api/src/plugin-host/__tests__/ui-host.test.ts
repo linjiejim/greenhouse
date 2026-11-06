@@ -58,3 +58,27 @@ it("adds the plugin's declared media origins to its own CSP only", async () => {
     rmSync(other, { recursive: true, force: true });
   }
 });
+it('caches bundler-fingerprinted assets for a year and revalidates the rest with a 304', async () => {
+  mkdirSync(join(dir, 'dist/assets'), { recursive: true });
+  writeFileSync(join(dir, 'dist/index.html'), 'built');
+  writeFileSync(join(dir, 'dist/assets/index-D63n5Bgy.js'), 'script');
+  writeFileSync(join(dir, 'dist/app.js'), 'plain');
+  writeFileSync(join(dir, 'dist/tokens.generated.js'), 'tokens');
+  fixture.extensions.push({ id: 'fixture', ui: { dir } });
+  const vite = await host().request('/ext/fixture/ui/assets/index-D63n5Bgy.js');
+  expect(vite.headers.get('Cache-Control')).toContain('immutable');
+  for (const path of ['/ext/fixture/ui/', '/ext/fixture/ui/app.js', '/ext/fixture/ui/tokens.generated.js']) {
+    const first = await host().request(path);
+    expect(first.status).toBe(200);
+    expect(first.headers.get('Cache-Control')).toBe('no-cache');
+    const tag = first.headers.get('ETag');
+    expect(tag).toMatch(/^W\/"/);
+    const again = await host().request(path, { headers: { 'If-None-Match': tag! } });
+    expect(again.status).toBe(304);
+    expect(again.headers.get('ETag')).toBe(tag);
+  }
+  // a changed file answers in full again
+  const before = (await host().request('/ext/fixture/ui/app.js')).headers.get('ETag')!;
+  writeFileSync(join(dir, 'dist/app.js'), 'plain, but longer');
+  expect((await host().request('/ext/fixture/ui/app.js', { headers: { 'If-None-Match': before } })).status).toBe(200);
+});

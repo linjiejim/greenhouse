@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { linkTarget, notificationTarget, parseHashRoute, webUrl } from './deep-links';
+import { appLinkTarget, linkTarget, notificationTarget, parseAppPath, parseHashRoute, targetHash, webUrl } from './deep-links';
 
 const BASE = 'https://gh.example';
 
@@ -27,7 +27,7 @@ describe('hash routes', () => {
     expect(parseHashRoute('#/crm/companies/42')).toEqual({ kind: 'route', hash: '#/crm/companies/42' });
     // classic page routes name nothing
     expect(parseHashRoute('#/activity/automation/rtr_1')).toEqual({ kind: 'route', hash: '#/activity/automation/rtr_1' });
-    expect(parseHashRoute('#/knowledge')).toEqual({ kind: 'route', hash: '#/knowledge' });
+    expect(parseHashRoute('#/knowledge')).toEqual({ kind: 'knowledge' });
     expect(parseHashRoute('/files')).toBeNull();
   });
 
@@ -121,7 +121,8 @@ describe('links in content', () => {
     expect(linkTarget(`${BASE}/p/skills/skills?x=1`, BASE)).toEqual({ kind: 'page', href: '/p/skills/skills?x=1' });
     expect(linkTarget('https://other.example/p/skills/skills', BASE)).toMatchObject({ kind: 'external' });
     expect(linkTarget('/p/../../api/x', BASE)).toBeNull();
-    expect(linkTarget('/activate', BASE)).toBeNull();
+    // a station address with no screen here opens the browser client
+    expect(linkTarget('/activate?token=x', BASE)).toEqual({ kind: 'external', url: `${BASE}/activate?token=x` });
   });
 
   it('builds absolute addresses on the station', () => {
@@ -157,5 +158,104 @@ describe('notifications', () => {
     expect(notificationTarget({ run_id: 'rtr_1', payload: { runtime_kind: 'agent_write' } }, BASE)).toEqual({ kind: 'agent' });
     expect(notificationTarget({ run_id: 'rtr_2', payload: {} }, BASE)).toEqual({ kind: 'run', id: 'rtr_2' });
     expect(notificationTarget({ run_id: null, payload: { href: 'https://evil.example' } }, BASE)).toBeNull();
+  });
+});
+
+describe('the browser client’s own addresses', () => {
+  const B = 'bas_01M6Q8GKSSB48CA6NBM5GCM4BW';
+  const T = 'tbl_01M6Q8GKWCSV0PP19PDMD5S1PF';
+  const R = 'rec_01M6Q8H65P3DHGTX3M257TV23G';
+
+  it('opens place addresses as the objects they name', () => {
+    expect(parseAppPath(`/drive?view=tables&base=${B}&table=${T}&record=${R}`)).toEqual({
+      kind: 'tables',
+      baseId: B,
+      tableId: T,
+      recordId: R,
+    });
+    expect(parseAppPath(`/drive?view=tables&base=${B}`)).toEqual({ kind: 'tables', baseId: B, tableId: null, recordId: null });
+    expect(parseAppPath('/drive?view=tables')).toEqual({ kind: 'tables', baseId: null, tableId: null, recordId: null });
+    expect(parseAppPath('/drive?shelf=personal&folder=3')).toEqual({ kind: 'files', shelf: 'personal', folderId: '3', fileId: null });
+    expect(parseAppPath(`/drive/table?base=${B}&id=${T}`)).toEqual({ kind: 'tables', baseId: B, tableId: T, recordId: null });
+    expect(parseAppPath('/knowledge?doc=12')).toEqual({ kind: 'doc', id: '12' });
+    expect(parseAppPath('/knowledge?shelf=team')).toEqual({ kind: 'knowledge' });
+    expect(parseAppPath('/projects?project=7&task=9')).toEqual({ kind: 'project', id: '7', taskId: '9' });
+    expect(parseAppPath('/projects')).toEqual({ kind: 'project', id: null, taskId: null });
+    expect(parseAppPath('/automations?id=4')).toEqual({ kind: 'automations', id: '4' });
+    expect(parseAppPath('/chat?session=ses_9')).toEqual({ kind: 'chat', sessionId: 'ses_9' });
+    expect(parseAppPath('/')).toEqual({ kind: 'chat', sessionId: null });
+    expect(parseAppPath('/me/agents')).toEqual({ kind: 'agent' });
+    expect(parseAppPath('/me/connectors')).toEqual({ kind: 'page', href: '/me/connectors' });
+    expect(parseAppPath('/admin/users')).toEqual({ kind: 'page', href: '/admin/users' });
+  });
+
+  it('opens the sheets of the address bar', () => {
+    expect(parseAppPath('/sheet/doc?id=12')).toEqual({ kind: 'doc', id: '12' });
+    expect(parseAppPath('/sheet/doc?slug=runbook')).toEqual({ kind: 'doc', slug: 'runbook' });
+    expect(parseAppPath('/sheet/task?project=7&id=9')).toEqual({ kind: 'project', id: '7', taskId: '9' });
+    expect(parseAppPath(`/sheet/record?base=${B}&table=${T}&id=${R}`)).toEqual({ kind: 'tables', baseId: B, tableId: T, recordId: R });
+    expect(parseAppPath('/sheet/file?id=9')).toMatchObject({ kind: 'files', fileId: '9' });
+    expect(parseAppPath('/sheet/run?id=run_1')).toEqual({ kind: 'run', id: 'run_1' });
+    expect(parseAppPath('/sheet/conversation?session=ses_9')).toEqual({ kind: 'chat', sessionId: 'ses_9' });
+    expect(parseAppPath('/sheet/doc')).toBeNull();
+    expect(parseAppPath('/sheet/plugin?plugin=x')).toBeNull();
+  });
+
+  it('keeps what the address says beyond an object id', () => {
+    expect(parseAppPath('/sheet/folder?id=3&scope=kb&shelf=personal')).toEqual({ kind: 'kb-folder', shelf: 'personal', id: '3' });
+    expect(parseAppPath('/sheet/folder?id=3&scope=drive&shelf=team')).toEqual({ kind: 'files', shelf: 'team', folderId: '3', fileId: null });
+    expect(parseAppPath('/chat?draft=hello&agent=foo')).toEqual({ kind: 'page', href: '/chat?draft=hello&agent=foo' });
+    expect(parseAppPath('/chat?session=ses_9&draft=hi')).toEqual({ kind: 'page', href: '/chat?session=ses_9&draft=hi' });
+    expect(parseAppPath('/automations?view=agents&id=7')).toEqual({ kind: 'page', href: '/automations?view=agents&id=7' });
+    expect(parseAppPath(`/drive/base?id=${B}&table=${T}`)).toEqual({ kind: 'tables', baseId: B, tableId: T, recordId: null });
+    expect(parseAppPath('/admin/users?role=team&status=disabled')).toEqual({
+      kind: 'page',
+      href: '/admin/users?role=team&status=disabled',
+    });
+  });
+
+  it('names nothing for paths it has no screen for, or that climb out', () => {
+    expect(parseAppPath('/activate')).toBeNull();
+    expect(parseAppPath('/api/upload/3')).toBeNull();
+    expect(parseAppPath('/drive/../api/x')).toBeNull();
+    expect(parseAppPath('//evil.example/x')).toBeNull();
+    expect(parseAppPath('knowledge')).toBeNull();
+  });
+
+  it('reads them relative, absolute on the station, behind /#/ and as app links', () => {
+    expect(linkTarget(`/drive?view=tables&base=${B}&table=${T}`, BASE)).toMatchObject({ kind: 'tables', tableId: T });
+    expect(linkTarget(`${BASE}/chat?session=ses_9`, BASE)).toEqual({ kind: 'chat', sessionId: 'ses_9' });
+    expect(linkTarget(`${BASE}/knowledge?doc=12`, BASE)).toEqual({ kind: 'doc', id: '12' });
+    expect(linkTarget('https://other.example/knowledge?doc=12', BASE)).toMatchObject({ kind: 'external' });
+    expect(linkTarget('/#/projects/7', BASE)).toEqual({ kind: 'project', id: '7', taskId: null });
+    expect(linkTarget('greenhouse://knowledge/doc?id=12', BASE)).toEqual({ kind: 'doc', id: '12' });
+    expect(linkTarget('//evil.example/x', BASE)).toBeNull();
+  });
+
+  it('reads the app link routes the station writes', () => {
+    expect(appLinkTarget('greenhouse://projects/task?project=7&task=9')).toEqual({ kind: 'project', id: '7', taskId: '9' });
+    expect(appLinkTarget('greenhouse://projects/detail?id=7')).toEqual({ kind: 'project', id: '7', taskId: null });
+    expect(appLinkTarget(`greenhouse://tables/record?table=${T}&record=${R}`)).toEqual({
+      kind: 'tables',
+      baseId: null,
+      tableId: T,
+      recordId: R,
+    });
+    expect(appLinkTarget('greenhouse://chat?session=ses_9')).toEqual({ kind: 'chat', sessionId: 'ses_9' });
+    expect(appLinkTarget('greenhouse://files?file=9')).toMatchObject({ kind: 'files', fileId: '9' });
+    expect(appLinkTarget('greenhouse://file-preview?id=9')).toMatchObject({ kind: 'files', fileId: '9' });
+    // resources and routes with nothing to open stay unopenable
+    expect(appLinkTarget('greenhouse://context/team')).toBeNull();
+    expect(appLinkTarget('greenhouse://expo-development-client/?url=x')).toBeNull();
+    expect(appLinkTarget('greenhouse://connectors/oauth-finish?code=1')).toBeNull();
+  });
+
+  it('gives each object its station address, however the link spelled it', () => {
+    expect(targetHash({ kind: 'tables', baseId: B, tableId: T, recordId: R })).toBe(`#/tables/${B}/table/${T}?record=${R}`);
+    expect(targetHash({ kind: 'tables', baseId: null, tableId: T, recordId: null })).toBeNull();
+    expect(targetHash({ kind: 'doc', id: '12' })).toBe('#/knowledge/doc/12');
+    expect(targetHash({ kind: 'doc', slug: '指南' })).toBe('#/knowledge/doc/%E6%8C%87%E5%8D%97');
+    expect(targetHash({ kind: 'project', id: '7', taskId: '9' })).toBe('#/projects/7?task=9');
+    expect(targetHash({ kind: 'knowledge' })).toBeNull();
   });
 });

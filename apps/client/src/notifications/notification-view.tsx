@@ -34,6 +34,8 @@ import type { IconName } from '../ui/core';
 const OPEN_LABEL: Record<AppTarget['kind'], TranslationKey> = {
   doc: 'notifications.openDoc',
   files: 'notifications.openFile',
+  knowledge: 'entry.openPage',
+  'kb-folder': 'notifications.openFile',
   project: 'notifications.openProject',
   tables: 'notifications.openTables',
   chat: 'notifications.openChat',

@@ -14,6 +14,8 @@ import { EmbedScreen } from './embed-screen';
 import { ResourceScreen } from './resource-screen';
 import { pluginScreens } from './screens';
 import { safeEndpoint } from './surface-model';
+import AdminPhoneScreen from '../admin/phone-screen';
+import { pluginSectionHref } from '../admin/sections';
 export default function PluginPageScreen({ detail = false }: { detail?: boolean }) {
   const {
     plugin,
@@ -28,6 +30,9 @@ export default function PluginPageScreen({ detail = false }: { detail?: boolean 
   const manifest = state.kind === 'v2' ? state.manifest.plugins.find((p) => p.id === plugin) : undefined;
   const entry = manifest?.pages.find((p) => p.id === page);
   const title = entry ? localize(entry.title, lang) : t('client.pluginUnavailable');
+  // An Admin section (the web opens it in the Admin place) is for the browser here too.
+  if (entry && manifest && !detail && 'parent' in entry && entry.parent === 'administration')
+    return <AdminPhoneScreen path={pluginSectionHref(manifest.id, entry.id)} />;
   if (entry && manifest) {
     const entity = manifest.entities?.find(
       (e) => e.id === (entityId ?? ('entity' in entry ? entry.entity : undefined)),

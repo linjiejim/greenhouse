@@ -1,5 +1,5 @@
 import { serveStatic } from '@hono/node-server/serve-static';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { directObjectOrigin } from '../storage/uploads.js';
 import { createIdentityProviderRoutes } from '../auth/identity-providers.js';
@@ -85,6 +85,37 @@ export async function applyExtensionMigrations(db: DatabaseProvider): Promise<vo
   }
 }
 
+/**
+ * A build output named by its content: a hex hash (`app-12345678.js`) or a bundler's base64url one
+ * under `assets/` (Vite: `assets/index-D63n5Bgy.js`). It never changes, so it is cached for a year.
+ */
+export function isFingerprinted(path: string): boolean {
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  return /[-.][a-f0-9]{8,}\./i.test(name) || (/\/assets\//.test(path) && /-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$/.test(name));
+}
+
+/** A weak validator for a UI file (`index.html` for a directory): its size and change time. */
+export function fileTag(root: string, relative: string): string | null {
+  try {
+    let local = join(root, relative);
+    if (relative === '' || relative.endsWith('/') || statSync(local).isDirectory()) local = join(local, 'index.html');
+    const stat = statSync(local);
+    return stat.isFile() ? `W/"${stat.size.toString(36)}-${Math.trunc(stat.mtimeMs).toString(36)}"` : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether an `If-None-Match` header names `tag` (weak comparison, `*` included). */
+export function matchesTag(header: string | undefined, tag: string): boolean {
+  if (!header) return false;
+  const bare = tag.replace(/^W\//, '');
+  return header.split(',').some((value) => {
+    const candidate = value.trim();
+    return candidate === '*' || candidate.replace(/^W\//, '') === bare;
+  });
+}
+
 /** Mount extension routes after the typed core chain; guards run for every request under the prefix. */
 export function mountExtensionUis(app: Hono<AppEnv>): void {
   for (const ext of EXTENSIONS) {
@@ -108,10 +139,18 @@ export function mountExtensionUis(app: Hono<AppEnv>): void {
           if (decoded.includes('\\') || decoded.split('/').some((part) => part.startsWith('.')))
             return c.body(null, 404);
           c.set('extensionUi', sources);
-          c.header(
-            'Cache-Control',
-            /[-.][a-f0-9]{8,}\./i.test(c.req.path) ? 'public, max-age=31536000, immutable' : 'no-cache',
-          );
+          if (isFingerprinted(decoded)) {
+            c.header('Cache-Control', 'public, max-age=31536000, immutable');
+            return next();
+          }
+          // everything else is revalidated: an unchanged file answers 304, so reopening a plugin
+          // page (each WebView open, each iframe mount) costs a round trip, not the bytes
+          c.header('Cache-Control', 'no-cache');
+          const tag = fileTag(root, decoded.slice(`/ext/${ext.id}/ui`.length));
+          if (tag) {
+            c.header('ETag', tag);
+            if (matchesTag(c.req.header('If-None-Match'), tag)) return c.body(null, 304);
+          }
           await next();
         },
         serveStatic({ root, rewriteRequestPath: (path) => path.slice(`/ext/${ext.id}/ui`.length) }),

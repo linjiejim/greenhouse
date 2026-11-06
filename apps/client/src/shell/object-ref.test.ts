@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_SHEETS, openingOf, refOfTarget, sheetDepth, sheetMove } from './object-ref';
+import { MAX_SHEETS, openingOf, outsideLinkPath, refOfTarget, sheetDepth, sheetMove, targetPath } from './object-ref';
 
 const routes = (...names: string[]) => names.map((name) => ({ name }));
 
@@ -78,4 +78,42 @@ it('opens explicit conversation previews and tool steps in the bounded object st
   });
   expect(openingOf({ kind: 'steps' })).toEqual({ via: 'sheet', pathname: '/sheet/steps', params: {} });
   expect(sheetDepth(routes('(drawer)', 'sheet/conversation', 'sheet/doc', 'sheet/steps'))).toBe(3);
+});
+
+describe('targetPath', () => {
+  it('names the sheet or place an outside link opens on', () => {
+    expect(targetPath({ kind: 'doc', id: '12' })).toBe('/sheet/doc?id=12');
+    expect(targetPath({ kind: 'project', id: '7', taskId: '9' })).toBe('/sheet/task?project=7&id=9');
+    expect(targetPath({ kind: 'tables', baseId: 'b1', tableId: 't1', recordId: null })).toBe('/drive/base?id=b1&table=t1');
+    expect(targetPath({ kind: 'tables', baseId: null, tableId: null, recordId: null })).toBe('/drive?view=tables');
+    expect(targetPath({ kind: 'knowledge' })).toBe('/knowledge');
+    expect(targetPath({ kind: 'chat', sessionId: 'ses_1' })).toBe('/chat?session=ses_1');
+    expect(targetPath({ kind: 'route', hash: '#/crm/x' })).toBe('/');
+  });
+});
+
+describe('outsideLinkPath', () => {
+  it('opens the object an outside app link names', () => {
+    expect(outsideLinkPath('greenhouse://knowledge/doc?id=12')).toBe('/sheet/doc?id=12');
+    expect(outsideLinkPath('/projects?project=7&task=9')).toBe('/sheet/task?project=7&id=9');
+    expect(outsideLinkPath('/drive?file=9')).toBe('/sheet/file?id=9');
+    expect(outsideLinkPath('/automations?id=4')).toBe('/sheet/automation?id=4');
+    expect(outsideLinkPath('/drive?view=tables&base=3&table=9')).toBe('/drive/base?id=3&table=9');
+    expect(outsideLinkPath('greenhouse://tables/record?table=9&record=41')).toBe('/sheet/record?table=9&id=41');
+  });
+
+  it('passes the client’s own routes and unknown ones through', () => {
+    for (const path of [
+      '/chat?draft=hello&agent=foo',
+      '/chat?session=ses_9&draft=hello',
+      '/knowledge?shelf=personal',
+      '/p/assets/assets?route=x',
+      '/expo-development-client/?url=x',
+      '/connectors/oauth-finish?code=1',
+      '/totally/unknown',
+      '/',
+    ]) {
+      expect(outsideLinkPath(path)).toBe(path);
+    }
+  });
 });

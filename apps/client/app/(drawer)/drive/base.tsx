@@ -1,6 +1,9 @@
-/** One base of 云盘 › 表格 (`/drive/base?id=`): its tables. A base I cannot open answers 404 (or 403 without the feature). */
+/**
+ * One base of 云盘 › 表格 (`/drive/base?id=`): its tables. A base I cannot open answers 404 (or 403
+ * without the feature). `&table=` (a link to one table) pushes that table on arrival.
+ */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { FlatList, ScrollView, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { getBase } from '../../../src/api/tables';
@@ -16,10 +19,17 @@ import { Screen } from '../../../src/ui/screen';
 import { objectId } from '../../../src/lib/object-id';
 
 export default function Base() {
-  const { id: raw } = useLocalSearchParams<{ id?: string }>();
+  const { id: raw, table: linked } = useLocalSearchParams<{ id?: string; table?: string }>();
   const id = objectId(raw);
   const t = useT();
   const router = useRouter();
+  // a link to one table of this base (src/shell/open-object.ts) opens it over the base
+  useEffect(() => {
+    const tableId = objectId(linked);
+    if (!linked) return;
+    router.setParams({ table: undefined });
+    if (id != null && tableId != null) router.push({ pathname: '/drive/table', params: { base: String(id), id: String(tableId) } });
+  }, [linked, id, router]);
   const { colors: c } = useTheme();
   const styles = useStyles(c);
   const load = useCallback(() => getBase(id ?? '0'), [id]);

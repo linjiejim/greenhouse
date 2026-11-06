@@ -101,9 +101,19 @@ export function openPlace(
       leavePresented(router, routes, () => router.navigate({ pathname: '/drive', params: { shelf: place.shelf } }));
       return;
     case 'tables':
+      // a table opens over its base (which forwards to it), the bases list beneath both, so Back
+      // walks up; the base also tells the table my role (who may add records)
       leavePresented(router, routes, () => {
-        if (place.tableId) router.navigate({ pathname: '/drive/table', params: { id: String(place.tableId) } });
-        else if (place.baseId) router.navigate({ pathname: '/drive/base', params: { id: String(place.baseId) } });
+        if (place.baseId)
+          router.navigate(
+            {
+              pathname: '/drive/base',
+              params: { id: String(place.baseId), ...(place.tableId ? { table: String(place.tableId) } : {}) },
+            },
+            { withAnchor: true },
+          );
+        else if (place.tableId)
+          router.navigate({ pathname: '/drive/table', params: { id: String(place.tableId) } }, { withAnchor: true });
         else router.navigate({ pathname: '/drive', params: { view: 'tables' } });
       });
       return;

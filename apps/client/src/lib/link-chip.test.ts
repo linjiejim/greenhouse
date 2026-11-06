@@ -7,10 +7,19 @@ describe('link chips', () => {
   it('turns station links and app routes into object chips', () => {
     const doc = classifyLink('#/knowledge/doc/12-weekly', '10 月广告周报', BASE);
     expect(doc).toMatchObject({ kind: 'object', type: 'doc', label: '10 月广告周报' });
-    expect(doc.kind === 'object' && doc.resolveUrl).toBe('https://green.example.com/#/knowledge/doc/12-weekly');
+    expect(doc.kind === 'object' && doc.resolveUrl).toBe('https://green.example.com/#/knowledge/doc/12');
     expect(classifyLink(`${BASE}/#/projects/3?task=9`, undefined, BASE)).toMatchObject({ kind: 'object', type: 'task' });
     expect(classifyLink('#/files?shelf=team&folder=4', 'x', BASE)).toMatchObject({ kind: 'object', type: 'folder' });
     expect(classifyLink('#/chat?session=abc', 'chat', BASE)).toMatchObject({ kind: 'object', type: 'chat' });
+  });
+
+  it('reads the browser client’s addresses as the same object chips', () => {
+    const [base, table] = ['bas_01M6Q8GKSSB48CA6NBM5GCM4BW', 'tbl_01M6Q8GKWCSV0PP19PDMD5S1PF'];
+    const chip = classifyLink(`/drive?view=tables&base=${base}&table=${table}`, '客户跟进', BASE);
+    expect(chip).toMatchObject({ kind: 'object', type: 'table', label: '客户跟进' });
+    expect(chip.kind === 'object' && chip.resolveUrl).toBe(`${BASE}/#/tables/${base}/table/${table}`);
+    expect(classifyLink(`${BASE}/knowledge?doc=12`, 'x', BASE)).toMatchObject({ kind: 'object', type: 'doc' });
+    expect(classifyLink(`${BASE}/activate?token=1`, undefined, BASE)).toMatchObject({ kind: 'site' });
   });
 
   it('shows a document linked by slug as a document chip and opens it by the resolved id', () => {

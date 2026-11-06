@@ -291,6 +291,6 @@
 - Hashed `/_expo` and `/assets` files are immutable, HTML is no-cache, and the `.br`/`.gz` copies `pnpm app:build` writes are served by Accept-Encoding.
 - Server-made browser links use `@greenhouse/types/client-routes`, with secrets in the fragment (`clientRouteUrl(..., { fragment })`).
 - `POST /api/ext-ui/token` binds member, `auth_version` and a member-visible plugin for ten minutes, rechecked per call; it reaches only `/api/ext/<id>/*` and basic `GET /api/me`, enforced before public bypass.
-- Plugin UIs mount at `/ext/<id>/ui/` before auth and SPA fallback (`ui/dist` preferred, disabled or missing → 404, fingerprinted files immutable).
+- Plugin UIs mount at `/ext/<id>/ui/` before auth and SPA fallback (`ui/dist` preferred, disabled or missing → 404); fingerprinted files (hex, or Vite's `assets/name-<8 base64url>.ext`) are immutable, every other file is no-cache with a weak ETag so a reopened WebView or iframe gets 304s.
 - Plugin UI CSP allows frame ancestors `'self' tauri://localhost` (outside production also the CORS allowed origins, for the Expo web dev server) and omits X-Frame-Options; every other response keeps `DENY`.
 - Plugin UI img/media sources are `'self'`, `blob:`/`data:` (img), the object store's direct origin and that plugin's manifest `uiMedia`; connect adds only the store origin; scripts stay `'self'`.
