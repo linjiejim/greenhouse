@@ -5,6 +5,13 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.1](https://github.com/linjiejim/greenhouse/compare/v4.3.0...v4.3.1) (2026-11-06)
+
+
+### Fixed
+
+* **client:** links open in place on the phone; plugin pages reload from cache ([#113](https://github.com/linjiejim/greenhouse/issues/113)) ([edd9bf7](https://github.com/linjiejim/greenhouse/commit/edd9bf780930b4d17111e62ce0137c0b7b9ba95b))
+
 ## [4.3.0](https://github.com/linjiejim/greenhouse/compare/v4.2.0...v4.3.0) (2026-11-05)
 
 
