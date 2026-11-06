@@ -8,7 +8,7 @@
  * Links (src/lib/deep-links.ts `AppTarget`), search hits and cards all become an `ObjectRef`.
  */
 
-import type { AppTarget, FilesShelf } from '../lib/deep-links';
+import { appLinkTarget, type AppTarget, type FilesShelf } from '../lib/deep-links';
 
 export type ObjectRef =
   | { kind: 'plugin-entity'; plugin: string; page: string; entity: string; id: string }
@@ -219,4 +219,26 @@ export function targetPath(target: AppTarget): string {
     case 'external':
       return '/';
   }
+}
+
+/** The station's app-link routes this client has no screen of the same name for. */
+const APP_LINK_ROUTES = new Set(['knowledge/doc', 'projects/detail', 'projects/task', 'tables/record', 'files', 'file-preview']);
+
+/**
+ * An app link without a station, as the path of the object it names (`projects?project=7&task=9` →
+ * the task's sheet, `drive?view=tables&base=` → the base). A place or page address with its own
+ * parameters (`chat?draft=`, `knowledge?shelf=`, `p/…`) and anything unknown pass through as they
+ * are; Expo Router opens them, or app/+not-found.tsx goes home (app/+native-intent.tsx).
+ */
+export function outsideLinkPath(path: string): string {
+  const link = /^greenhouse:/i.test(path) ? path : `greenhouse://${path.replace(/^\/+/, '')}`;
+  const route = /^greenhouse:\/\/\/?([^?#]*)/i.exec(link)?.[1]?.replace(/\/+$/, '') ?? '';
+  const target = appLinkTarget(link);
+  if (!target) return path;
+  const next = refOfTarget(target);
+  const opensObject =
+    'ref' in next ||
+    (next.place.kind === 'tables' && next.place.baseId !== null) ||
+    (next.place.kind === 'drive' && next.place.folderId !== null);
+  return APP_LINK_ROUTES.has(route) || opensObject ? targetPath(target) : path;
 }
