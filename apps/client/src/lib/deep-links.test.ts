@@ -205,6 +205,7 @@ describe('the browser client’s own addresses', () => {
     expect(parseAppPath('/sheet/folder?id=3&scope=kb&shelf=personal')).toEqual({ kind: 'kb-folder', shelf: 'personal', id: '3' });
     expect(parseAppPath('/sheet/folder?id=3&scope=drive&shelf=team')).toEqual({ kind: 'files', shelf: 'team', folderId: '3', fileId: null });
     expect(parseAppPath('/chat?draft=hello&agent=foo')).toEqual({ kind: 'page', href: '/chat?draft=hello&agent=foo' });
+    expect(parseAppPath('/chat?session=ses_9&draft=hi')).toEqual({ kind: 'page', href: '/chat?session=ses_9&draft=hi' });
     expect(parseAppPath('/automations?view=agents&id=7')).toEqual({ kind: 'page', href: '/automations?view=agents&id=7' });
     expect(parseAppPath(`/drive/base?id=${B}&table=${T}`)).toEqual({ kind: 'tables', baseId: B, tableId: T, recordId: null });
     expect(parseAppPath('/admin/users?role=team&status=disabled')).toEqual({

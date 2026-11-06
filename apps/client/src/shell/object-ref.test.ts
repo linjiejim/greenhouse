@@ -105,6 +105,7 @@ describe('outsideLinkPath', () => {
   it('passes the client’s own routes and unknown ones through', () => {
     for (const path of [
       '/chat?draft=hello&agent=foo',
+      '/chat?session=ses_9&draft=hello',
       '/knowledge?shelf=personal',
       '/p/assets/assets?route=x',
       '/expo-development-client/?url=x',

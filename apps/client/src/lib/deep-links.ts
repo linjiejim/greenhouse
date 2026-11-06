@@ -202,10 +202,9 @@ export function parseAppPath(path: string): AppTarget | null {
   switch (route) {
     case '/':
     case '/chat': {
-      const sessionId = sessionParam(params);
-      // a composer address (`?draft=`, `?agent=`) is the chat page's own, kept whole
-      if (!sessionId && route === '/chat' && [...params.keys()].length) return { kind: 'page', href: `${route}?${query}` };
-      return { kind: 'chat', sessionId };
+      // a composer address (`?draft=`, `?agent=`, with or without a session) is the chat page's own, kept whole
+      if (route === '/chat' && [...params.keys()].some((key) => key !== 'session')) return { kind: 'page', href: `${route}?${query}` };
+      return { kind: 'chat', sessionId: sessionParam(params) };
     }
     case '/knowledge': {
       const id = idParam(params, 'doc');
