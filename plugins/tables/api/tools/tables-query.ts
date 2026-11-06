@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { defineTool, type ToolMeta } from '@greenhouse/api/extension-kit';
 import { dispatchTablesAgentAction } from '../platform/agent-adapter.js';
 import { tableRowIdSchema } from '../platform/schema-plan.js';
+import { withLinks } from './links.js';
 
 const filterClauseSchema = z.object({
   fieldId: tableRowIdSchema.describe('Stable field ID from schema.get.'),
@@ -69,6 +70,8 @@ const meta: ToolMeta = {
 
 Use bases.list to discover Base IDs, tables.list/schema.get to discover stable table/field IDs, then records.get/records.query/records.aggregate for data. Queries accept only the bounded JSON filter/sort AST; raw SQL, JavaScript, formula strings, and schema mutations are not supported. Results always respect the bound user's Platform permissions and Base membership.
 
+Bases, tables and records come with a "url" (\`#/tables/…\`): link them with it in replies, e.g. [客户跟进](#/tables/…), never a made-up address.
+
 A Base's or table's "description" is the team's usage note — what the data is, which field is the key, what values mean. Read it before you query or write; when it is empty, ask rather than infer meaning from field names.`,
   category: 'team',
   is_global: false,
@@ -83,9 +86,15 @@ export function createTablesQueryTool(ctx: TablesQueryContext) {
     inputSchema: tablesQuerySchema,
     execute: async (input: TablesQueryInput) => {
       const context = { userId: ctx.userId };
+      // a record's link names its base, which the table's schema says
+      const baseOf = async (tableId: string): Promise<string | null> => {
+        const schema = await dispatchTablesAgentAction(context, 'getSchema', { tableId }, { tableId });
+        const table = schema.ok ? (schema.data as { table?: { base_id?: unknown } } | undefined)?.table : undefined;
+        return typeof table?.base_id === 'string' ? table.base_id : null;
+      };
       if (input.action === 'bases.list') {
         const result = await dispatchTablesAgentAction(context, 'listBases', { search: input.search });
-        return result.ok ? result.data : { error: result.message };
+        return result.ok ? withLinks(result.data) : { error: result.message };
       }
       if (input.action === 'base.get') {
         if (!input.base_id) return { error: 'base_id is required' };
@@ -95,7 +104,7 @@ export function createTablesQueryTool(ctx: TablesQueryContext) {
           { baseId: input.base_id },
           { baseId: input.base_id },
         );
-        return result.ok ? result.data : { error: result.message };
+        return result.ok ? withLinks(result.data, { baseId: input.base_id }) : { error: result.message };
       }
       if (input.action === 'tables.list') {
         if (!input.base_id) return { error: 'base_id is required' };
@@ -105,7 +114,7 @@ export function createTablesQueryTool(ctx: TablesQueryContext) {
           { baseId: input.base_id },
           { baseId: input.base_id },
         );
-        return result.ok ? result.data : { error: result.message };
+        return result.ok ? withLinks(result.data, { baseId: input.base_id }) : { error: result.message };
       }
       if (input.action === 'schema.get') {
         if (!input.table_id) return { error: 'table_id is required' };
@@ -115,7 +124,7 @@ export function createTablesQueryTool(ctx: TablesQueryContext) {
           { tableId: input.table_id },
           { tableId: input.table_id },
         );
-        return result.ok ? result.data : { error: result.message };
+        return result.ok ? withLinks(result.data) : { error: result.message };
       }
       if (input.action === 'records.get') {
         if (!input.table_id || !input.record_id) return { error: 'table_id and record_id are required' };
@@ -125,7 +134,8 @@ export function createTablesQueryTool(ctx: TablesQueryContext) {
           { tableId: input.table_id, recordId: input.record_id },
           { tableId: input.table_id, recordId: input.record_id },
         );
-        return result.ok ? result.data : { error: result.message };
+        if (!result.ok) return { error: result.message };
+        return withLinks(result.data, { baseId: await baseOf(input.table_id), tableId: input.table_id });
       }
       if (input.action === 'records.query') {
         if (!input.table_id) return { error: 'table_id is required' };
@@ -135,7 +145,8 @@ export function createTablesQueryTool(ctx: TablesQueryContext) {
           { tableId: input.table_id, query: input.query ?? {} },
           { tableId: input.table_id },
         );
-        return result.ok ? result.data : { error: result.message };
+        if (!result.ok) return { error: result.message };
+        return withLinks(result.data, { baseId: await baseOf(input.table_id), tableId: input.table_id });
       }
       // records.aggregate
       if (!input.table_id) return { error: 'table_id is required' };
