@@ -13,7 +13,7 @@
  *  - mail and phone links stay plain text links.
  */
 
-import { linkTarget, webUrl, type AppTarget } from './deep-links';
+import { linkTarget, targetHash, webUrl, type AppTarget } from './deep-links';
 import { isObjectId } from './object-id';
 
 export type ObjectType = 'doc' | 'file' | 'folder' | 'project' | 'task' | 'record' | 'table' | 'chat' | 'page';
@@ -81,16 +81,10 @@ export function classifyLink(href: string, label: string | undefined, stationBas
   const target = linkTarget(value, stationBase);
   if (!target) return { kind: 'plain', href: value };
   if (target.kind === 'external') return { kind: 'site', url: target.url, domain: domainOf(target.url), label: words };
-  if (target.kind === 'agent') return { kind: 'object', type: 'page', target, label: words, resolveUrl: '' };
-  const hash = value.startsWith('#/') ? value : (() => {
-    try {
-      return new URL(value).hash;
-    } catch {
-      return value;
-    }
-  })();
   const type = objectType(target);
-  return { kind: 'object', type, target, label: words, resolveUrl: type === 'page' ? '' : webUrl(stationBase, hash) };
+  // the station resolves titles by the object's `#/…` address, however the link spelled it
+  const hash = type === 'page' ? null : targetHash(target);
+  return { kind: 'object', type, target, label: words, resolveUrl: hash ? webUrl(stationBase, hash) : '' };
 }
 
 /**

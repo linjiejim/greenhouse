@@ -1712,6 +1712,7 @@ export const en = {
     superOnlyHint: 'Administration is for the station’s super administrators.',
     wideOnly: 'Administration needs a wider window',
     wideOnlyHint: 'Open it in the browser or the desktop app on a wider screen.',
+    openInBrowser: 'Open in browser',
     missing: 'This section isn’t available',
     missingHint: 'Its plugin may be off on this station, or the link is out of date.',
     forbidden: 'Only super administrators can open this.',

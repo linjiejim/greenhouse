@@ -156,6 +156,8 @@ export function refOfTarget(target: AppTarget): { ref: ObjectRef } | { place: Pl
     case 'files':
       if (target.fileId) return { ref: { kind: 'file', id: target.fileId } };
       return { place: { kind: 'drive', shelf: target.shelf, folderId: target.folderId } };
+    case 'knowledge':
+      return { place: { kind: 'tab', href: '/knowledge' } };
     case 'project':
       if (target.id && target.taskId) return { ref: { kind: 'task', projectId: target.id, id: target.taskId } };
       if (target.id) return { ref: { kind: 'project', id: target.id } };
@@ -182,5 +184,37 @@ export function refOfTarget(target: AppTarget): { ref: ObjectRef } | { place: Pl
       return { place: { kind: 'page', href: target.href } };
     case 'external':
       return { place: { kind: 'external', url: target.url } };
+  }
+}
+
+/**
+ * The client path a target opens on, for links from outside the app (app/+native-intent.tsx): an
+ * object's sheet, or its place. A plugin record kind needs the station manifest, so it opens home.
+ */
+export function targetPath(target: AppTarget): string {
+  const next = refOfTarget(target);
+  if ('ref' in next) {
+    const opening = openingOf(next.ref);
+    const query = new URLSearchParams(opening.params).toString();
+    return query ? `${opening.pathname}?${query}` : opening.pathname;
+  }
+  const place = next.place;
+  switch (place.kind) {
+    case 'tab':
+    case 'page':
+      return place.href;
+    case 'drive':
+      return place.folderId
+        ? `/sheet/folder?${new URLSearchParams({ id: place.folderId, scope: 'drive', shelf: place.shelf })}`
+        : `/drive?shelf=${place.shelf}`;
+    case 'tables':
+      if (place.baseId)
+        return `/drive/base?${new URLSearchParams({ id: place.baseId, ...(place.tableId ? { table: place.tableId } : {}) })}`;
+      return place.tableId ? `/drive/table?id=${place.tableId}` : '/drive?view=tables';
+    case 'agents':
+      return '/me/agents';
+    case 'route':
+    case 'external':
+      return '/';
   }
 }

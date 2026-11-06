@@ -1689,6 +1689,7 @@ export const zh: Catalog = {
     superOnlyHint: '管理后台只对本工作站的超级管理员开放。',
     wideOnly: '管理后台需要更宽的窗口',
     wideOnlyHint: '请在浏览器或桌面端的宽屏窗口里打开。',
+    openInBrowser: '在浏览器中打开',
     missing: '此分区不可用',
     missingHint: '它所属的插件可能已在本工作站关闭，或链接已过期。',
     forbidden: '只有超级管理员可以打开。',

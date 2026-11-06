@@ -142,9 +142,9 @@ export function EmbedScreen({ plugin, page, title }: { plugin: string; page: Plu
                   else notify[m.kind](m.text, { action, onDismiss: action ? onDismiss : undefined });
                 }
                 if (m.type === EMBED_PROTOCOL.navigate) {
+                  // `#/…` and the client's own addresses (`/knowledge?doc=`) open the object here
                   const href = normalizeNavigate(m.href, getApiBase());
-                  if (href?.startsWith('#/')) openHref(href);
-                  else if (href) router.navigate(href as never);
+                  if (href) openHref(href);
                 }
               },
             }}

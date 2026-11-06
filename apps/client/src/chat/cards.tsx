@@ -25,7 +25,8 @@ import { captureIdentity } from '../data/identity';
 import { formatBytes } from '../lib/format';
 import { useT } from '../lib/i18n';
 import { openLink } from '../lib/links';
-import { useOpenObject } from '../shell/open-object';
+import { useOpenHref, useOpenObject } from '../shell/open-object';
+import { linkTarget } from '../lib/deep-links';
 import { getApiBase } from '../store/stations';
 import { HIT, makeStyles, radius, space, squircle, typo, useTheme, weight } from '../theme';
 import { NativeButton } from '../ui/button';
@@ -586,9 +587,17 @@ export function ExtensionCard({ title, summary, url }: { title: string; summary?
   const { colors: c, hex } = useTheme();
   const styles = useStyles(c);
   const t = useT();
+  const openHref = useOpenHref();
+  // a station object opens here like any link; only another site says it leaves the app
+  const web = !!url && linkTarget(url, getApiBase())?.kind === 'external';
+  const open = url
+    ? () => {
+        if (!openHref(url)) void openLink(absolute(url), hex.accent);
+      }
+    : undefined;
   return (
     <ChatCard
-      onPress={url ? () => void openLink(absolute(url), hex.accent) : undefined}
+      onPress={open}
       accessibilityLabel={title}
       style={styles.card}
     >
@@ -600,7 +609,7 @@ export function ExtensionCard({ title, summary, url }: { title: string; summary?
         {url ? <Icon name="open" size={13} color={c.tertiaryLabel} /> : null}
       </View>
       {summary ? <Text style={styles.body}>{summary}</Text> : null}
-      {url ? <Text style={styles.quietText}>{t('cards.openOnWeb')}</Text> : null}
+      {web ? <Text style={styles.quietText}>{t('cards.openOnWeb')}</Text> : null}
     </ChatCard>
   );
 }
