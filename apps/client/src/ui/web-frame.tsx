@@ -7,6 +7,9 @@ import { openLink } from '../lib/links';
 const OUTSIDE = /^(https?|mailto|tel):$/i;
 export function WebFrame({ bridge, ...props }: WebViewProps & { bridge?: FrameBridge }) {
   const frame = useRef<WebView>(null);
+  // WKWebView reports a load for a same-document navigation too (a plugin page changing its `#/…`
+  // view): only a new document gets init again. A page that really reloads also says `ready`.
+  const loaded = useRef('');
   useEffect(() => {
     if (bridge?.outgoing)
       frame.current?.injectJavaScript(
@@ -19,7 +22,16 @@ export function WebFrame({ bridge, ...props }: WebViewProps & { bridge?: FrameBr
       ref={frame}
       // Plugin pages play their media in place (a video does not leave the page) and may go full screen.
       {...(bridge ? { allowsInlineMediaPlayback: true, allowsFullscreenVideo: true } : null)}
-      onLoad={bridge ? () => bridge.onLoad?.() : props.onLoad}
+      onLoad={
+        bridge
+          ? (event) => {
+              const document = event.nativeEvent.url.split('#')[0];
+              if (document === loaded.current) return;
+              loaded.current = document;
+              bridge.onLoad?.();
+            }
+          : props.onLoad
+      }
       // The plugin page stays on its own origin; a link out of it (or a new window it opens) goes
       // to the in-app browser instead, as the web's sandboxed iframe lets it open a tab.
       onShouldStartLoadWithRequest={
