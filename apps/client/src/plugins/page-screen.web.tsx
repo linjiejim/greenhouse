@@ -2,7 +2,7 @@ import React from 'react';
 import { Redirect, Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { pluginSectionHref } from '../admin/sections';
 import { useWindowDimensions } from 'react-native';
-import { useTheme } from '../theme';
+import { typo, useTheme } from '../theme';
 import Host from './page-host';
 import { useStationManifest } from './store';
 import { localize } from '../shared/plugins';
@@ -38,7 +38,7 @@ function EmbedBack({ backKey }: { backKey: string }) {
         background: 'transparent',
         color: c.accentText,
         font: 'inherit',
-        fontSize: 15,
+        fontSize: typo.body.fontSize,
         cursor: 'pointer',
       }}
     >
