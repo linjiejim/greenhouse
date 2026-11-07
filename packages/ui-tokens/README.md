@@ -33,6 +33,9 @@ Confirms and notices are drawn by the host: `host.confirm({ title, confirmLabel,
 resolves the member's answer; `host.notify({ kind, text, actionLabel })` resolves `action` when
 its action is pressed. `host.header(actions)` puts icon actions in the host bar, `host.route('#/…')`
 keeps the page's view in the host address, and `onTimeout` fires when no init arrives in 10 s.
+`host.back(handler)` says the page shows a sub-view: until `host.back(null)`, the host's back
+control (phone header, Android back, the wide header's Back) calls `handler` instead of closing
+the page. With React, `useHostBack` and `hashBack` do this (open overlays close first).
 
 See plugins/example/ui and plugins/example/scripts/build-ui.mjs for a dependency-free
 ES module build using this package. A bundled embed imports the preset after Tailwind

@@ -36,6 +36,7 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 - The host draws what must cover the whole app: confirms (`greenhouse:confirm`) and notices (`greenhouse:notify`); the page draws its own dialogs and drawers inside the frame, one layer stack, one Escape per layer.
 - One header: the host bar carries the page title, the open object's title (restored on close) and up to four icon actions (`greenhouse:header`); the page adds tabs or a toolbar below it, never a second title.
 - A page's own view (list filters, the open object) lives in the host address through `greenhouse:route`, so it reloads and shares.
+- Back: while a page shows a sub-view (a record, an article, a folder) it says so with `greenhouse:back` (kit `useHostBack`), and every back control goes back inside it first: the phone header's back, Android back, the wide header's Back (drawn only then). An open dialog or drawer closes before the view; swipe-back pauses meanwhile. A page never draws a second back bar under the host's.
 - A page that gets no init within 10 s shows the failed state with Retry, never an endless spinner.
 
 ## Components (use these, do not re-create them)

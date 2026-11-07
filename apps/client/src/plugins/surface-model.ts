@@ -152,7 +152,8 @@ export type EmbedMessage =
   | ({ type: 'greenhouse:confirm' } & EmbedConfirmRequest)
   | ({ type: 'greenhouse:notify' } & EmbedNotifyRequest)
   | { type: 'greenhouse:header'; actions: EmbedHeaderAction[] }
-  | { type: 'greenhouse:route'; route: string };
+  | { type: 'greenhouse:route'; route: string }
+  | { type: 'greenhouse:back'; enabled: boolean };
 
 const shortText = (value: unknown, max = 300): value is string =>
   typeof value === 'string' && value.trim().length > 0 && value.length <= max;
@@ -210,6 +211,8 @@ export function embedMessage(
   if (m.type === 'greenhouse:ready' || m.type === 'greenhouse:token-refresh') return { type: m.type };
   if (m.type === 'greenhouse:confirm' || m.type === 'greenhouse:notify' || m.type === 'greenhouse:header')
     return hostRequest(m);
+  if (m.type === 'greenhouse:back')
+    return typeof m.enabled === 'boolean' ? { type: m.type, enabled: m.enabled } : null;
   if (m.type === 'greenhouse:route')
     return typeof m.route === 'string' && /^#\/[^\s]{0,1000}$/.test(m.route) ? { type: m.type, route: m.route } : null;
   const key =

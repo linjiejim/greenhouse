@@ -1,6 +1,6 @@
 /**
- * Dialog and Drawer for plugin pages. Both join the page's layer stack (one Escape closes one layer,
- * only the lowest modal layer dims), keep Tab inside, return focus on close, and ask before
+ * Dialog and Drawer for plugin pages. Both join the page's layer stack (one Escape or one host
+ * Back closes one layer, only the lowest modal layer dims), keep Tab inside, return focus on close, and ask before
  * dropping unsaved input (`dirty`). Irreversible confirms are not drawn here: call `confirm()`,
  * which the host draws over the whole app.
  */

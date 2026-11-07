@@ -200,6 +200,12 @@ describe('embed host requests', () => {
       type: 'greenhouse:route',
       route: '#/collection/x?q=cat',
     });
+    expect(embedMessage({ type: 'greenhouse:back', enabled: true, extra: 1 }, at, at)).toEqual({
+      type: 'greenhouse:back',
+      enabled: true,
+    });
+    expect(embedMessage({ type: 'greenhouse:back', enabled: 'yes' }, at, at)).toBeNull();
+    expect(embedMessage({ type: 'greenhouse:back', enabled: true }, 'https://evil.test', at)).toBeNull();
   });
   it('drops malformed, oversized or foreign requests', () => {
     expect(embedMessage({ type: 'greenhouse:confirm', id: 'm1', title: 'Delete?' }, at, at)).toBeNull();

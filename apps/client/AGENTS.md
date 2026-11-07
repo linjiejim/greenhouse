@@ -181,6 +181,7 @@
 - `src/shared/plugins.ts` is a verbatim copy of `packages/types/src/plugins.ts`, checked by the React-free manifest tests.
 - `/p/[plugin]/[page]` renders entity-list/detail, settings-form and trusted embed surfaces; an unknown page kind asks for an app update.
 - An embed's `greenhouse:navigate` takes a client route or an in-app object link (`#/…`, opened like a chip).
+- An embed's `greenhouse:back` hands its Back to the page: EmbedScreen holds removal with `usePreventRemove` and turns only back actions (`GO_BACK`, `POP`, Android back) into `greenhouse:back-request`; other navigation still closes the page. The wide header draws Back from `src/plugins/embed-back.ts`. A frame that sends `ready` again starts without it.
 - `pnpm test:e2e:client` owns ports 18920 and 18921 and the isolated `gh4_client` database on port 55450; its screenshots and auth state are ignored.
 - Run Expo dev servers with `CI=1` in restricted environments to disable file watchers; keep native configuration and fingerprint changes deliberate.
 - Metro redirects native route-context entries only for web; verify source maps with `node scripts/check-web-bundle.mjs <export-dir>` after an export with `--source-maps`.

@@ -327,7 +327,7 @@ and a `dark:` variant on the host's theme. Arbitrary sizes and raw colours fail
 should use it rather than its own controls:
 
 ```ts
-import { createEmbed, confirm, notify, useHostTitle, useHeaderActions } from '@greenhouse/ui-tokens/react';
+import { createEmbed, confirm, notify, useHostTitle, useHeaderActions, useHostBack, hashBack } from '@greenhouse/ui-tokens/react';
 const embed = createEmbed({ title: (locale) => (locale === 'zh' ? '我的笔记' : 'My notes') });
 // embed.useEmbed() → { status: 'connecting' | 'ready' | 'failed', locale, user }; failed after 10 s without init
 // embed.embedFetch(url) → fetch with the plugin token, one renewal on 401
@@ -336,6 +336,9 @@ notify.undo('Moved “Q3” to the bin', restore); // reversible: act now, offer
 notify.error('Couldn’t save', { label: 'Retry', onRetry: save }); // stays until dismissed
 useHostTitle(open?.title); // the host bar shows the open object; the page title returns on close
 useHeaderActions([{ id: 'new', label: 'New note', icon: 'Plus', onPress: create }]);
+// on a sub-view, the host's back (phone, Android, the wide header) comes here instead of closing the page:
+// hashBack returns to the view it was opened from, else to the parent without leaving an entry
+useHostBack(open ? () => hashBack('#/') : null);
 ```
 
 The kit has `Button`, `IconButton`, `Field` (label, hint, error, required), `Input`, `TextArea`,
@@ -343,7 +346,7 @@ The kit has `Button`, `IconButton`, `Field` (label, hint, error, required), `Inp
 with `useDelayedFlag` (after 300 ms, held 600 ms), `StateView` (empty, no-match, no-permission,
 error with Retry), `Dialog` (the host's fixed sizes; a sheet below 640) and `Drawer` with
 `DetailList` for viewing and editing a list object in place. Dialogs and drawers share one layer
-stack: one Escape closes one layer, only the lowest dims, Tab stays inside, focus returns, and
+stack: one Escape (or one host Back) closes one layer, only the lowest dims, Tab stays inside, focus returns, and
 `dirty` asks before dropping input. Confirms and notices are drawn by the host over the whole app.
 
 A page without a bundler uses the bridge directly (`plugins/example/ui`):
