@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { FolderOpen, Images, Settings } from 'lucide-react';
-import { useHeaderActions } from '@greenhouse/ui-tokens/react';
+import { hashBack, useHeaderActions, useHostBack } from '@greenhouse/ui-tokens/react';
 import { retryConnection, useEmbed } from './embed';
 import { formatBytes, useT } from './i18n';
-import { go, listHash, useRoute } from './router';
+import { listHash, useRoute } from './router';
 import { useLibrary } from './state';
 import { guessType, useQueue } from './upload/queue';
 import { AssetDetail } from './views/AssetDetail';
@@ -38,15 +38,22 @@ export function App() {
     if (ready) void api.stats().then(setStats, () => {});
   }, [ready, revision, changed]);
 
-  // Upload lives in the host's title bar: one header for the whole page.
+  // Upload lives in the host's title bar: one header for the whole page. A folder needs a desktop
+  // browser (webkitdirectory), so a phone gets files only.
+  const [touch] = useState(() => window.matchMedia?.('(pointer: coarse)').matches ?? false);
   useHeaderActions(
     config
       ? [
-          { id: 'folder', label: t('uploadFolder'), icon: 'FolderPlus', onPress: () => folderInput.current?.click() },
+          ...(touch
+            ? []
+            : [{ id: 'folder', label: t('uploadFolder'), icon: 'FolderPlus', onPress: () => folderInput.current?.click() }]),
           { id: 'upload', label: t('upload'), icon: 'Upload', onPress: () => filesInput.current?.click() },
         ]
       : [],
   );
+  // A collection is a level below Collections: the host's Back returns there (an open asset is a
+  // Drawer, which the host's Back closes first).
+  useHostBack(route.view === 'collection' ? () => hashBack('#/collections') : null);
   const slow = useDelayedFlag(!ready || !config, 300, 0);
 
   const accept = (files: File[]) => {
@@ -64,8 +71,19 @@ export function App() {
     return <div className="flex h-full items-center justify-center">{slow ? <Spinner size={20} /> : null}</div>;
 
   const tab = route.view === 'manage' ? 'manage' : route.view === 'collections' || route.view === 'collection' ? 'collections' : 'library';
-  const openAsset = route.view === 'library' || route.view === 'collection' ? route.asset : undefined;
-  const closeAsset = () => go(listHash(route.view === 'collection' ? `#/collection/${encodeURIComponent(route.id)}` : '#/'));
+  const openAsset = 'asset' in route ? route.asset : undefined;
+  // Closing returns to where the asset was opened from (a duplicate pair, the bin, a similar asset),
+  // else to the list it belongs to.
+  const closeAsset = () =>
+    hashBack(
+      listHash(
+        route.view === 'collection'
+          ? `#/collection/${encodeURIComponent(route.id)}`
+          : route.view === 'manage'
+            ? `#/manage/${route.tab}`
+            : '#/',
+      ),
+    );
 
   return (
     <div

@@ -151,3 +151,28 @@ it('settles a notice with an action when the host reports it gone', async () => 
   message({ type: EMBED_PROTOCOL.notifyDismissed, id: shown.id });
   expect(await undo).toBe('dismissed');
 });
+it('hands the host its Back while the page shows a sub-view, and runs it on request', () => {
+  const post = vi.spyOn(window.parent, 'postMessage');
+  const bridge = connectGreenhouse();
+  bridges.push(bridge);
+  message(init);
+  const first = vi.fn(),
+    second = vi.fn();
+  bridge.back(first);
+  bridge.back(second);
+  const sent = () => post.mock.calls.filter(([m]) => (m as { type: string }).type === EMBED_PROTOCOL.back);
+  // only a change of state goes to the host; a new handler replaces the old one silently
+  expect(sent().map(([m]) => m)).toEqual([{ type: EMBED_PROTOCOL.back, enabled: true }]);
+  message({ type: EMBED_PROTOCOL.backRequest });
+  expect(second).toHaveBeenCalledOnce();
+  expect(first).not.toHaveBeenCalled();
+  message({ type: EMBED_PROTOCOL.backRequest }, 'https://evil.example');
+  expect(second).toHaveBeenCalledOnce();
+  // a host that answers a later ready with init again hears the Back once more
+  message(init);
+  expect(sent()).toHaveLength(2);
+  bridge.back(null);
+  expect(sent().at(-1)?.[0]).toEqual({ type: EMBED_PROTOCOL.back, enabled: false });
+  message({ type: EMBED_PROTOCOL.backRequest });
+  expect(second).toHaveBeenCalledOnce();
+});

@@ -197,6 +197,8 @@ export interface PluginEntitySchema {
  * host → page:  `greenhouse:init` { theme, tokens, locale, user, route, token, expires_at }
  *               `greenhouse:theme` { theme, tokens }      (theme switched)
  *               `greenhouse:token` { token, expires_at }  (answer to a refresh request)
+ *               `greenhouse:back-request`                 (the host's back was pressed while the page
+ *                                                          said it has its own back: go back one view)
  * page → host:  `greenhouse:ready`                         (page loaded; host replies with init)
  *               `greenhouse:navigate` { href }             (client route or in-app object link)
  *               `greenhouse:title` { title }
@@ -211,6 +213,11 @@ export interface PluginEntitySchema {
  *                                                          press replies `greenhouse:header-action` { id })
  *               `greenhouse:route` { route }               (the page's own view, `#/…`: kept in the
  *                                                          host address so it reloads and shares)
+ *               `greenhouse:back` { enabled }              (the page shows a sub-view it can leave on
+ *                                                          its own: while enabled, the host's back
+ *                                                          control, Android back and the wide header's
+ *                                                          Back send `greenhouse:back-request` instead
+ *                                                          of closing the page)
  * Confirms and notices are drawn by the host so they cover the whole app and behave like its own.
  */
 export const EMBED_PROTOCOL = {
@@ -230,6 +237,8 @@ export const EMBED_PROTOCOL = {
   header: 'greenhouse:header',
   headerAction: 'greenhouse:header-action',
   route: 'greenhouse:route',
+  back: 'greenhouse:back',
+  backRequest: 'greenhouse:back-request',
 } as const;
 
 /** A confirm the page asks the host to draw. The title is a question; the button repeats its verb. */

@@ -45,6 +45,7 @@ export function connectGreenhouse(
   const confirms = new Map<string, (ok: boolean) => void>();
   const notices = new Map<string, (answer: 'action' | 'dismissed') => void>();
   let headerActions = new Map<string, () => void>();
+  let onBack: (() => void) | null = null;
   const nextId = () => `m${++sequence}-${Math.random().toString(36).slice(2, 8)}`;
   const send = (type: string, payload = {}) => window.parent.postMessage({ type, ...payload }, origin);
   const apply = (theme: 'light' | 'dark', tokens: Record<string, string>) => {
@@ -76,6 +77,8 @@ export function connectGreenhouse(
       document.documentElement.lang = m.locale;
       apply(m.theme, m.tokens ?? {});
       options.onInit?.(m);
+      // a host that (re)sends init after a ready forgot this page's Back: say it again
+      if (onBack) send(EMBED_PROTOCOL.back, { enabled: true });
     } else if (m.type === EMBED_PROTOCOL.theme && state && (m.theme === 'light' || m.theme === 'dark')) {
       state = { ...state, theme: m.theme, tokens: m.tokens };
       apply(m.theme, m.tokens ?? {});
@@ -101,6 +104,8 @@ export function connectGreenhouse(
       notices.delete(m.id);
     } else if (m.type === EMBED_PROTOCOL.headerAction && typeof m.id === 'string') {
       headerActions.get(m.id)?.();
+    } else if (m.type === EMBED_PROTOCOL.backRequest) {
+      onBack?.();
     }
   };
   window.addEventListener('message', receive);
@@ -160,6 +165,15 @@ export function connectGreenhouse(
       headerActions = new Map(actions.map((a) => [a.id, a.onPress]));
       send(EMBED_PROTOCOL.header, { actions: actions.map(({ onPress: _, ...a }) => a) });
     },
+    /**
+     * While the page shows a sub-view, the host's back control (header back, Android back, the wide
+     * header's Back) calls `handler` instead of closing the page; `null` hands Back to the host again.
+     */
+    back(handler: (() => void) | null) {
+      const was = onBack !== null;
+      onBack = handler;
+      if (was !== (handler !== null)) send(EMBED_PROTOCOL.back, { enabled: handler !== null });
+    },
     disconnect() {
       window.removeEventListener('message', receive);
       clearTimeout(timer);
@@ -168,6 +182,7 @@ export function connectGreenhouse(
       confirms.clear();
       notices.clear();
       headerActions.clear();
+      onBack = null;
       rejectRefresh?.(new Error('Bridge disconnected'));
       resolveRefresh = rejectRefresh = null;
       pending = null;

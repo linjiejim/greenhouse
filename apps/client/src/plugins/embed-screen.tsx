@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { BackHandler, Platform, View } from 'react-native';
+import { useFocusEffect, useNavigation, useRouter, useLocalSearchParams } from 'expo-router';
+import { usePreventRemove } from 'expo-router/react-navigation';
 import { post } from '../api/client';
 import { captureIdentity } from '../data/identity';
 import { getApiBase } from '../store/stations';
@@ -13,6 +14,7 @@ import { WebFrame } from '../ui/web-frame';
 import { EmptyState } from '../ui/empty';
 import { useOpenHref, useStartChat } from '../shell/open-object';
 import { embedMessage, embedTokens, embedUrl, normalizeNavigate } from './surface-model';
+import { isBackAction, setEmbedBack } from './embed-back';
 import { lucideIcon } from './icons';
 import { confirmAction } from '../ui/dialogs';
 import { notify } from '../ui/notify';
@@ -30,7 +32,9 @@ export function EmbedScreen({ plugin, page, title }: { plugin: string; page: Plu
   const [frameTitle, setFrameTitle] = useState(title),
     [outgoing, setOutgoing] = useState<Record<string, unknown> | null>(null),
     [headerActions, setHeaderActions] = useState<EmbedHeaderAction[]>([]),
+    [ownBack, setOwnBack] = useState(false),
     [error, setError] = useState('');
+  const navigation = useNavigation();
   const tokens = useMemo(() => embedTokens(hex, isDark), [hex, isDark]);
   // Keep iframe URL stable across theme changes; bridge updates preserve plugin state.
   const [initial] = useState({ theme, locale });
@@ -83,6 +87,31 @@ export function EmbedScreen({ plugin, page, title }: { plugin: string; page: Plu
   const reply = (message: Record<string, unknown>) => {
     if (alive.current) setOutgoing(message);
   };
+  // While the page shows a sub-view (`greenhouse:back`), every back control goes back inside it:
+  // the header's back, Android back and the wide header's Back. Swipe-back is off meanwhile (native
+  // stacks cannot cancel a swipe), and leaving for another place still closes the page.
+  const requestBack = useCallback(() => {
+    if (alive.current) setOutgoing({ type: EMBED_PROTOCOL.backRequest });
+  }, []);
+  usePreventRemove(ownBack, ({ data }) => {
+    if (isBackAction(data.action.type)) requestBack();
+    else navigation.dispatch(data.action);
+  });
+  const backKey = `${plugin}:${page.id}`;
+  useEffect(() => {
+    setEmbedBack(backKey, ownBack ? requestBack : null);
+    return () => setEmbedBack(backKey, null);
+  }, [backKey, ownBack, requestBack]);
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'android' || !ownBack) return;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        requestBack();
+        return true;
+      });
+      return () => sub.remove();
+    }, [ownBack, requestBack]),
+  );
   return (
     <>
       <Screen
@@ -113,7 +142,12 @@ export function EmbedScreen({ plugin, page, title }: { plugin: string; page: Plu
               onMessage: (raw, eventOrigin) => {
                 const m = embedMessage(raw, eventOrigin, origin, getApiBase());
                 if (!m) return;
-                if (m.type === EMBED_PROTOCOL.ready) void sendInit();
+                if (m.type === EMBED_PROTOCOL.ready) {
+                  // a page that (re)loads starts at its own top until it says otherwise
+                  setOwnBack(false);
+                  void sendInit();
+                }
+                if (m.type === EMBED_PROTOCOL.back) setOwnBack(m.enabled);
                 if (m.type === EMBED_PROTOCOL.tokenRefresh) void sendInit(true);
                 if (m.type === EMBED_PROTOCOL.title) setFrameTitle(m.title);
                 if (m.type === EMBED_PROTOCOL.sendPrompt) {

@@ -99,3 +99,18 @@ export function isTopLayer(root: HTMLElement | null): boolean {
 export function hasModalLayer() {
   return layers.some((layer) => layer.modal);
 }
+
+/** Close the top layer as Escape would (the host's Back while a layer is open). */
+export function escapeTopLayer() {
+  layers.at(-1)?.escape();
+}
+
+/** Follow the stack: the host's Back closes layers before it leaves a view. */
+export function subscribeLayers(listener: () => void) {
+  listeners.add(listener);
+  return () => void listeners.delete(listener);
+}
+
+export function hasLayer() {
+  return layers.length > 0;
+}

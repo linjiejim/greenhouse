@@ -6,6 +6,7 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { EmbedInitMessage } from '@greenhouse/types/plugins';
 import { connectGreenhouse } from '../index.js';
+import { escapeTopLayer, hasLayer, subscribeLayers } from './layers.js';
 
 export type EmbedStatus = 'connecting' | 'ready' | 'failed';
 export interface EmbedState {
@@ -58,10 +59,17 @@ export function createEmbed(
     onInit(message) {
       setState({ status: 'ready', locale: message.locale === 'en' ? 'en' : 'zh', user: message.user });
       options.onInit?.(message);
+      // The view the host restored (a shared link, a reload) is where this page starts, not a view
+      // the member opened: Back from it goes up to its parent, never to the empty start.
+      if (!seeded) trail = [viewOf(window.location.hash)];
+      seeded = true;
     },
     onTimeout: () => setState({ status: 'failed' }),
   });
   current = { bridge, baseTitle: () => options.title?.(state.locale) ?? '' };
+  startTrail();
+  unsubscribeLayers?.();
+  unsubscribeLayers = subscribeLayers(syncBack);
   return {
     bridge,
     useEmbed,
@@ -136,4 +144,72 @@ export function useHeaderActions(
     );
     return () => embed.bridge.header([]);
   }, [key]);
+}
+
+// ─── Back ─────────────────────────────────────────────────
+
+// The views this page has opened in its own hash history, oldest first, compared without their
+// query (filters are written with replaceState and never fire hashchange).
+let trail: string[] = [];
+let replacing = false;
+let tracking = false;
+let seeded = false;
+const viewOf = (hash: string) => (hash || '#/').split('?')[0];
+
+function startTrail() {
+  trail = [viewOf(window.location.hash)];
+  if (tracking) return;
+  tracking = true;
+  window.addEventListener('hashchange', () => {
+    const view = viewOf(window.location.hash);
+    if (replacing) {
+      replacing = false;
+      trail = [view];
+    } else if (trail.length > 1 && trail[trail.length - 2] === view) trail.pop();
+    else if (trail[trail.length - 1] !== view) trail.push(view);
+  });
+}
+
+/**
+ * Leave the current sub-view: back to the view it was opened from when this page opened it, else
+ * (a deep link, a reload) to `parent` (`#/…`) without leaving an entry to come back to.
+ */
+export function hashBack(parent: string) {
+  if (trail.length > 1) {
+    window.history.back();
+    return;
+  }
+  const target = parent.startsWith('#') ? parent : `#${parent}`;
+  if (viewOf(target) === viewOf(window.location.hash)) return;
+  replacing = true;
+  window.location.replace(target);
+}
+
+const backs: { run: () => void }[] = [];
+let unsubscribeLayers: (() => void) | null = null;
+// An open Dialog, Drawer or popup closes first (as Escape would), then the view's own Back runs.
+function syncBack() {
+  const top = backs[backs.length - 1];
+  current?.bridge.back(hasLayer() ? escapeTopLayer : top ? () => top.run() : null);
+}
+
+/**
+ * While mounted with a handler, the host's back control (header back, Android back, the wide
+ * header's Back) runs it instead of closing the page. Open kit overlays close first; among views
+ * the latest mounted handler wins, so register one per view. Pass null at the page's top view.
+ */
+export function useHostBack(handler: (() => void) | null | false | undefined) {
+  const latest = useRef(handler);
+  latest.current = handler;
+  const on = Boolean(handler);
+  useEffect(() => {
+    if (!on || !current) return;
+    const entry = { run: () => void (latest.current || undefined)?.() };
+    backs.push(entry);
+    syncBack();
+    return () => {
+      backs.splice(backs.indexOf(entry), 1);
+      syncBack();
+    };
+  }, [on]);
 }

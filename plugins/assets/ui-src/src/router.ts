@@ -5,7 +5,7 @@ export type Route =
   | { view: 'library'; asset?: string }
   | { view: 'collections' }
   | { view: 'collection'; id: string; asset?: string }
-  | { view: 'manage'; tab: 'facets' | 'duplicates' | 'bin' };
+  | { view: 'manage'; tab: 'facets' | 'duplicates' | 'bin'; asset?: string };
 
 export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#/, '').split('?')[0];
@@ -14,8 +14,13 @@ export function parseRoute(hash: string): Route {
   m = /^\/collection\/([^/?#]+)(?:\/asset\/([^/?#]+))?/.exec(path);
   if (m) return { view: 'collection', id: decodeURIComponent(m[1]), asset: m[2] ? decodeURIComponent(m[2]) : undefined };
   if (path.startsWith('/collections')) return { view: 'collections' };
-  m = /^\/manage(?:\/(facets|duplicates|bin))?/.exec(path);
-  if (m) return { view: 'manage', tab: (m[1] as 'facets' | 'duplicates' | 'bin') ?? 'facets' };
+  m = /^\/manage(?:\/(facets|duplicates|bin))?(?:\/asset\/([^/?#]+))?/.exec(path);
+  if (m)
+    return {
+      view: 'manage',
+      tab: (m[1] as 'facets' | 'duplicates' | 'bin') ?? 'facets',
+      asset: m[2] ? decodeURIComponent(m[2]) : undefined,
+    };
   return { view: 'library' };
 }
 
