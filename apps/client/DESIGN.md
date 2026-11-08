@@ -4,7 +4,7 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 
 ## Relation to jim-uiux
 
-- Interaction, feedback, copy and data states follow jim-uiux (https://design.linjiejim.com); this file records only Greenhouse's own values and exceptions.
+- Interaction, feedback, copy and data states follow jim-uiux 1.3.0 (https://design.linjiejim.com); this file records only Greenhouse's own values and exceptions. Row and card context menus are shortcuts: "open inspector" and status moves are also in the inspector and the list menus.
 - Greenhouse keeps its brand (Haven greens, Nunito) and its numbers: dialog sizes (`DIALOG_SIZES`), desktop density (rows 32, toolbar controls 28, headers 52) and the wide shell below.
 - Native screens follow the platform (HIG, Material 3): system sheets, menus and alerts; native titles may use weight 700. Browser CSS stays at 600 or below.
 - Guards: `src/theme/design-guard.test.ts` (screens and browser CSS: type scale, weight ≤ 600, token colours and shadows, no native `<select>`) and `scripts/check-plugin-ui.mjs` (plugin front ends, run by `pnpm lint`; a plugin's known debt only shrinks).
