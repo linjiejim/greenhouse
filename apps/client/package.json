@@ -1,6 +1,6 @@
 {
   "name": "@greenhouse/mobile",
-  "version": "4.3.1",
+  "version": "4.4.0",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
