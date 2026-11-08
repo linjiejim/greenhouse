@@ -5,6 +5,13 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.4.0](https://github.com/linjiejim/greenhouse/compare/v4.3.1...v4.4.0) (2026-11-08)
+
+
+### Added
+
+* **plugins:** embeds own their Back while a sub-view is open ([#115](https://github.com/linjiejim/greenhouse/issues/115)) ([16cf202](https://github.com/linjiejim/greenhouse/commit/16cf20249f519cb1575e403a0d2f7fe71013bfd1))
+
 ## [4.3.1](https://github.com/linjiejim/greenhouse/compare/v4.3.0...v4.3.1) (2026-11-06)
 
 
