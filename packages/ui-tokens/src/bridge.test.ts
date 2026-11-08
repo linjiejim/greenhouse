@@ -168,6 +168,9 @@ it('hands the host its Back while the page shows a sub-view, and runs it on requ
   expect(first).not.toHaveBeenCalled();
   message({ type: EMBED_PROTOCOL.backRequest }, 'https://evil.example');
   expect(second).toHaveBeenCalledOnce();
+  // a host that answers a later ready with init again hears the Back once more
+  message(init);
+  expect(sent()).toHaveLength(2);
   bridge.back(null);
   expect(sent().at(-1)?.[0]).toEqual({ type: EMBED_PROTOCOL.back, enabled: false });
   message({ type: EMBED_PROTOCOL.backRequest });

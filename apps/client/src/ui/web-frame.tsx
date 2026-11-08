@@ -3,13 +3,12 @@ import { WebView, type WebViewProps } from 'react-native-webview';
 import type { FrameBridge } from './frame-bridge';
 import { openLink } from '../lib/links';
 
+/** Once per document: tell the host this page is ready (see onLoad). */
+const READY_PROBE = `if(!window.__greenhouseReady){window.__greenhouseReady=true;window.ReactNativeWebView.postMessage(JSON.stringify({type:'greenhouse:ready'}));}true;`;
 /** Schemes a plugin page may send the member to outside it. */
 const OUTSIDE = /^(https?|mailto|tel):$/i;
 export function WebFrame({ bridge, ...props }: WebViewProps & { bridge?: FrameBridge }) {
   const frame = useRef<WebView>(null);
-  // WKWebView reports a load for a same-document navigation too (a plugin page changing its `#/…`
-  // view): only a new document gets init again. A page that really reloads also says `ready`.
-  const loaded = useRef('');
   useEffect(() => {
     if (bridge?.outgoing)
       frame.current?.injectJavaScript(
@@ -22,16 +21,11 @@ export function WebFrame({ bridge, ...props }: WebViewProps & { bridge?: FrameBr
       ref={frame}
       // Plugin pages play their media in place (a video does not leave the page) and may go full screen.
       {...(bridge ? { allowsInlineMediaPlayback: true, allowsFullscreenVideo: true } : null)}
-      onLoad={
-        bridge
-          ? (event) => {
-              const document = event.nativeEvent.url.split('#')[0];
-              if (document === loaded.current) return;
-              loaded.current = document;
-              bridge.onLoad?.();
-            }
-          : props.onLoad
-      }
+      // WKWebView reports a load for a same-document navigation too (a plugin page changing its
+      // `#/…` view), so a load only asks the document itself: a new one (even at the same address)
+      // answers `ready` once, which brings init; the page's own `ready` may have been lost if it ran
+      // before the message shim.
+      onLoad={bridge ? () => frame.current?.injectJavaScript(READY_PROBE) : props.onLoad}
       // The plugin page stays on its own origin; a link out of it (or a new window it opens) goes
       // to the in-app browser instead, as the web's sandboxed iframe lets it open a tab.
       onShouldStartLoadWithRequest={

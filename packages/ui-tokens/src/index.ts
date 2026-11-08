@@ -77,6 +77,8 @@ export function connectGreenhouse(
       document.documentElement.lang = m.locale;
       apply(m.theme, m.tokens ?? {});
       options.onInit?.(m);
+      // a host that (re)sends init after a ready forgot this page's Back: say it again
+      if (onBack) send(EMBED_PROTOCOL.back, { enabled: true });
     } else if (m.type === EMBED_PROTOCOL.theme && state && (m.theme === 'light' || m.theme === 'dark')) {
       state = { ...state, theme: m.theme, tokens: m.tokens };
       apply(m.theme, m.tokens ?? {});

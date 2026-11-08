@@ -59,6 +59,10 @@ export function createEmbed(
     onInit(message) {
       setState({ status: 'ready', locale: message.locale === 'en' ? 'en' : 'zh', user: message.user });
       options.onInit?.(message);
+      // The view the host restored (a shared link, a reload) is where this page starts, not a view
+      // the member opened: Back from it goes up to its parent, never to the empty start.
+      if (!seeded) trail = [viewOf(window.location.hash)];
+      seeded = true;
     },
     onTimeout: () => setState({ status: 'failed' }),
   });
@@ -149,6 +153,7 @@ export function useHeaderActions(
 let trail: string[] = [];
 let replacing = false;
 let tracking = false;
+let seeded = false;
 const viewOf = (hash: string) => (hash || '#/').split('?')[0];
 
 function startTrail() {
