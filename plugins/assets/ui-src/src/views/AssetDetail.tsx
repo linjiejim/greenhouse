@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Copy, Download, Pencil, RotateCcw, Sparkles, Trash2, UserRound } from 'lucide-react';
+import { Check, Copy, Download, Pencil, RotateCcw, Sparkles, Trash2, UserRound } from 'lucide-react';
 import { api } from '../api';
 import { useEmbed } from '../embed';
 import { formatBytes, formatDate, formatDuration, useT } from '../i18n';
@@ -143,11 +143,18 @@ export function AssetDetail({ id, onClose, onChanged }: { id: string; onClose: (
     }
   };
 
+  // Copying answers on the button (已复制 for 1.5 s), never a notice. When the clipboard refuses, the
+  // warning carries the link itself, to copy by hand.
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(copiedTimer.current), []);
   const copy = async () => {
     if (!asset) return;
     try {
       await navigator.clipboard.writeText(assetLink(asset.id));
-      notify.success(t('copied'));
+      window.clearTimeout(copiedTimer.current);
+      setCopied(true);
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 1500);
     } catch {
       notify.warning(t('copyFailed', { link: assetLink(asset.id) }));
     }
@@ -246,8 +253,8 @@ export function AssetDetail({ id, onClose, onChanged }: { id: string; onClose: (
               {t('download')}
             </Button>
             <Button onClick={copy}>
-              <Copy size={16} />
-              {t('copyLink')}
+              {copied ? <Check size={16} /> : <Copy size={16} />}
+              <span aria-live="polite">{copied ? t('copied') : t('copyLink')}</span>
             </Button>
             {asset.can_manage && asset.status === 'active' ? (
               <Button variant="ghost" className="text-destructive" onClick={remove}>

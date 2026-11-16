@@ -8,7 +8,6 @@
 
 import React, { useState } from 'react';
 import { Text, View } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { createGatewayKey, revokeGatewayKey } from '../api/agent';
 import { captureIdentity } from '../data/identity';
 import { formatUsd } from '../data/money';
@@ -21,6 +20,8 @@ import { alertError, confirmAction, promptText } from '../ui/dialogs';
 import { Badge, Card, Row, Section, SectionFooter } from '../ui/list';
 import { NativeMenu } from '../ui/menu';
 import { toast } from '../ui/toast';
+import { copyLabel } from '../ui/copy-state';
+import { useCopy } from '../ui/use-copy';
 
 export function GatewayKeys({ gateway, onChanged }: { gateway: GatewayOverview; onChanged: () => void }) {
   const t = useT();
@@ -28,6 +29,8 @@ export function GatewayKeys({ gateway, onChanged }: { gateway: GatewayOverview; 
   const styles = useStyles(c);
   const [secret, setSecret] = useState<{ name: string; value: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // the system HUD on phones; in the browser the button itself says 已复制
+  const { state: copied, copy } = useCopy();
 
   const create = async () => {
     const name = await promptText({
@@ -69,12 +72,6 @@ export function GatewayKeys({ gateway, onChanged }: { gateway: GatewayOverview; 
     onChanged();
   };
 
-  const copy = async () => {
-    if (!secret) return;
-    await Clipboard.setStringAsync(secret.value).catch(() => {});
-    toast(t('common.copied'), 'copy');
-  };
-
   return (
     <>
       {secret ? (
@@ -86,7 +83,12 @@ export function GatewayKeys({ gateway, onChanged }: { gateway: GatewayOverview; 
             </Text>
             <Text style={styles.secretHint}>{t('gatewayKeys.secretHint')}</Text>
             <View style={styles.secretActions}>
-              <NativeButton label={t('gatewayKeys.copy')} icon="copy" variant="prominent" onPress={() => void copy()} />
+              <NativeButton
+                label={copyLabel(copied, t('gatewayKeys.copy'), t)}
+                icon={copied === 'copied' ? 'check' : 'copy'}
+                variant="prominent"
+                onPress={() => void copy(secret.value)}
+              />
               <NativeButton label={t('gatewayKeys.secretDone')} onPress={() => setSecret(null)} />
             </View>
           </View>

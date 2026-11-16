@@ -1,17 +1,18 @@
 /**
  * Fenced code block — an always-dark card (the `code*` tokens, same in light
  * and dark like Xcode / GitHub), a header with the language label and a copy
- * button (system HUD confirmation), light syntax colors (../highlight —
+ * button (the system HUD on phones; in the browser the button itself says
+ * 已复制, ../../ui/use-copy), light syntax colors (../highlight —
  * keywords, strings, numbers, comments; web parity), and horizontal scrolling
  * for long lines (`HScroll` — keeps the back gesture working).
  */
 import { useMemo } from 'react';
 import { Text, View } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { useT } from '../../lib/i18n';
 import { makeStyles, mono, radius, space, squircle, typo, useTheme, weight } from '../../theme';
 import { Icon, Touchable } from '../../ui/core';
-import { toast } from '../../ui/toast';
+import { copyLabel } from '../../ui/copy-state';
+import { useCopy } from '../../ui/use-copy';
 import { highlight, type TokKind } from '../highlight';
 import { HScroll } from './hscroll';
 
@@ -26,23 +27,23 @@ export function CodeBlock({ lang, code }: { lang: string; code: string }) {
     number: c.codeNumber,
     keyword: c.codeKeyword,
   };
-  const copy = async () => {
-    await Clipboard.setStringAsync(code).catch(() => {});
-    toast(t('common.copied'), 'copy');
-  };
+  const { state: copied, copy } = useCopy();
+  const copyText = copyLabel(copied, t('markdown.copy'), t);
   return (
     <View style={styles.wrap}>
       <View style={styles.header}>
         <Text style={styles.lang}>{lang}</Text>
         <Touchable
-          onPress={copy}
+          onPress={() => void copy(code)}
           hitSlop={10}
           style={styles.copy}
           accessibilityRole="button"
-          accessibilityLabel={t('markdown.copy')}
+          accessibilityLabel={copyText}
         >
-          <Icon name="copy" size={13} color={c.codeLabel} />
-          <Text style={styles.copyText}>{t('markdown.copy')}</Text>
+          <Icon name={copied === 'copied' ? 'check' : 'copy'} size={13} color={c.codeLabel} />
+          <Text style={styles.copyText} accessibilityLiveRegion="polite">
+            {copyText}
+          </Text>
         </Touchable>
       </View>
       <HScroll>

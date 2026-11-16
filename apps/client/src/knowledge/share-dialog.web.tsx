@@ -10,6 +10,7 @@ import { useT } from '../lib/i18n';
 import { WIDE_MIN } from '../shell/wide-model';
 import { Icon } from '../ui/core';
 import { DialogBody, Overlay } from '../ui/overlay.web';
+import { Callout } from '../ui/callout.web';
 import { SHARE_ROLES, type ShareRole } from './share-model';
 import { useDocShares } from './use-doc-shares';
 import { Select } from '../ui/select.web';
@@ -54,12 +55,16 @@ export function DocShareDialog({ docId, close }: { docId: string; close: () => v
             s.loading ? (
               <p className="gh-hint">{t('common.loading')}</p>
             ) : (
-              <div className="gh-callout" data-tone="danger" role="alert">
-                <span className="gh-callout-text">{s.error?.message || t('knowledge.share.loadFailed')}</span>
-                <button type="button" className="gh-link-button" onClick={() => void s.refresh()}>
-                  {t('common.retry')}
-                </button>
-              </div>
+              <Callout
+                tone="danger"
+                action={
+                  <button type="button" className="gh-link-button" onClick={() => void s.refresh()}>
+                    {t('common.retry')}
+                  </button>
+                }
+              >
+                {s.error?.message || t('knowledge.share.loadFailed')}
+              </Callout>
             )
           ) : !s.manage ? (
             s.note ? (
@@ -69,12 +74,16 @@ export function DocShareDialog({ docId, close }: { docId: string; close: () => v
             ) : s.loading ? (
               <p className="gh-hint">{t('common.loading')}</p>
             ) : (
-              <div className="gh-callout" data-tone="danger" role="alert">
-                <span className="gh-callout-text">{s.error?.message || t('knowledge.share.loadFailed')}</span>
-                <button type="button" className="gh-link-button" onClick={() => void s.refresh()}>
-                  {t('common.retry')}
-                </button>
-              </div>
+              <Callout
+                tone="danger"
+                action={
+                  <button type="button" className="gh-link-button" onClick={() => void s.refresh()}>
+                    {t('common.retry')}
+                  </button>
+                }
+              >
+                {s.error?.message || t('knowledge.share.loadFailed')}
+              </Callout>
             )
           ) : (
             <>

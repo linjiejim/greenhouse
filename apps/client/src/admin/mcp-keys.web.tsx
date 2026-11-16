@@ -15,6 +15,8 @@ import { useT, localeOf } from '../lib/i18n';
 import { Icon } from '../ui/core';
 import { confirmAction } from '../ui/dialogs';
 import { toast } from '../ui/toast';
+import { useCopy } from '../ui/use-copy';
+import { copyLabel } from '../ui/copy-state';
 import * as admin from './api';
 import { AdminDialog, AdminPage, Badge, Callout, Card, Field, SectionState } from './kit.web';
 import { useWrite } from './use-write';
@@ -52,6 +54,8 @@ export default function McpKeysSection() {
   const users = useResource(useCallback(() => admin.listUsers(), []));
   const [creating, setCreating] = useState(false);
   const [revealed, setRevealed] = useState<{ clientId: string; secret: string } | null>(null);
+  // Copy answers on the button (已复制 / 复制失败), never a notice
+  const secretCopy = useCopy();
   const [activity, setActivity] = useState<OAuthClient | null>(null);
   const [connect, setConnect] = useState(false);
   const { busy, run } = useWrite();
@@ -201,14 +205,9 @@ export default function McpKeysSection() {
           <div className="gh-mono">client_id {revealed.clientId}</div>
           <div className="gh-admin-secret" style={{ marginTop: 8 }}>
             <code>{revealed.secret}</code>
-            <button
-              className="gh-secondary-button"
-              onClick={() => {
-                void navigator.clipboard?.writeText(revealed.secret).then(() => toast(t('common.copied')));
-              }}
-            >
-              <Icon name="copy" size={14} />
-              {t('admin.copy')}
+            <button className="gh-secondary-button" onClick={() => void secretCopy.copy(revealed.secret)}>
+              <Icon name={secretCopy.state === 'copied' ? 'check' : 'copy'} size={14} />
+              <span aria-live="polite">{copyLabel(secretCopy.state, t('admin.copy'), t)}</span>
             </button>
           </div>
         </Callout>

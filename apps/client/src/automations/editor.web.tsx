@@ -15,6 +15,7 @@ import { CORE_OPT_IN_TOOLS, type AutomationOptInTool } from '../shared/greenhous
 import { useAuth } from '../store/auth';
 import { usePrefs } from '../store/prefs';
 import { Icon } from '../ui/core';
+import { Callout } from '../ui/callout.web';
 import { confirmDiscard } from '../ui/form-guard';
 import { toast } from '../ui/toast';
 import { buildCron, FREQUENCIES, parseCron, withFrequency, type ScheduleState } from './cron';
@@ -179,9 +180,7 @@ export function AutomationEditor({
         : 'automations.editor.newTitle',
   );
   const lead = saveError ? (
-    <span role="alert" className="gh-error" title={saveError}>
-      {saveError}
-    </span>
+    <Callout tone="danger">{saveError}</Callout>
   ) : submitted && Object.keys(errors).length ? (
     <span role="alert" className="gh-error">
       {t('automations.editor.fixErrors')}

@@ -12,6 +12,7 @@ import { Icon } from '../../ui/core';
 import { alertError, confirmAction } from '../../ui/dialogs';
 import { NativeMenu, menuSections } from '../../ui/menu.web';
 import { DialogBody, Overlay } from '../../ui/overlay.web';
+import { Callout } from '../../ui/callout.web';
 import { Place, PlaceEmpty } from '../../ui/place.web';
 import { toast } from '../../ui/toast';
 import { notify } from '../../ui/notify';
@@ -320,11 +321,7 @@ function MemoryDialog({
                 <small>{t('appPages.memory.pinHint')}</small>
               </span>
             </label>
-            {error ? (
-              <p role="alert" className="gh-error">
-                {error}
-              </p>
-            ) : null}
+            {error ? <Callout tone="danger">{error}</Callout> : null}
           </div>
         </DialogBody>
       </form>

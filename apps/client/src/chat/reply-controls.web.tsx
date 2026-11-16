@@ -4,11 +4,11 @@ import { typo } from '../theme';
 import { toolActivity, toolName } from './tool-words';
 import type { ToolStep } from './parts';
 import type { TFunction } from '../lib/i18n';
-import * as Clipboard from 'expo-clipboard';
 import { AssistantAvatar } from '../ui/avatar';
 import { Controls } from '../ui/screen-actions.web';
 import { useT } from '../lib/i18n';
-import { toast } from '../ui/toast';
+import { useCopy } from '../ui/use-copy';
+import { copyLabel } from '../ui/copy-state';
 import { shareTextFile } from '../lib/share-file';
 import { alertError } from '../ui/dialogs';
 import type { MessageActions } from './messages';
@@ -20,6 +20,8 @@ export function ReplyAvatar() {
 export function ReplyActions({ text, actions, live }: { text: string; actions?: MessageActions; live: boolean }) {
   const t = useT();
   const { width } = useWindowDimensions();
+  // the button answers (已复制 / 复制失败), never a notice
+  const { state: copied, copy } = useCopy();
   if (live || !text || width < WIDE_MIN) return null;
   return (
     <Controls
@@ -27,12 +29,9 @@ export function ReplyActions({ text, actions, live }: { text: string; actions?: 
       actions={[
         {
           id: 'copy',
-          icon: 'copy',
-          label: t('markdown.copy'),
-          onPress: () => {
-            void Clipboard.setStringAsync(text);
-            toast(t('markdown.copied'));
-          },
+          icon: copied === 'copied' ? 'check' : 'copy',
+          label: copyLabel(copied, t('markdown.copy'), t),
+          onPress: () => void copy(text),
         },
         ...(actions?.onRegenerate
           ? [

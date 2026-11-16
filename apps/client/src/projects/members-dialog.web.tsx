@@ -10,6 +10,7 @@ import { useT } from '../lib/i18n';
 import { WIDE_MIN } from '../shell/wide-model';
 import { Icon } from '../ui/core';
 import { DialogBody, Overlay } from '../ui/overlay.web';
+import { Callout } from '../ui/callout.web';
 import { MEMBER_ROLES, type MemberRole } from './members-model';
 import { useProjectMembers } from './use-project-members';
 import { Select } from '../ui/select.web';
@@ -54,12 +55,16 @@ export function ProjectMembersDialog({ projectId, close }: { projectId: string; 
             m.loading ? (
               <p className="gh-hint">{t('common.loading')}</p>
             ) : (
-              <div className="gh-callout" data-tone="danger" role="alert">
-                <span className="gh-callout-text">{m.error?.message || t('projects.members.loadFailed')}</span>
-                <button type="button" className="gh-link-button" onClick={() => void m.refresh()}>
-                  {t('common.retry')}
-                </button>
-              </div>
+              <Callout
+                tone="danger"
+                action={
+                  <button type="button" className="gh-link-button" onClick={() => void m.refresh()}>
+                    {t('common.retry')}
+                  </button>
+                }
+              >
+                {m.error?.message || t('projects.members.loadFailed')}
+              </Callout>
             )
           ) : (
             <>
