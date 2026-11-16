@@ -123,6 +123,7 @@ export const en = {
     done: 'Done',
     close: 'Close',
     copied: 'Copied',
+    copyFailed: 'Copy failed',
     error: 'Something went wrong, please retry',
     save: 'Save',
     retry: 'Retry',

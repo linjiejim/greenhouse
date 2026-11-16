@@ -200,6 +200,51 @@ textarea {
   color: var(--gh-text);
   filter: none;
 }
+/* ⓘ (src/ui/info.web.tsx): a 20 round button, 44 to a finger; its text sits in a floating panel. */
+.gh-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--gh-tertiary);
+  cursor: pointer;
+}
+.gh-info:hover,
+.gh-info[aria-expanded='true'] {
+  color: var(--gh-text);
+  filter: none;
+}
+@media (pointer: coarse) {
+  .gh-info::after {
+    content: '';
+    position: absolute;
+    inset: -12px;
+  }
+}
+.gh-info-panel {
+  position: fixed;
+  z-index: 1050;
+  width: max-content;
+  max-width: min(288px, calc(100vw - 16px));
+  padding: 8px 12px;
+  border: 1px solid var(--gh-line);
+  border-radius: 12px;
+  background: var(--gh-raised);
+  box-shadow: var(--gh-shadow-floating);
+  color: var(--gh-text);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 /* a row of buttons in a form or a card */
 .gh-button-row {
   display: flex;
@@ -676,25 +721,38 @@ textarea.gh-input,
     grid-template-columns: minmax(0, 1fr);
   }
 }
-/* Notices (src/ui/notify.web.tsx): one stack at the top centre, newest first; the level shows only
-   in the icon colour, an error also on a soft red ground (it stays until dismissed). */
+/* Notices (src/ui/notify.web.tsx): one stack, newest first, top right on wide windows; the level
+   shows only in the icon colour, an error also on a soft red ground (it stays until dismissed).
+   Icon, text, actions and ✕ line up on the first line of text. */
 .gh-notices {
   position: fixed;
-  top: max(12px, env(safe-area-inset-top));
-  left: 50%;
+  top: 16px;
+  right: 16px;
   z-index: 1100;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: min(440px, calc(100vw - 24px));
-  transform: translateX(-50%);
+  width: min(440px, calc(100vw - 32px));
+}
+/* The desktop app draws its own 52 title bar: notices start 8 below it, clear of its buttons. */
+html[data-desktop-window] .gh-notices {
+  top: 60px;
+}
+/* Phones (below WIDE_MIN, src/shell/wide-model.ts): at the top, full width, below the safe area. */
+@media (max-width: 759px) {
+  .gh-notices {
+    top: max(12px, env(safe-area-inset-top));
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
 }
 .gh-notice {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   min-height: 44px;
-  padding: 6px 8px 6px 12px;
+  padding: 12px 10px 12px 12px;
   border: 1px solid var(--gh-line);
   border-radius: 12px;
   background: var(--gh-raised);
@@ -710,6 +768,7 @@ textarea.gh-input,
 .gh-notice-text {
   flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 .gh-notice-body {
   display: block;
@@ -719,6 +778,8 @@ textarea.gh-input,
 }
 .gh-notice-icon {
   display: inline-flex;
+  align-items: center;
+  height: 20px;
   color: var(--gh-success);
 }
 .gh-notice-icon[data-kind='info'] {
@@ -730,9 +791,25 @@ textarea.gh-input,
 .gh-notice-icon[data-kind='error'] {
   color: var(--gh-danger);
 }
+/* Undo, Retry, Details: 28 tall, centred on the 20 first line */
+.gh-notice .gh-link-button {
+  flex: none;
+  margin: -4px 0;
+}
+/* ✕ in the top-right corner: 24 square on the first line, 44 to a finger */
 .gh-notice .gh-notice-close {
-  width: 28px;
-  height: 28px;
+  position: relative;
+  width: 24px;
+  height: 24px;
+  margin: -2px 0;
+  border-radius: 6px;
+}
+@media (pointer: coarse) {
+  .gh-notice .gh-notice-close::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+  }
 }
 @keyframes gh-notice-in {
   from {
@@ -1823,10 +1900,16 @@ html[data-desktop-window='settings'] .gh-settings {
   color: var(--gh-secondary);
   font-size: 13px;
 }
-.gh-dialog-footer-lead [role='alert'] {
+.gh-dialog-footer-lead .gh-error {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* a save failure is the danger callout, whole: it wraps instead of hiding behind a tooltip */
+.gh-dialog-footer-lead .gh-callout {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
 }
 
 /* Confirm / prompt / alert (src/ui/dialogs.web.tsx): the sm dialog. */

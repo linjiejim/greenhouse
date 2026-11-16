@@ -7,13 +7,16 @@
 import './admin.css';
 import React, { useId } from 'react';
 import { Place, PlaceEmpty } from '../ui/place.web';
-import { Tooltip } from '../ui/popover.web';
+import { Info } from '../ui/info.web';
 import { DialogBody, Overlay, type DialogSize } from '../ui/overlay.web';
 import { Icon, type IconName } from '../ui/core';
 import { useT } from '../lib/i18n';
 import { confirmAction } from '../ui/dialogs';
 import { usedFraction } from './format';
 import type { WorkspaceFlagState } from './types';
+
+/** The tinted note is shared with the dialogs outside Admin. */
+export { Callout } from '../ui/callout.web';
 
 export function AdminPage({
   title,
@@ -40,11 +43,9 @@ export function AdminPage({
       actions={
         <>
           {info ? (
-            <Tooltip label={info}>
-              <button type="button" className="gh-icon-button" aria-label={`${t('common.about')}: ${info}`}>
-                <Icon name="info" size={16} />
-              </button>
-            </Tooltip>
+            <Info label={`${t('common.about')}${t('common.labelSep')}${title}`} className="gh-icon-button" iconSize={16}>
+              {info}
+            </Info>
           ) : null}
           {actions}
         </>
@@ -207,12 +208,17 @@ export function Card({
   );
 }
 
+/** Figures in a row; a figure's hint (how it is counted) sits behind ⓘ beside its label. */
 export function Kpis({ items }: { items: { label: string; value: string; hint?: string; tone?: Tone }[] }) {
+  const t = useT();
   return (
     <div className="gh-admin-kpis">
       {items.map((item) => (
-        <div key={item.label} className="gh-admin-kpi" title={item.hint}>
-          <small>{item.label}</small>
+        <div key={item.label} className="gh-admin-kpi">
+          <small>
+            {item.label}
+            {item.hint ? <Info label={`${t('common.about')}${t('common.labelSep')}${item.label}`}>{item.hint}</Info> : null}
+          </small>
           <strong data-tone={item.tone}>{item.value}</strong>
         </div>
       ))}
@@ -306,29 +312,6 @@ export function AdminDialog({
         </DialogBody>
       </div>
     </Overlay>
-  );
-}
-
-/** A tinted note (warning by default) with an optional action at its end. */
-export function Callout({
-  tone = 'warning',
-  icon = 'alert',
-  action,
-  testID,
-  children,
-}: {
-  tone?: 'warning' | 'info' | 'danger';
-  icon?: IconName;
-  action?: React.ReactNode;
-  testID?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="gh-callout" data-tone={tone} role="status" data-testid={testID}>
-      <Icon name={icon} size={16} color={`var(--gh-${tone})`} />
-      <div className="gh-callout-text">{children}</div>
-      {action}
-    </div>
   );
 }
 

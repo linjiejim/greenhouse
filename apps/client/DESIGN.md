@@ -4,7 +4,7 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 
 ## Relation to jim-uiux
 
-- Interaction, feedback, copy and data states follow jim-uiux 1.3.0 (https://design.linjiejim.com); this file records only Greenhouse's own values and exceptions. Row and card context menus are shortcuts: "open inspector" and status moves are also in the inspector and the list menus.
+- Interaction, feedback, copy and data states follow jim-uiux 1.4.0 (https://design.linjiejim.com); this file records only Greenhouse's own values and exceptions. Row and card context menus are shortcuts: "open inspector" and status moves are also in the inspector and the list menus.
 - Greenhouse keeps its brand (Haven greens, Nunito) and its numbers: dialog sizes (`DIALOG_SIZES`), desktop density (rows 32, toolbar controls 28, headers 52) and the wide shell below.
 - Native screens follow the platform (HIG, Material 3): system sheets, menus and alerts; native titles may use weight 700. Browser CSS stays at 600 or below.
 - Guards: `src/theme/design-guard.test.ts` (screens and browser CSS: type scale, weight ≤ 600, token colours and shadows, no native `<select>`) and `scripts/check-plugin-ui.mjs` (plugin front ends, run by `pnpm lint`; a plugin's known debt only shrinks).
@@ -45,7 +45,7 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 - Lists: `Section`, `Row`, `Card`, `SectionHeader`, `SectionFooter` (`src/ui/list.tsx`); virtualized rows pass `rowPosition(index, count)`. Desktop data grids use `.gh-data-grid`.
 - Empty, loading, failed: `EmptyState` (native and phone), `PlaceEmpty` with `icon` + `title` (+ `action`) in wide places, `Skeleton` for a list's first load, `LoadingState` for small waits.
 - Capsules: `Chip` for links, files and objects; `Badge` for status. Avatars: `Avatar` for people (initial), `AssistantAvatar` / `AgentAvatar` for agents (plants); never a plant for a person. File kinds: `FileIcon`.
-- Dialog helpers: `confirmAction`, `promptText`, `alertError` (`src/ui/dialogs`); notices go through `notify` (`src/ui/notify`; `toast` is its success).
+- Dialog helpers: `confirmAction`, `promptText`, `alertError` (`src/ui/dialogs`); notices go through `notify` (`src/ui/notify`; `toast` is its success). Copying goes through `useCopy` (`src/ui/use-copy`), whose state the copy button shows.
 - Web controls are defined once, in the Controls section of `src/shell/client.css`; feature CSS (admin, automations, entry) holds layout only, never another button, field or switch.
 - Buttons: `.gh-primary` (one per surface), `.gh-secondary-button`, `.gh-icon-button` (32 square, icon only, needs `aria-label`), `.gh-link-button` (quiet inline action); add `.gh-danger` when destructive.
 - Forms: `.gh-form` stacks fields inside `DialogBody`; `.gh-form-grid` for two columns, `.gh-form-section` with a `legend` (or `.gh-form-heading`) for groups, `.gh-button-row` for a row of actions.
@@ -53,7 +53,8 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 - Inputs: `.gh-input` for input and textarea (controls in a `.gh-form` or directly in a `.gh-field` get it without the class); `.gh-mono` for code-like values.
 - Selects: `Select` (`src/ui/select.web.tsx`) with `<option>` children, never a native `<select>`; `clearable` makes it a list filter.
 - Choices: `.gh-check` (checkbox with an optional `small` line), `.gh-switch` (`button role="switch"` or a checkbox), `.gh-segmented` (buttons marked checked, pressed or selected), `.gh-tabs` under a bar or atop a dialog body.
-- Notes: `.gh-callout` (warning; `data-tone` info, danger or neutral) with `.gh-callout-text`; status is a `.gh-badge` (`data-tone` success, warning, danger, info, accent), several in a `.gh-chip-row`.
+- Notes: `Callout` (`src/ui/callout.web.tsx`; `.gh-callout` with `.gh-callout-text`): warning by default, `tone` info, danger or neutral; the tint and the icon both say the level, the text keeps the body colour. Status is a `.gh-badge` (`data-tone` success, warning, danger, info, accent), several in a `.gh-chip-row`.
+- Explanations: `Info` (`src/ui/info.web.tsx`), the ⓘ beside a title, label or figure.
 - Blocks: `.gh-card` (header, `.gh-card-body` or `.gh-card-flush` around a grid), `.gh-toolbar` with compact fields and a `.gh-count`, `.gh-setting-row` (label column, control, hint under it) above a sticky `.gh-savebar`, `.gh-dialog-footer-lead` before a dialog's Cancel and primary action.
 - Control sizes: 32 tall (28 in a toolbar or filter row, 44 below `WIDE_MIN` and on entry pages), radius 8, text 14; labels 13, hints 12.
 - Native forms use `src/ui/native-form` / `form-controls`; their browser fields are `.gh-input`.
@@ -67,7 +68,8 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 
 ## Copy
 
-- What a page is for sits behind ⓘ in its bar (`AdminPage` `info`), never as a sentence under the title.
+- What a page is for sits behind ⓘ in its bar (`AdminPage` `info`), never as a sentence under the title; how a figure is counted sits behind ⓘ beside its label (`Kpis` `hint`).
+- ⓘ is `Info`, never a hover-only tooltip (touch has no hover): pointing opens it after a moment, a click, a tap or Enter pins it, a click elsewhere or Escape closes it. Text only; focus stays on the ⓘ.
 - Names in Chinese copy are quoted with 「」; a confirm's title is a question naming the object ("删除「{name}」？") and its button repeats the verb.
 
 ## Tokens
@@ -95,8 +97,11 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 
 - Every list has empty, loading and failed states; a cached copy shown offline says so above the list.
 - A result on screen needs no notice; a result out of sight gets `notify` (success and info 4 s, warning 6 s), one sentence naming the object.
+- Notices stack newest first, at most three: top right on wide windows (in the desktop app 8 below its 52 title bar, clear of the bar's buttons), at the top and full width below the safe area on phones. Every notice has ✕ in its top-right corner on its first line (24, a 44 target on touch). Native phones keep the system's own (iOS HUD, Android toast, alerts).
+- Copying never raises a notice: the button says 已复制 for 1.5 s, or 复制失败 when the clipboard refuses (`useCopy`). A copy from a menu, which closes, still confirms with a notice; phones keep the system confirmation.
 - A reversible action (archive, move to a bin) runs at once with `notify.undo` (8 s); only irreversible ones ask first with `confirmAction` (title a question, button repeating its verb).
 - A failed action is `alertError`: on the web a notice that stays until dismissed (the reason as its second line, raw detail behind Details), on phones the system alert. A failure that belongs to a field or a block shows there, with Retry. Never a notice and a dialog for the same thing.
+- A dialog that stays open after its action fails says why inside it: `Callout tone="danger"` (icon and text; a form editor puts it in its footer, whole). `confirmAction` closes before its action runs, so that action's failure is `alertError`.
 - A refresh never moves a list: pull spinner for a pull, a small bar spinner otherwise.
 - Optimistic writes roll back and say so when the station refuses.
 - Haptics only for selection changes, long presses, the drawer reaching open and Sprouty on home.

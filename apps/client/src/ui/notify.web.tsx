@@ -1,8 +1,11 @@
 /**
- * Browser notices (DESIGN.md States and feedback): one stack, top centre, newest first, at most
- * three. success/info fade after 4 s, warning 6 s, undo 8 s with its action; an error stays until
- * dismissed and may offer Retry and Details. Hover pauses the timers. Copy is one sentence naming
- * the object ("已归档 3 个项目"), never "操作成功".
+ * Browser notices (DESIGN.md States and feedback): one stack, newest first, at most three. Wide
+ * windows put it top right (the desktop app below its 52 title bar, clear of the bar's buttons);
+ * phones put it at the top, full width, below the safe area. success/info fade after 4 s, warning
+ * 6 s, undo 8 s with its action; an error stays until dismissed and may offer Retry and Details.
+ * Every notice has ✕ in its top-right corner, on its first line, so one covering a header's actions
+ * clears with a click. Hover pauses the timers. Copy is one sentence naming the object ("已归档 3 个
+ * 项目"), never "操作成功"; a copy to the clipboard is never a notice (the button answers, ./use-copy).
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -111,16 +114,14 @@ function NoticeRow({ notice, paused }: { notice: Notice; paused: boolean }) {
           {tr('common.details')}
         </button>
       ) : null}
-      {notice.kind === 'error' || notice.kind === 'undo' ? (
-        <button
-          type="button"
-          className="gh-icon-button gh-notice-close"
-          aria-label={tr('common.close')}
-          onClick={() => dismiss(notice.id)}
-        >
-          <Icon name="x" size={14} />
-        </button>
-      ) : null}
+      <button
+        type="button"
+        className="gh-icon-button gh-notice-close"
+        aria-label={tr('common.close')}
+        onClick={() => dismiss(notice.id)}
+      >
+        <Icon name="x" size={16} />
+      </button>
     </div>
   );
 }

@@ -120,6 +120,7 @@ export const zh: Catalog = {
     done: '完成',
     close: '关闭',
     copied: '已复制',
+    copyFailed: '复制失败',
     error: '出错了，请重试',
     save: '保存',
     retry: '重试',

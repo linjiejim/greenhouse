@@ -1,14 +1,14 @@
 import React from 'react';
 import { Stack, useRouter, usePathname } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { HeaderTitle } from './header-avatar';
 import type { ChatHeaderProps } from './header';
 import { Controls } from '../ui/screen-actions.web';
 import { useWideShell } from '../shell/wide-shell.web';
 import { useInspector } from '../shell/inspector.web';
 import { useT } from '../lib/i18n';
-import { toast } from '../ui/toast';
+import { useCopy } from '../ui/use-copy';
+import { copyLabel } from '../ui/copy-state';
 import { SheetScreen } from '../ui/screen.web';
 import { useShortcut } from '../ui/use-shortcut';
 import { SECONDARY_MIN, WIDE_MIN } from '../shell/wide-model';
@@ -19,6 +19,8 @@ export function ChatHeader({ title, subtitle, state, actions, sessionId, shared 
   const router = useRouter();
   const path = usePathname();
   const t = useT();
+  // Share copies the conversation's link: the button answers (已复制 / 复制失败), never a notice
+  const link = useCopy();
   const last = useInspector((s) => s.last);
   const close = useInspector((s) => s.close);
   const toggle = () => {
@@ -57,15 +59,13 @@ export function ChatHeader({ title, subtitle, state, actions, sessionId, shared 
                     ...(pin && !shared ? [pin] : []),
                     {
                       id: 'share',
-                      icon: 'share',
-                      label: t('conversation.share'),
+                      icon: link.state === 'copied' ? 'check' : 'share',
+                      label: copyLabel(link.state, t('conversation.share'), t),
                       disabled: !sessionId,
-                      onPress: () => {
-                        void Clipboard.setStringAsync(
+                      onPress: () =>
+                        void link.copy(
                           `${window.location.origin}/chat?session=${encodeURIComponent(sessionId ?? '')}`,
-                        );
-                        toast(t('markdown.copied'));
-                      },
+                        ),
                     },
                     {
                       id: 'inspector',

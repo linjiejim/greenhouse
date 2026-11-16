@@ -143,6 +143,9 @@
   gap: 4px;
 }
 .gh-admin-kpi small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   color: var(--gh-secondary);
   font-size: 12px;
 }

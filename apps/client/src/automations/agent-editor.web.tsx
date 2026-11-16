@@ -13,6 +13,7 @@ import { useT, type TranslationKey } from '../lib/i18n';
 import { PlantAvatar } from '../ui/plant-avatar';
 import { avatarTint, legacyToPlant, PLANT_IDS, PLANT_TINTS, withPlant, withTint } from '../ui/plant-avatar/plant-ids';
 import { toast } from '../ui/toast';
+import { Callout } from '../ui/callout.web';
 import {
   AGENT_PROMPT_MAX,
   agentBody,
@@ -162,9 +163,7 @@ export function AgentEditor({
         : 'agents.editor.newTitle',
   );
   const lead = saveError ? (
-    <span role="alert" className="gh-error" title={saveError}>
-      {saveError}
-    </span>
+    <Callout tone="danger">{saveError}</Callout>
   ) : submitted && Object.keys(errors).length ? (
     <span role="alert" className="gh-error">
       {t('automations.editor.fixErrors')}

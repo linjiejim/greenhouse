@@ -6,6 +6,7 @@ import { useT } from '../lib/i18n';
 import { localize, type PluginEntitySchema } from '../shared/plugins';
 import { usePrefs } from '../store/prefs';
 import { DialogBody, Overlay } from '../ui/overlay.web';
+import { Callout } from '../ui/callout.web';
 import { writableValues } from './surface-model';
 import { Icon } from '../ui/core';
 import { Select } from '../ui/select.web';
@@ -116,11 +117,7 @@ export function EntityCreate({
                 </label>
               );
             })}
-            {error ? (
-              <p role="alert" className="gh-error">
-                {error}
-              </p>
-            ) : null}
+            {error ? <Callout tone="danger">{error}</Callout> : null}
           </div>
         </DialogBody>
       </form>
