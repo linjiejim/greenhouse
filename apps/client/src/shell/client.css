@@ -929,6 +929,39 @@ html[data-desktop-window] .gh-notices {
   color: var(--gh-danger);
 }
 
+/* Resize handle (the inspector edge, src/ui/sheet-edge.web.tsx; jim-uiux ResizeHandle): an 8 wide
+   strip astride the panel's left edge. Hover shows a 2 px neutral line; keyboard focus and a drag
+   show it in the accent, which stands in for the focus ring. */
+.gh-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+}
+.gh-resize-handle:focus-visible {
+  outline: none;
+}
+.gh-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  transition: background-color 0.15s;
+}
+.gh-resize-handle:hover::after {
+  background: var(--gh-line-strong);
+}
+.gh-resize-handle:focus-visible::after,
+.gh-resize-handle[data-dragging]::after {
+  background: var(--gh-focus);
+}
+
 /* ══ end of Controls ═════════════════════════════════════════════════════════════════════════ */
 
 .gh-row-menu {

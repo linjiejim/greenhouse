@@ -13,6 +13,11 @@ import { useInspector } from '../shell/inspector.web';
 import { DialogFrameContext } from './dialog-frame';
 
 type Route = { name: string; key: string; params?: object };
+/** Every frame of a place follows its inspector's width: the main pane's margin and each inspector's own. */
+const WIDTH_EVENT = 'greenhouse:inspector-width';
+type InspectorWidth = { key: string; width: number };
+/** The inspector edge's keyboard step (jim-uiux ResizeHandle). */
+const WIDTH_STEP = 16;
 /** Centered sheets that hold a document or a preview get the large dialog size. */
 const LARGE_SHEETS = ['doc-new', 'peek/html', 'peek/diagram', 'table'];
 export function sheetEdgeLayout(props: { children: React.ReactElement; route: Route }) {
@@ -109,12 +114,26 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
   }, [docked, isTop]);
   const readWidth = useCallback(() => {
     try {
-      return boundedInspectorWidth(Number(localStorage.getItem(widthKey)) || INSPECTOR_WIDTH);
+      return Math.round(boundedInspectorWidth(Number(localStorage.getItem(widthKey)) || INSPECTOR_WIDTH));
     } catch {
       return INSPECTOR_WIDTH;
     }
   }, [widthKey]);
   const [panelWidth, setPanelWidth] = useState(readWidth);
+  /** Show a width at once (the main pane beside a docked inspector follows it); store it once the change is done. */
+  const resize = useCallback(
+    (width: number, done: boolean) => {
+      setPanelWidth(width);
+      if (done)
+        try {
+          localStorage.setItem(widthKey, String(width));
+        } catch {
+          // storage refused: the width still holds until the page reloads
+        }
+      window.dispatchEvent(new CustomEvent<InspectorWidth>(WIDTH_EVENT, { detail: { key: widthKey, width } }));
+    },
+    [widthKey],
+  );
   const close = useCallback(() => {
     if (router.canDismiss()) router.dismiss(inspector && layout.wide ? Math.max(1, depth) : 1);
     else router.replace('/');
@@ -140,11 +159,15 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTop, inspector, route.key, close]);
   useEffect(() => {
-    const changed = () => setPanelWidth(readWidth());
+    // a drag carries its live width (stored only when it ends); anything else reads the stored one
+    const changed = (event?: Event) => {
+      const live = (event as CustomEvent<InspectorWidth | undefined> | undefined)?.detail;
+      setPanelWidth(live?.key === widthKey ? live.width : readWidth());
+    };
     changed();
-    window.addEventListener('greenhouse:inspector-width', changed);
-    return () => window.removeEventListener('greenhouse:inspector-width', changed);
-  }, [readWidth]);
+    window.addEventListener(WIDTH_EVENT, changed);
+    return () => window.removeEventListener(WIDTH_EVENT, changed);
+  }, [readWidth, widthKey]);
   if (!overlay)
     return (
       <div
@@ -228,40 +251,11 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
         }
       >
         {inspector && layout.wide ? (
-          <div
-            role="separator"
-            aria-label={t('client.inspectorWidth')}
-            aria-orientation="vertical"
-            tabIndex={0}
-            aria-valuemin={INSPECTOR_MIN}
-            aria-valuemax={INSPECTOR_MAX}
-            aria-valuenow={panelWidth}
-            style={{ position: 'absolute', left: -3, top: 0, bottom: 0, width: 6, zIndex: 2, cursor: 'col-resize' }}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                e.preventDefault();
-                const next = boundedInspectorWidth(panelWidth + (e.key === 'ArrowLeft' ? 16 : -16));
-                setPanelWidth(next);
-                try {
-                  localStorage.setItem(widthKey, String(next));
-                } catch {
-                  return;
-                }
-                window.dispatchEvent(new Event('greenhouse:inspector-width'));
-              }
-            }}
-            onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
-            onPointerMove={(e) => {
-              if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-              const next = boundedInspectorWidth(window.innerWidth - e.clientX);
-              setPanelWidth(next);
-              try {
-                localStorage.setItem(widthKey, String(next));
-              } catch {
-                return;
-              }
-              window.dispatchEvent(new Event('greenhouse:inspector-width'));
-            }}
+          <InspectorEdge
+            label={t('client.inspectorWidth')}
+            value={panelWidth}
+            onValueChange={(width) => resize(width, false)}
+            onValueCommit={(width) => resize(width, true)}
           />
         ) : null}
         <DialogFrameContext.Provider value={!inspector && layout.wide}>
@@ -269,5 +263,112 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
         </DialogFrameContext.Provider>
       </View>
     </View>
+  );
+}
+
+/**
+ * The inspector's left edge (jim-uiux 1.5.0 ResizeHandle): an 8 px strip (`.gh-resize-handle`,
+ * src/shell/client.css) that a pointer drags or the arrow keys move 16 px a step; Home / End go to the
+ * narrowest / widest, a double-click back to the default. `onValueChange` runs while dragging, only to
+ * redraw; `onValueCommit` once a change is done (pointer up, a key, a double-click), to store it.
+ */
+function InspectorEdge({
+  label,
+  value,
+  onValueChange,
+  onValueCommit,
+}: {
+  label: string;
+  value: number;
+  onValueChange: (width: number) => void;
+  onValueCommit: (width: number) => void;
+}) {
+  const clamp = (width: number) => Math.round(boundedInspectorWidth(width));
+  const drag = useRef<{ at: number; from: number; now: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  // the page's cursor before a drag, put back however the drag ends
+  const pageCursor = useRef<string | null>(null);
+  const restoreCursor = () => {
+    if (pageCursor.current === null) return;
+    document.documentElement.style.cursor = pageCursor.current;
+    pageCursor.current = null;
+  };
+  const latestCommit = useRef(onValueCommit);
+  useEffect(() => {
+    latestCommit.current = onValueCommit;
+  });
+  useEffect(
+    () => () => {
+      // closed or reflowed mid-drag (Escape, a narrower window): keep the width it reached, give the cursor back
+      const live = drag.current;
+      if (!live) return;
+      drag.current = null;
+      if (pageCursor.current !== null) document.documentElement.style.cursor = pageCursor.current;
+      latestCommit.current(live.now);
+    },
+    [],
+  );
+  const commit = (width: number) => {
+    // mid-drag the pointer owns the width: a key or a double-click now would be undone on release
+    if (drag.current) return;
+    const next = clamp(width);
+    onValueChange(next);
+    onValueCommit(next);
+  };
+  const end = () => {
+    if (!drag.current) return;
+    const last = drag.current.now;
+    drag.current = null;
+    setDragging(false);
+    restoreCursor();
+    onValueCommit(last);
+  };
+  return (
+    <div
+      role="separator"
+      aria-label={label}
+      aria-orientation="vertical"
+      aria-valuemin={INSPECTOR_MIN}
+      aria-valuemax={INSPECTOR_MAX}
+      aria-valuenow={value}
+      tabIndex={0}
+      className="gh-resize-handle"
+      data-dragging={dragging || undefined}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        // take focus (the arrow keys work next) without selecting text on the way
+        e.currentTarget.focus({ preventScroll: true });
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.current = { at: e.clientX, from: value, now: value };
+        setDragging(true);
+        // the resize cursor stays when the pointer runs ahead of the strip
+        restoreCursor();
+        pageCursor.current = document.documentElement.style.cursor;
+        document.documentElement.style.cursor = 'col-resize';
+      }}
+      onPointerMove={(e) => {
+        if (!drag.current) return;
+        // the strip is on the panel's left edge: moving left widens it
+        const next = clamp(drag.current.from - (e.clientX - drag.current.at));
+        if (next === drag.current.now) return;
+        drag.current.now = next;
+        onValueChange(next);
+      }}
+      onPointerUp={end}
+      onPointerCancel={end}
+      onLostPointerCapture={end}
+      onDoubleClick={() => commit(INSPECTOR_WIDTH)}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft') commit(value + WIDTH_STEP);
+        else if (e.key === 'ArrowRight') commit(value - WIDTH_STEP);
+        else if (e.key === 'Home') commit(INSPECTOR_MIN);
+        else if (e.key === 'End') commit(INSPECTOR_MAX);
+        else return;
+        e.preventDefault();
+        // the inspector's lists and the page bind arrows too: the edge keeps the keys it handled
+        e.stopPropagation();
+      }}
+    />
   );
 }

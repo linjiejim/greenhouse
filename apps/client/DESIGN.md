@@ -4,7 +4,7 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 
 ## Relation to jim-uiux
 
-- Interaction, feedback, copy and data states follow jim-uiux 1.4.0 (https://design.linjiejim.com); this file records only Greenhouse's own values and exceptions. Row and card context menus are shortcuts: "open inspector" and status moves are also in the inspector and the list menus.
+- Interaction, feedback, copy and data states follow jim-uiux 1.5.0 (https://design.linjiejim.com); this file records only Greenhouse's own values and exceptions. Row and card context menus are shortcuts: "open inspector" and status moves are also in the inspector and the list menus.
 - Greenhouse keeps its brand (Haven greens, Nunito) and its numbers: dialog sizes (`DIALOG_SIZES`), desktop density (rows 32, toolbar controls 28, headers 52) and the wide shell below.
 - Native screens follow the platform (HIG, Material 3): system sheets, menus and alerts; native titles may use weight 700. Browser CSS stays at 600 or below.
 - Guards: `src/theme/design-guard.test.ts` (screens and browser CSS: type scale, weight ≤ 600, token colours and shadows, no native `<select>`) and `scripts/check-plugin-ui.mjs` (plugin front ends, run by `pnpm lint`; a plugin's known debt only shrinks).
@@ -58,6 +58,7 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 - Blocks: `.gh-card` (header, `.gh-card-body` or `.gh-card-flush` around a grid), `.gh-toolbar` with compact fields and a `.gh-count`, `.gh-setting-row` (label column, control, hint under it) above a sticky `.gh-savebar`, `.gh-dialog-footer-lead` before a dialog's Cancel and primary action.
 - Control sizes: 32 tall (28 in a toolbar or filter row, 44 below `WIDE_MIN` and on entry pages), radius 8, text 14; labels 13, hints 12.
 - Native forms use `src/ui/native-form` / `form-controls`; their browser fields are `.gh-input`.
+- Resize handle: the inspector's left edge (`InspectorEdge` in `src/ui/sheet-edge.web.tsx`, styled by `.gh-resize-handle`) is an 8 wide strip on the edge, `role="separator"` with the width as its value (360–520). Drag it, or focus it and use the arrows (16 a step; the edge keeps those keys), Home / End for the narrowest / widest; a double-click goes back to 400. The width follows the pointer live and is remembered per place once the drag ends. Hover shows a thin neutral line, keyboard focus and a drag the accent; pressing focuses it without selecting text, and the page keeps the resize cursor until the drag ends, however it ends (release, cancel, the inspector closing).
 
 ## Admin
 
@@ -103,6 +104,7 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 - A failed action is `alertError`: on the web a notice that stays until dismissed (the reason as its second line, raw detail behind Details), on phones the system alert. A failure that belongs to a field or a block shows there, with Retry. Never a notice and a dialog for the same thing.
 - A dialog that stays open after its action fails says why inside it: `Callout tone="danger"` (icon and text; a form editor puts it in its footer, whole). `confirmAction` closes before its action runs, so that action's failure is `alertError`.
 - A refresh never moves a list: pull spinner for a pull, a small bar spinner otherwise.
+- A progress bar is only for a known amount (the asset library's upload queue: hashing, then bytes sent): `role="progressbar"` with its real value out of 100, named by what it measures (the file name, through `aria-labelledby`), with the percentage in text beside it while the bytes go up. A wait of unknown length is a spinner (`LoadingState`), never a bar moving on a timer.
 - Optimistic writes roll back and say so when the station refuses.
 - Haptics only for selection changes, long presses, the drawer reaching open and Sprouty on home.
 

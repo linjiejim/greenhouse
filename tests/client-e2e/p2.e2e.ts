@@ -188,6 +188,64 @@ test('P2 inspector open, back, three-level cap, promote, close and floating widt
   await expect(page).toHaveURL(url);
 });
 
+test('P2 inspector edge: drag, keys, double-click, remembered width and the page cursor', async ({ page }) => {
+  await installStation(page);
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await policy(page);
+  await openPolicy(page);
+  const panel = page.getByTestId('client-inspector').filter({ visible: true });
+  const edge = panel.getByRole('separator', { name: '检视面板宽度', exact: true });
+  const stored = () =>
+    page.evaluate(
+      () => Object.keys(localStorage).filter((key) => key.startsWith('greenhouse_inspector_width:')).length,
+    );
+  const cursor = () => page.evaluate(() => document.documentElement.style.cursor);
+  await expect(edge).toHaveAttribute('aria-valuenow', '400');
+  await expect(edge).toHaveAttribute('aria-valuemin', '360');
+  await expect(edge).toHaveAttribute('aria-valuemax', '520');
+  const box = (await edge.boundingBox())!;
+  expect(Math.round(box.width)).toBe(8);
+  const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+  // a press focuses the edge; the width follows the pointer live and is stored only on release
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await expect(edge).toBeFocused();
+  await page.mouse.move(x - 60, y, { steps: 4 });
+  await expect(edge).toHaveAttribute('aria-valuenow', '460');
+  expect(Math.round((await panel.boundingBox())!.width)).toBe(460);
+  expect(await cursor()).toBe('col-resize');
+  expect(await stored()).toBe(0);
+  await page.mouse.up();
+  expect(await cursor()).toBe('');
+  expect(await stored()).toBe(1);
+  // arrows 16 a step, Home / End to the narrowest / widest, double-click back to the default
+  await page.keyboard.press('ArrowLeft');
+  await expect(edge).toHaveAttribute('aria-valuenow', '476');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await expect(edge).toHaveAttribute('aria-valuenow', '444');
+  await page.keyboard.press('End');
+  await expect(edge).toHaveAttribute('aria-valuenow', '520');
+  await page.keyboard.press('Home');
+  await expect(edge).toHaveAttribute('aria-valuenow', '360');
+  await edge.dblclick();
+  await expect(edge).toHaveAttribute('aria-valuenow', '400');
+  await page.keyboard.press('ArrowLeft');
+  await expect(edge).toHaveAttribute('aria-valuenow', '416');
+  // closing the inspector mid-drag keeps the width it reached and gives the page its cursor back
+  const live = (await edge.boundingBox())!;
+  await page.mouse.move(live.x + live.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(live.x + live.width / 2 - 32, y, { steps: 2 });
+  await expect(edge).toHaveAttribute('aria-valuenow', '448');
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+  expect(await cursor()).toBe('');
+  await page.mouse.up();
+  await openPolicy(page);
+  await expect(edge).toHaveAttribute('aria-valuenow', '448');
+});
+
 test('P2 rich blocks, sandboxed mermaid and HTML preview, branch and export', async ({ page }) => {
   const fixture = await installStation(page);
   await policy(page);
