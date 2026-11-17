@@ -80,6 +80,9 @@ const LABEL: Record<QueueItem['status'], StringKey> = {
   failed: 'failed',
 };
 
+/** How much of a file is done, 0–100: the bar's width, its value and the number beside it are the same. */
+const percent = (item: QueueItem) => Math.round(Math.min(1, Math.max(0, item.progress)) * 100);
+
 /** The floating queue: one row per file, a summary when everything has settled. */
 export function UploadPanel() {
   const t = useT();
@@ -144,13 +147,21 @@ export function UploadPanel() {
           {items.map((item) => (
             <li key={item.id} className="flex items-center gap-2 border-b border-border px-3 py-2 last:border-b-0">
               <div className="min-w-0 flex-1">
-                <div className="truncate text-body-sm" title={item.file.name}>
+                <div id={`assets-upload-${item.id}`} className="truncate text-body-sm" title={item.file.name}>
                   {item.file.name}
                 </div>
                 <div className="mt-1 flex items-center gap-2">
                   {ACTIVE.has(item.status) ? (
-                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={Math.round(item.progress * 100)} aria-valuemin={0} aria-valuemax={100}>
-                      <div className="h-full bg-primary transition-[width]" style={{ width: `${Math.round(item.progress * 100)}%` }} />
+                    // the file's own progress (hashed, then bytes sent), named by the file name above
+                    <div
+                      role="progressbar"
+                      aria-labelledby={`assets-upload-${item.id}`}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={percent(item)}
+                      className="h-1 flex-1 overflow-hidden rounded-full bg-muted"
+                    >
+                      <div className="h-full rounded-full bg-primary transition-[width] motion-reduce:transition-none" style={{ width: `${percent(item)}%` }} />
                     </div>
                   ) : null}
                   <span
@@ -160,7 +171,7 @@ export function UploadPanel() {
                     {item.error === 'tooLarge' || item.error === 'unsupported'
                       ? t(item.error)
                       : item.status === 'uploading'
-                        ? `${t('uploading')} ${Math.round(item.progress * 100)}%`
+                        ? `${t('uploading')} ${percent(item)}%`
                         : t(LABEL[item.status])}
                   </span>
                 </div>
