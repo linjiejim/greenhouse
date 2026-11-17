@@ -218,9 +218,15 @@ test('P2 inspector edge: drag, keys, double-click, remembered width and the page
   await page.mouse.up();
   expect(await cursor()).toBe('');
   expect(await stored()).toBe(1);
+  // focus from a press draws no line once the pointer leaves; the first key shows the focus line
+  const line = () => edge.evaluate((el) => getComputedStyle(el, '::after').backgroundColor);
+  await page.mouse.move(x - 300, y);
+  await expect(edge).toBeFocused();
+  await expect.poll(line).toBe('rgba(0, 0, 0, 0)');
   // arrows 16 a step, Home / End to the narrowest / widest, double-click back to the default
   await page.keyboard.press('ArrowLeft');
   await expect(edge).toHaveAttribute('aria-valuenow', '476');
+  await expect.poll(line).not.toBe('rgba(0, 0, 0, 0)');
   await page.keyboard.press('ArrowRight');
   await page.keyboard.press('ArrowRight');
   await expect(edge).toHaveAttribute('aria-valuenow', '444');

@@ -286,6 +286,9 @@ function InspectorEdge({
   const clamp = (width: number) => Math.round(boundedInspectorWidth(width));
   const drag = useRef<{ at: number; from: number; now: number } | null>(null);
   const [dragging, setDragging] = useState(false);
+  // focus given by a press, not the keyboard: the browser calls it focus-visible, but the accent
+  // line would then stay lit after every drag. It shows again on the first key.
+  const [pressed, setPressed] = useState(false);
   // the page's cursor before a drag, put back however the drag ends
   const pageCursor = useRef<string | null>(null);
   const restoreCursor = () => {
@@ -334,10 +337,13 @@ function InspectorEdge({
       tabIndex={0}
       className="gh-resize-handle"
       data-dragging={dragging || undefined}
+      data-pressed={pressed || undefined}
+      onBlur={() => setPressed(false)}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         // take focus (the arrow keys work next) without selecting text on the way
         e.currentTarget.focus({ preventScroll: true });
+        setPressed(true);
         e.preventDefault();
         e.currentTarget.setPointerCapture(e.pointerId);
         drag.current = { at: e.clientX, from: value, now: value };
@@ -360,6 +366,7 @@ function InspectorEdge({
       onLostPointerCapture={end}
       onDoubleClick={() => commit(INSPECTOR_WIDTH)}
       onKeyDown={(e) => {
+        setPressed(false);
         if (e.key === 'ArrowLeft') commit(value + WIDTH_STEP);
         else if (e.key === 'ArrowRight') commit(value - WIDTH_STEP);
         else if (e.key === 'Home') commit(INSPECTOR_MIN);
