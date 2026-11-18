@@ -5,6 +5,18 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.5.0](https://github.com/linjiejim/greenhouse/compare/v4.4.0...v4.5.0) (2026-11-17)
+
+
+### Added
+
+* **client:** notices move top right and each one closes; follow jim-uiux 1.4.0 ([#118](https://github.com/linjiejim/greenhouse/issues/118)) ([05d8a4e](https://github.com/linjiejim/greenhouse/commit/05d8a4e820b125dff7dd76e65d6d7309eed2e69d))
+
+
+### Fixed
+
+* **client:** sheet edge handle and upload progress follow jim-uiux 1.5.0 ([#120](https://github.com/linjiejim/greenhouse/issues/120)) ([6def393](https://github.com/linjiejim/greenhouse/commit/6def393ef88ecc4466cbcde20d170706866db9c0))
+
 ## [4.4.0](https://github.com/linjiejim/greenhouse/compare/v4.3.1...v4.4.0) (2026-11-08)
 
 
