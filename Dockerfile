@@ -18,6 +18,8 @@ FROM base AS universal
 COPY apps/client ./apps/client
 COPY scripts/build-app.mjs ./scripts/build-app.mjs
 RUN pnpm --dir apps/client install --ignore-workspace --frozen-lockfile
+# The client bundles the release notes for What's new (apps/client/metro.config.js).
+COPY CHANGELOG.md ./CHANGELOG.md
 RUN node scripts/build-app.mjs
 
 # ── Build: install the full workspace (compiles native addons) ──

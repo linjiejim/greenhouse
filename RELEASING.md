@@ -55,6 +55,9 @@ and return to `versioning: "default"`. A persistent release-as keeps proposing t
   (`pnpm cli plugins status` or Admin › Plugins) and the entry pages.
 - An in-place upgrade from the previous release line on a backup copy keeps its data.
 - Release notes call out breaking changes and what `:latest` users get on their next pull.
+- Rewrite the Release PR's CHANGELOG entries in plain words for the people using the app: they
+  are shown in the app (see [What's new in the app](#whats-new-in-the-app)). Do it last, just
+  before merging: release-please regenerates the PR on every push to main.
 - Review `.github/workflows/mobile.yml` before version changes land on main: a main push can
   publish OTA or start a TestFlight build when EXPO_TOKEN exists.
 
@@ -65,6 +68,29 @@ published tag to force a build; release.yml has no workflow_dispatch trigger.
 Desktop builds are published only through the [desktop runbook](apps/desktop/README.md) (preview
 in 4.0). iOS and Android store distribution is separate; store versions do not accept SemVer
 prerelease suffixes.
+
+## What's new in the app
+
+The client shows the CHANGELOG.md section of its own version to the people using it (jim-uiux
+1.7.0 `patterns/updates`): the first launch after an update says "Updated to X.Y.Z · What's new"
+once, the action lists every release since the version that device last opened, and Settings ›
+About lists them all. `apps/client/metro.config.js` writes CHANGELOG.md into every bundle (web,
+desktop, EAS builds and OTA updates), so a release carries its notes with nothing to regenerate.
+`apps/client/src/release-notes/changelog.test.ts` fails when the client's version has no section.
+
+Write the entries with the jim-uiux template ([`references/patterns/updates.md`](https://github.com/linjiejim/jim-uiux/blob/main/references/patterns/updates.md),
+"更新内容的写法"):
+
+- Keep release-please's headings; the app shows `⚠ BREAKING CHANGES`, `Added`, `Changed` and
+  `Fixed` as Heads-up, New, Improved and Fixed, Heads-up first in a warning notice.
+- One item per change, in words a member understands: what they can do now, or what is different.
+  Name buttons and settings as the app shows them; say how a fix works now, not what was broken.
+- Drop what a member never notices (refactors, CI, dependencies, internals) and merge items about
+  the same thing. The `**scope:**` prefix and the commit and PR links may stay: the app hides them.
+- Heads-up items say what a member has to do (sign in again, a setting that moved). Steps only
+  operators need go in a paragraph under their own heading (`### Upgrading`): the app shows list
+  items only, so the GitHub release keeps them and the app leaves them out.
+- A version with nothing for members may have no items; the app then says nothing about it.
 
 ## Mobile fingerprint CD
 

@@ -16,6 +16,7 @@ export interface NotifyApi {
   /** A success whose result is not on screen; when it is, say nothing. */
   (text: string, options?: NotifyOptions): () => void;
   success(text: string, options?: NotifyOptions): () => void;
+  /** A fact worth a look; with an action it stays 8 s, like Undo (「已更新到 4.5.0 · 查看更新内容」). */
   info(text: string, options?: NotifyOptions): () => void;
   warning(text: string, options?: NotifyOptions): () => void;
   /** A reversible action that already ran: Undo for 8 seconds. */

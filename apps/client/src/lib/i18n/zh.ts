@@ -771,6 +771,13 @@ export const zh: Catalog = {
     failed: '反馈没有发出',
     unsupported: '这个工作站没有开启反馈。',
   },
+  whatsNew: {
+    title: '更新内容',
+    updatedTo: '已更新到 {version}',
+    see: '查看更新内容',
+    empty: '还没有更新记录',
+    kind: { 'heads-up': '注意', new: '新增', improved: '改进', fixed: '修复' },
+  },
   me: {
     title: '我',
     reading: '阅读',

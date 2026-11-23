@@ -14,6 +14,7 @@ import { clearHandoffs } from '../src/lib/handoff';
  *  - `me`                「我」: account, station, text size, My Agents, settings (page sheet with
  *                        its own stack)
  *  - `notifications`, `conversations`, `move`, `task-form`, `tables/new-record`, `sheets/stations`, `sheets/station-add`  sheets
+ *  - `sheets/whats-new`  what's new after an update, opened from its notice (src/release-notes)
  *  - `peek/*`, `table`   full-screen viewers for rich blocks (html preview, diagram, table)
  *  - `login`             full screen, shown when signed out
  *  - `activate`, `oauth-consent`, `connectors/oauth-finish`, `bindings`  entry pages server links
@@ -38,7 +39,7 @@ import { clearHandoffs } from '../src/lib/handoff';
 import 'react-native-gesture-handler';
 import '../src/shell/client.css';
 import { ClientShell } from '../src/desktop/client-shell';
-import { captureEntry, takeActivated } from '../src/login/entry-links';
+import { captureEntry, isStandaloneEntry, takeActivated } from '../src/login/entry-links';
 
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Keyboard, Platform, View } from 'react-native';
@@ -58,6 +59,7 @@ import { setOnUnauthorized } from '../src/api/client';
 import { useAccountLanguage } from '../src/settings/account-language';
 import { useAccountTextSize } from '../src/settings/text-size';
 import { useOutboxFlush } from '../src/store/outbox';
+import { useUpdateNotice } from '../src/release-notes/use-update-notice';
 
 import { useApplyAppearance, useTheme } from '../src/theme';
 import { Splash } from '../src/ui/splash';
@@ -204,6 +206,8 @@ export default function RootLayout() {
   useAccountTextSize();
   useOutboxFlush();
   useClientReports();
+  // After an update, once: 「已更新到 x · 查看更新内容」 (src/release-notes); never over an entry page
+  useUpdateNotice(splashGone && !!user && !mismatch && !isStandaloneEntry(pathname));
 
   // Pushes (src/push): this phone's registration per signed-in station, opening a tapped
   // notification once the routes are up (switching station first when it came from
@@ -261,6 +265,7 @@ export default function RootLayout() {
                   <Stack.Screen name="sheets/stations" options={sheetScreen([0.6, 1], { header: true })} />
                   <Stack.Screen name="sheets/station-add" options={sheetScreen([0.5, 1], { header: true })} />
                   <Stack.Screen name="sheets/feedback" options={sheetScreen([0.7, 1], { header: true })} />
+                  <Stack.Screen name="sheets/whats-new" options={sheetScreen([0.7, 1], { header: true })} />
                   <Stack.Screen name="tables/new-record" options={sheetScreen([1], { header: true })} />
 
                   {/* ── full-screen viewers of rich blocks ── */}

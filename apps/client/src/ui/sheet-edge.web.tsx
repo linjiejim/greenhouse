@@ -51,6 +51,7 @@ function ScreenFrame({ children, route }: { children: React.ReactNode; route: Ro
       'sheets/stations',
       'sheets/station-add',
       'sheets/feedback',
+      'sheets/whats-new',
       'peek/html',
       'peek/diagram',
       'table',

@@ -790,6 +790,13 @@ export const en = {
     failed: 'Couldn’t send the feedback',
     unsupported: 'Feedback is turned off on this station.',
   },
+  whatsNew: {
+    title: 'What’s New',
+    updatedTo: 'Updated to {version}',
+    see: 'What’s New',
+    empty: 'No release notes yet',
+    kind: { 'heads-up': 'Heads-up', new: 'New', improved: 'Improved', fixed: 'Fixed' },
+  },
   me: {
     title: 'Me',
     reading: 'Reading',

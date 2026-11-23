@@ -284,6 +284,11 @@ Images carry `APP_VERSION` / `APP_REVISION` and OCI labels; `/health` reports he
 switches, not a version stamp. [RELEASING.md](RELEASING.md) describes the rc cut, maintainer
 publication steps, stable promotion, mobile CD and desktop signing.
 
+Every client build carries the CHANGELOG.md it was built from. After an update the client says
+so once ("Updated to X.Y.Z · What's new") and lists what changed since the version that device last
+opened; Settings › About lists every release. Release PR entries are written for members for that
+reason ([RELEASING.md](RELEASING.md#whats-new-in-the-app)).
+
 ## License
 
 [MIT](LICENSE).
