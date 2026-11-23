@@ -2,7 +2,8 @@
  * Browser notices (DESIGN.md States and feedback): one stack, newest first, at most three. Wide
  * windows put it top right (the desktop app below its 52 title bar, clear of the bar's buttons);
  * phones put it at the top, full width, below the safe area. success/info fade after 4 s, warning
- * 6 s, undo 8 s with its action; an error stays until dismissed and may offer Retry and Details.
+ * 6 s, undo 8 s with its action, and info with an action 8 s too (「已更新到 4.5.0 · 查看更新内容」);
+ * an error stays until dismissed and may offer Retry and Details.
  * Every notice has ✕ in its top-right corner, on its first line, so one covering a header's actions
  * clears with a click. Hover pauses the timers. Copy is one sentence naming the object ("已归档 3 个
  * 项目"), never "操作成功"; a copy to the clipboard is never a notice (the button answers, ./use-copy).
@@ -74,8 +75,11 @@ const ICON: Record<NotifyKind, IconName> = {
   error: 'alertCircle',
 };
 
+/** Info with an action stays as long as Undo, so the action can be reached (jim-uiux 1.7.0). */
+const INFO_ACTION_MS = 8000;
+
 function NoticeRow({ notice, paused }: { notice: Notice; paused: boolean }) {
-  const ms = NOTICE_MS[notice.kind];
+  const ms = notice.kind === 'info' && notice.action ? INFO_ACTION_MS : NOTICE_MS[notice.kind];
   const left = useRef(ms ?? 0);
   const [, tick] = useState(0);
   useEffect(() => {

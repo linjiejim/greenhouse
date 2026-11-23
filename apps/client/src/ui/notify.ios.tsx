@@ -12,9 +12,10 @@ import type { NotifyApi, NotifyOptions } from './notify-types';
 const tr = (key: 'common.undo' | 'common.ok') => translate(usePrefs.getState().lang, key);
 const done = () => () => {};
 
-function plain(icon: 'checkCircle' | 'alertCircle' | 'alert') {
+/** `actionMs`: how long the HUD stays when it carries an action (info's is Undo's 8 s, jim-uiux 1.7.0). */
+function plain(icon: 'checkCircle' | 'alertCircle' | 'alert', actionMs = 6000) {
   return (text: string, options?: NotifyOptions) => {
-    if (options?.action) toastWithAction(text, { ...options.action, onDismiss: options.onDismiss }, 6000, icon);
+    if (options?.action) toastWithAction(text, { ...options.action, onDismiss: options.onDismiss }, actionMs, icon);
     else toast(text, icon);
     return done();
   };
@@ -38,7 +39,7 @@ function error(text: string, options?: NotifyOptions) {
 
 export const notify: NotifyApi = Object.assign(plain('checkCircle'), {
   success: plain('checkCircle'),
-  info: plain('alertCircle'),
+  info: plain('alertCircle', 8000),
   warning: plain('alert'),
   undo: (text: string, onUndo: () => void, options?: NotifyOptions) => {
     toastWithAction(text, { label: tr('common.undo'), onPress: onUndo, onDismiss: options?.onDismiss }, 8000, 'checkCircle');

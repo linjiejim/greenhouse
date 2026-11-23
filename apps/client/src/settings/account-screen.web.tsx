@@ -9,7 +9,7 @@ import { font } from '../ui/form-controls.web';
  *  - 我的 Agent: the agents I connected (src/api/agent.ts) and their writes and spend (→ agents);
  *    连接: the outside services my agent uses through connectors (→ connectors);
  *  - 通用: 通知 (→ notifications), theme (this phone's), language (the account's) and how many recent conversations home lists (this phone's);
- *  - 关于 (version, update, 发送反馈 → feedback), then 退出登录 (destructive, confirmed; the sheet closes first).
+ *  - 关于 (version, update, 更新内容 → whats-new, 发送反馈 → feedback), then 退出登录 (destructive, confirmed; the sheet closes first).
  */
 
 import React, { useCallback } from 'react';
@@ -195,6 +195,7 @@ export default function Me() {
           <LabeledContent label={t('settings.update')}>
             <Text>{s.update}</Text>
           </LabeledContent>
+          <FormNavRow label={t('whatsNew.title')} value="" onPress={() => router.push('/me/whats-new')} />
           {hasPlugin(manifest, 'feedback') ? (
             <FormNavRow label={t('feedback.title')} value="" onPress={() => router.push('/me/feedback')} />
           ) : null}

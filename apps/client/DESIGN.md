@@ -5,6 +5,7 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 ## Relation to jim-uiux
 
 - Interaction, feedback, copy and data states follow jim-uiux 1.5.1 (https://design.linjiejim.com); this file records only Greenhouse's own values and exceptions. Row and card context menus are shortcuts: "open inspector" and status moves are also in the inspector and the list menus.
+- Version updates follow jim-uiux 1.7.0 `patterns/updates` (States and feedback below); everything else stays on 1.5.1.
 - Greenhouse keeps its brand (Haven greens, Nunito) and its numbers: dialog sizes (`DIALOG_SIZES`), desktop density (rows 32, toolbar controls 28, headers 52) and the wide shell below.
 - Native screens follow the platform (HIG, Material 3): system sheets, menus and alerts; native titles may use weight 700. Browser CSS stays at 600 or below.
 - Guards: `src/theme/design-guard.test.ts` (screens and browser CSS: type scale, weight ≤ 600, token colours and shadows, no native `<select>`) and `scripts/check-plugin-ui.mjs` (plugin front ends, run by `pnpm lint`; a plugin's known debt only shrinks).
@@ -97,7 +98,8 @@ One client for web, desktop (Tauri), iOS and Android. Native pages render on the
 ## States and feedback
 
 - Every list has empty, loading and failed states; a cached copy shown offline says so above the list.
-- A result on screen needs no notice; a result out of sight gets `notify` (success and info 4 s, warning 6 s), one sentence naming the object.
+- A result on screen needs no notice; a result out of sight gets `notify` (success and info 4 s, warning 6 s, info with an action 8 s), one sentence naming the object.
+- After an update, once: the first launch on a newer version says "已更新到 4.5.0 · 查看更新内容" (info with an action), never on a first install and never when the new versions' notes are empty. The action opens What's new (`sheets/whats-new`: a phone sheet, an `md` dialog on wide browsers) with every release since the version this device last opened, newest first; Settings › About opens every release. Each release is a card (version, date, summary, groups), the heads-up group first in a warning notice (`Callout` in the browser, the warning tint on phones). The notes never open by themselves. Android's toast takes no action, so there it only names the version. The notes are the bundle's own CHANGELOG.md (src/release-notes; how to write them: RELEASING.md).
 - Notices stack newest first, at most three: top right on wide windows (in the desktop app 8 below its 52 title bar, clear of the bar's buttons), at the top and full width below the safe area on phones. Every notice has ✕ in its top-right corner on its first line (24, a 44 target on touch). Native phones keep the system's own (iOS HUD, Android toast, alerts).
 - Copying never raises a notice: the button says 已复制 for 1.5 s, or 复制失败 when the clipboard refuses (`useCopy`). A copy from a menu, which closes, still confirms with a notice; phones keep the system confirmation.
 - A reversible action (archive, move to a bin) runs at once with `notify.undo` (8 s); only irreversible ones ask first with `confirmAction` (title a question, button repeating its verb).

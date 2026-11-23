@@ -58,6 +58,8 @@ data/cloud-agent/
 apps/client/.expo/
 apps/client/dist-hosted/
 apps/client/.eas/
+# metro.config.js writes CHANGELOG.md into every client bundle (What's new, src/release-notes)
+apps/client/src/release-notes/changelog.generated.js
 
 # Legacy apps/data location
 apps/data/

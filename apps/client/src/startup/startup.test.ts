@@ -162,6 +162,7 @@ vi.mock('../settings/text-size', () => ({ useAccountTextSize: () => {} }));
 vi.mock('../store/outbox', () => ({ useOutboxFlush: () => {} }));
 vi.mock('../reports/client-reports', () => ({ useClientReports: () => {} }));
 vi.mock('../push/use-push', () => ({ usePushBridge: () => {} }));
+vi.mock('../release-notes/use-update-notice', () => ({ useUpdateNotice: () => {} }));
 vi.mock('../ui/loading-state', () => ({
   LoadingState: () => test.React.createElement('div', { role: 'progressbar' }),
 }));

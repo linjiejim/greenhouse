@@ -140,6 +140,7 @@ export default function Me() {
         <FormSection title={t('settings.about')} footer={t('settings.footer')}>
           <FormValueRow label={t('settings.version')} value={s.version || '—'} />
           <FormValueRow label={t('settings.update')} value={s.update} />
+          <FormNavRow label={t('whatsNew.title')} icon="note" onPress={() => router.push('/me/whats-new')} />
           {hasPlugin(manifest, 'feedback') ? (
             <FormNavRow label={t('feedback.title')} icon="comment" onPress={() => router.push('/me/feedback')} />
           ) : null}
